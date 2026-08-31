@@ -17,7 +17,7 @@ export class InputController {
   private pointerId: number | null = null;
   private originX = 0;
   private originY = 0;
-  private readonly radius = 50;
+  private readonly radius = 38;
 
   constructor(root: HTMLElement) {
     this.zone = root.querySelector('#joystick-zone')!;
@@ -64,37 +64,39 @@ export class InputController {
     if (this.pointerId !== null) return;
     this.pointerId = e.pointerId;
     this.dragging = true;
-    this.originX = e.clientX;
-    this.originY = e.clientY;
-    this.base.style.display = 'block';
-    this.base.style.left = `${e.clientX - this.radius}px`;
-    this.base.style.top = `${e.clientY - this.radius}px`;
-    this.stick.style.left = '50%';
-    this.stick.style.top = '50%';
+    // The base is a fixed HUD element (always visible, MOBA-style) — the
+    // stick reacts relative to its center, not to where the touch landed.
+    const rect = this.base.getBoundingClientRect();
+    this.originX = rect.left + rect.width / 2;
+    this.originY = rect.top + rect.height / 2;
+    this.updateStick(e.clientX, e.clientY);
   };
 
   private onPointerMove = (e: PointerEvent) => {
     if (!this.dragging || e.pointerId !== this.pointerId) return;
-    const dx = e.clientX - this.originX;
-    const dy = e.clientY - this.originY;
-    const dist = Math.min(Math.hypot(dx, dy), this.radius);
-    const angle = Math.atan2(dy, dx);
-    const sx = Math.cos(angle) * dist;
-    const sy = Math.sin(angle) * dist;
-    this.stick.style.left = `${this.radius + sx}px`;
-    this.stick.style.top = `${this.radius + sy}px`;
-    this.moveX = sx / this.radius;
-    this.moveY = sy / this.radius;
+    this.updateStick(e.clientX, e.clientY);
   };
 
   private onPointerUp = (e: PointerEvent) => {
     if (e.pointerId !== this.pointerId) return;
     this.dragging = false;
     this.pointerId = null;
-    this.base.style.display = 'none';
+    this.stick.style.transform = 'translate(-50%, -50%)';
     this.moveX = 0;
     this.moveY = 0;
   };
+
+  private updateStick(clientX: number, clientY: number) {
+    const dx = clientX - this.originX;
+    const dy = clientY - this.originY;
+    const dist = Math.min(Math.hypot(dx, dy), this.radius);
+    const angle = Math.atan2(dy, dx);
+    const sx = Math.cos(angle) * dist;
+    const sy = Math.sin(angle) * dist;
+    this.stick.style.transform = `translate(calc(-50% + ${sx}px), calc(-50% + ${sy}px))`;
+    this.moveX = sx / this.radius;
+    this.moveY = sy / this.radius;
+  }
 
   /** Call once per frame after the game has consumed the attack request. */
   consumeAttack(): boolean {
