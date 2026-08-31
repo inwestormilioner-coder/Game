@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Open World RPG — prototyp</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="hud">
+        <div class="hud-top">
+          <div class="stat-row">
+            <span id="level-label">Lvl 1</span>
+            <div class="bar"><div id="hp-fill" class="bar-fill hp"></div></div>
+          </div>
+          <div class="stat-row">
+            <div class="bar"><div id="xp-fill" class="bar-fill xp"></div></div>
+            <span class="gold">🪙 <span id="gold-label">0</span></span>
+          </div>
+        </div>
+        <div id="toast"></div>
+        <div id="level-up-flash"></div>
+      </div>
+
+      <div id="joystick-zone">
+        <div id="joystick-base">
+          <div id="joystick-stick"></div>
+        </div>
+      </div>
+      <button id="attack-btn">ATAK</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

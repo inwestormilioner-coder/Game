@@ -1,0 +1,72 @@
+import * as THREE from 'three';
+
+export const WORLD_RADIUS = 40;
+
+/** Flat open-world ground with scattered rocks/trees so it reads as a world, not a void. */
+export function buildWorld(scene: THREE.Scene): void {
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(WORLD_RADIUS, 64),
+    new THREE.MeshStandardMaterial({ color: 0x3a5f3a, roughness: 1 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  const grid = new THREE.GridHelper(WORLD_RADIUS * 2, 40, 0x264d26, 0x264d26);
+  (grid.material as THREE.Material).opacity = 0.25;
+  (grid.material as THREE.Material).transparent = true;
+  scene.add(grid);
+
+  const treeMat = new THREE.MeshStandardMaterial({ color: 0x2d5a2d });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d20 });
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.9 });
+
+  const rand = mulberry32(1337);
+
+  for (let i = 0; i < 40; i++) {
+    const angle = rand() * Math.PI * 2;
+    const dist = 6 + rand() * (WORLD_RADIUS - 8);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+
+    if (rand() > 0.4) {
+      const tree = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.2, 6), trunkMat);
+      trunk.position.y = 0.6;
+      const foliage = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2, 8), treeMat);
+      foliage.position.y = 1.8;
+      tree.add(trunk, foliage);
+      tree.position.set(x, 0, z);
+      tree.castShadow = true;
+      scene.add(tree);
+    } else {
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.3 + rand() * 0.35, 0),
+        rockMat,
+      );
+      rock.position.set(x, 0.25, z);
+      rock.castShadow = true;
+      scene.add(rock);
+    }
+  }
+}
+
+export function clampToWorld(v: THREE.Vector3): void {
+  const dist = Math.hypot(v.x, v.z);
+  if (dist > WORLD_RADIUS - 1) {
+    const scale = (WORLD_RADIUS - 1) / dist;
+    v.x *= scale;
+    v.z *= scale;
+  }
+}
+
+function mulberry32(seed: number) {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
