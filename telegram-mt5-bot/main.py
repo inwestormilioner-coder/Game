@@ -23,9 +23,9 @@ log = logging.getLogger("main")
 
 
 class Bot:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, store: CampaignStore | None = None):
         self.config = config
-        self.store = CampaignStore()
+        self.store = store or CampaignStore()
         self.executor = None
         if not config.dry_run:
             from mt5_executor import Mt5Executor
@@ -62,6 +62,7 @@ class Bot:
             symbol=self.config.symbol,
             direction=zone.direction,
             magic=self.store.next_magic(self.config.magic_base),
+            sl_pips=zone.sl_pips,
         )
 
         log.info(
@@ -89,12 +90,14 @@ class Bot:
         return campaigns
 
     def _handle_breakeven(self, msg: ParsedMessage) -> None:
-        for campaign in self._active_campaigns(msg):
-            log.info("BREAKEVEN update (+%.0f pips) for campaign %s", msg.profit_pips or 0, campaign.id)
-            if self.config.dry_run:
-                log.info("  [DRY RUN] would move SL to entry for all open positions in campaign %s", campaign.id)
-            else:
-                self.executor.move_sl_to_breakeven(campaign)
+        # Deliberately ignored: the channel's own "SL na BE" call is not
+        # acted on. The bot manages SL itself - see monitor_campaigns() -
+        # moving to the basket's average entry once profit reaches
+        # RISK_REWARD_TRIGGER * risk (1:1 by default).
+        log.info(
+            "channel said 'SL na BE' (+%.0f pips) - ignoring, bot manages SL itself",
+            msg.profit_pips or 0,
+        )
 
     def _handle_close_all(self, msg: ParsedMessage) -> None:
         for campaign in self._active_campaigns(msg):
@@ -104,6 +107,25 @@ class Bot:
             else:
                 self.executor.close_campaign(campaign)
             self.store.deactivate(campaign.id)
+
+    async def monitor_campaigns(self) -> None:
+        """Own SL logic, independent of the Telegram channel: polls open
+        campaigns and moves SL to the basket average once profit reaches
+        1:1 (configurable) risk:reward. No-op in DRY_RUN - there is no live
+        MT5 position/price data to check without a real connection."""
+        if self.config.dry_run or self.executor is None:
+            log.info("DRY_RUN is on - SL monitoring loop is disabled")
+            return
+
+        while True:
+            for campaign in self.store.most_recent_active(self.config.symbol):
+                try:
+                    applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)
+                    if applied:
+                        self.store.mark_breakeven_applied(campaign.id)
+                except Exception:
+                    log.exception("error checking average breakeven for campaign %s", campaign.id)
+            await asyncio.sleep(self.config.monitor_interval_seconds)
 
 
 def replay(config: Config, path: str) -> None:
@@ -118,7 +140,10 @@ async def live(config: Config) -> None:
     from telegram_listener import run_listener
 
     bot = Bot(config)
-    await run_listener(config, bot.handle_text)
+    await asyncio.gather(
+        run_listener(config, bot.handle_text),
+        bot.monitor_campaigns(),
+    )
 
 
 def main() -> None:

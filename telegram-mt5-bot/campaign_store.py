@@ -1,5 +1,8 @@
-"""Tracks which zone signal each MT5 order/position belongs to, so a later
-"SL na BE" / "Zamykam calosc" update message can find the right tickets.
+"""Tracks which zone signal each MT5 order/position belongs to, so later
+"Zamykam calosc" updates and the bot's own SL monitoring can find the right
+tickets. The channel's own "SL na BE" messages are intentionally NOT acted
+on - see main.py - the bot manages SL itself based on sl_pips/breakeven_applied
+below.
 
 Telegram signals carry no explicit ID, so campaigns are matched by
 direction + symbol: the most recently opened still-active campaign for
@@ -24,9 +27,11 @@ class Campaign:
     symbol: str
     direction: str
     magic: int
+    sl_pips: float = 0.0
     tickets: List[int] = field(default_factory=list)
     opened_at: float = field(default_factory=time.time)
     active: bool = True
+    breakeven_applied: bool = False
 
 
 class CampaignStore:
@@ -69,4 +74,10 @@ class CampaignStore:
         for c in self._campaigns:
             if c.id == campaign_id:
                 c.active = False
+        self._save()
+
+    def mark_breakeven_applied(self, campaign_id: str) -> None:
+        for c in self._campaigns:
+            if c.id == campaign_id:
+                c.breakeven_applied = True
         self._save()

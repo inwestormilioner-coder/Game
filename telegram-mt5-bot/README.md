@@ -18,12 +18,22 @@ i drabinką TP rosnącą co 10 pipsów od najniższej ceny w strefie
   "1 pipsem" (stąd domyślne `PIP_SIZE=0.1`, czyli SL 60 pips = $6). Jeśli
   Twój broker liczy inaczej, zmień tę wartość - inaczej SL/TP wylądują w
   złym miejscu.
-- **Kanał Telegram nie ma ID sygnału.** Wiadomości typu "SL na BE" czy
-  "Zamykam całość" nie mówią, której strefy dotyczą. Bot zakłada, że
-  dotyczą wszystkich aktualnie aktywnych ("otwartych") kampanii dla danego
-  symbolu - jeśli w tym samym czasie masz otwarte dwie różne strefy, update
-  zadziała na obie. Zobacz `campaign_store.py`, jeśli chcesz to zawęzić
-  (np. tylko do najnowszej).
+- **Kanał Telegram nie ma ID sygnału.** Wiadomości typu "Zamykam całość"
+  nie mówią, której strefy dotyczą. Bot zakłada, że dotyczą wszystkich
+  aktualnie aktywnych ("otwartych") kampanii dla danego symbolu - jeśli w
+  tym samym czasie masz otwarte dwie różne strefy, update zadziała na obie.
+  Zobacz `campaign_store.py`, jeśli chcesz to zawęzić (np. tylko do
+  najnowszej).
+- **Wiadomości "SL na BE" z kanału są celowo ignorowane.** Bot sam pilnuje
+  SL: dopiero gdy pływający zysk całej strefy (średnia ważona cena wejścia
+  wszystkich otwartych zleceń tej strefy) osiągnie `RISK_REWARD_TRIGGER`
+  (domyślnie 1.0, czyli 1:1) razy pierwotne ryzyko (odległość SL w pipsach
+  z sygnału), bot przesuwa SL wszystkich otwartych pozycji tej strefy na
+  **średnią cenę wejścia całego koszyka** (nie na cenę wejścia każdego
+  zlecenia z osobna). Robi to raz na strefę (`breakeven_applied` w
+  `state/campaigns.json`) - kolejne "SL na BE" z kanału nic nie zmieniają.
+  Sprawdzane jest to co `MONITOR_INTERVAL_SECONDS` sekund (domyślnie 5),
+  tylko gdy `DRY_RUN=false` (wymaga żywego połączenia z MT5).
 - Wiadomości typu "Zbieram malutką część zysków" (częściowe zamknięcie bez
   podanego %) są tylko logowane - **nie zamykają automatycznie części
   pozycji**, bo sygnał nie mówi ile. To świadome uproszczenie, nie bug.

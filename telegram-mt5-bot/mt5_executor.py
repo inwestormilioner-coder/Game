@@ -8,7 +8,7 @@ touched; every "would send" line is only logged.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from campaign_store import Campaign
 from config import Config
@@ -94,24 +94,48 @@ class Mt5Executor:
 
         return tickets
 
-    def move_sl_to_breakeven(self, campaign: Campaign) -> None:
+    def check_average_breakeven(self, campaign: Campaign, risk_reward_trigger: float) -> bool:
+        """Own SL management (channel's "SL na BE" messages are ignored -
+        see main.py): once the whole basket's floating profit reaches
+        risk_reward_trigger * initial risk (1.0 = 1:1), move every open
+        position's SL to the basket's volume-weighted average entry price -
+        not each position's own entry. Returns True if it just applied.
+        Idempotent: campaign.breakeven_applied guards against reapplying.
+        """
+        if campaign.breakeven_applied or campaign.sl_pips <= 0:
+            return False
+
         mt5 = self._mt5
-        positions = mt5.positions_get(symbol=self.config.symbol) or ()
+        positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
+        if not positions:
+            return False
+
+        total_volume = sum(p.volume for p in positions)
+        avg_entry = sum(p.price_open * p.volume for p in positions) / total_volume
+        risk_price = campaign.sl_pips * self.config.pip_size
+
+        bid, ask = self.current_price()
+        profit_price = (bid - avg_entry) if campaign.direction == "BUY" else (avg_entry - ask)
+
+        if profit_price < risk_price * risk_reward_trigger:
+            return False
+
+        avg_entry = round(avg_entry, 2)
         for pos in positions:
-            if pos.magic != campaign.magic:
-                continue
             request = {
                 "action": mt5.TRADE_ACTION_SLTP,
                 "symbol": self.config.symbol,
                 "position": pos.ticket,
-                "sl": pos.price_open,
+                "sl": avg_entry,
                 "tp": pos.tp,
             }
             result = mt5.order_send(request)
             if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                log.error("breakeven move failed for ticket %s: %s", pos.ticket, result)
+                log.error("average breakeven move failed for ticket %s: %s", pos.ticket, result)
             else:
-                log.info("moved SL to breakeven (%.2f) for ticket %s", pos.price_open, pos.ticket)
+                log.info("moved SL to basket average %.2f for ticket %s", avg_entry, pos.ticket)
+
+        return True
 
     def close_campaign(self, campaign: Campaign) -> None:
         mt5 = self._mt5
