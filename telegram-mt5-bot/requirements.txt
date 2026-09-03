@@ -1,3 +1,4 @@
 Telethon>=1.36,<2
 python-dotenv>=1.0,<2
+qrcode>=7.4,<9
 MetaTrader5>=5.0.45; sys_platform == "win32"

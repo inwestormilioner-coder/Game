@@ -118,4 +118,28 @@ telegram_listener.py   - nasłuch kanału (Telethon)
 main.py                - spina wszystko, tryb live i --replay
 list_chats.py           - jednorazowa pomoc: wypisuje Twoje czaty z ID
                           (do znalezienia ID prywatnego kanału bez usernamu)
+login_qr.py             - alternatywne logowanie przez zeskanowanie kodu QR,
+                          gdy przepisywanie kodu SMS/z Telegrama nie działa
 ```
+
+## Logowanie do Telegrama nie działa (kod nieprawidłowy / nie przychodzi)
+
+Jeśli `list_chats.py` albo `main.py` przy logowaniu ciągle piszą "Invalid
+code" albo kod w ogóle nie przychodzi, zaloguj się zamiast tego przez kod
+QR - omija to całkowicie wpisywanie kodu:
+
+```bash
+python login_qr.py
+```
+
+Wyświetli w terminalu kod QR (ASCII-art). Zeskanuj go telefonem: w
+aplikacji Telegram wejdź w **Ustawienia -> Urządzenia -> Połącz biurkowe
+urządzenie ("Link Desktop Device")** i zeskanuj kod aparatem w aplikacji
+(nie zwykłym aparatem telefonu). Po zeskanowaniu logowanie kończy się
+automatycznie i zapisuje się w tej samej sesji, której używają
+`list_chats.py` i `main.py` - nie trzeba się logować drugi raz.
+
+Częsta przyczyna błędu przy zwykłym logowaniu (numer + kod): w oknie cmd
+komendy/tekst wpisane wcześniej "doklejają się" do kolejnych pytań, jeśli
+wkleja się kilka linijek naraz. Wpisuj/wklejaj tylko jedną odpowiedź na raz
+i czekaj na kolejne pytanie.
