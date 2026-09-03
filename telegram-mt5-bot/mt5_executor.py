@@ -137,38 +137,15 @@ class Mt5Executor:
 
         return True
 
-    def close_campaign(self, campaign: Campaign) -> None:
+    def campaign_has_open_trades(self, campaign: Campaign) -> bool:
+        """True while a campaign still has pending orders or open positions
+        in MT5. The bot never closes a campaign itself (the channel's
+        "Zamykam calosc" is ignored too - exits happen only via each
+        order's own TP or its SL) - this is just used to know when a
+        campaign is finished so it can stop being polled/tracked."""
         mt5 = self._mt5
-
-        for order in mt5.orders_get(symbol=self.config.symbol) or ():
-            if order.magic != campaign.magic:
-                continue
-            result = mt5.order_send({"action": mt5.TRADE_ACTION_REMOVE, "order": order.ticket})
-            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                log.error("cancel pending failed for ticket %s: %s", order.ticket, result)
-            else:
-                log.info("cancelled pending order ticket %s", order.ticket)
-
-        for pos in mt5.positions_get(symbol=self.config.symbol) or ():
-            if pos.magic != campaign.magic:
-                continue
-            bid, ask = self.current_price()
-            close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-            price = bid if close_type == mt5.ORDER_TYPE_SELL else ask
-            request = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": self.config.symbol,
-                "volume": pos.volume,
-                "type": close_type,
-                "position": pos.ticket,
-                "price": price,
-                "deviation": self.config.deviation_points,
-                "magic": campaign.magic,
-                "comment": f"tg-{campaign.id}-close"[:31],
-                "type_filling": mt5.ORDER_FILLING_RETURN,
-            }
-            result = mt5.order_send(request)
-            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                log.error("close failed for ticket %s: %s", pos.ticket, result)
-            else:
-                log.info("closed position ticket %s", pos.ticket)
+        orders = [o for o in (mt5.orders_get(symbol=self.config.symbol) or ()) if o.magic == campaign.magic]
+        if orders:
+            return True
+        positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
+        return bool(positions)

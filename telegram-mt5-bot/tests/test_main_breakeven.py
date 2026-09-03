@@ -1,6 +1,8 @@
-"""Verifies the bot ignores the channel's "SL na BE" instruction and only
-touches campaign state on ZONE / CLOSE_ALL messages - the average-entry
-breakeven logic itself lives in mt5_executor and is covered separately."""
+"""Verifies the bot ignores the channel's "SL na BE" and "Zamykam calosc"
+instructions - it only creates campaign state on ZONE messages and never
+touches it from update messages. The average-entry breakeven logic and the
+own-state campaign-finished detection live in mt5_executor and are covered
+separately."""
 import asyncio
 import sys
 from pathlib import Path
@@ -43,11 +45,15 @@ def test_breakeven_message_leaves_campaign_untouched(tmp_path):
     assert campaigns_after[0].tickets == campaigns_before[0].tickets
 
 
-def test_close_all_still_deactivates_campaign(tmp_path):
+def test_close_all_message_leaves_campaign_untouched(tmp_path):
     store = CampaignStore(path=tmp_path / "campaigns.json")
     bot = Bot(_dry_run_config(), store=store)
 
     asyncio.run(bot.handle_text("Kierunek: Buy Gold\nStrefa: 4425-20\nSL: 60 pips"))
     asyncio.run(bot.handle_text("TAKE PROFIT: +140 pips Zamykam calosc. Podsylajcie wyniki!"))
 
-    assert store.most_recent_active("XAUUSD") == []
+    # the campaign is only ever deactivated by monitor_campaigns() noticing
+    # MT5 has no open trades left for it - never by the channel's message
+    campaigns = store.most_recent_active("XAUUSD")
+    assert len(campaigns) == 1
+    assert campaigns[0].active is True

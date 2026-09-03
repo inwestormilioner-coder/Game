@@ -22,10 +22,17 @@ class FakePosition:
 
 
 @dataclass
+class FakeOrder:
+    ticket: int
+    magic: int
+
+
+@dataclass
 class FakeMt5:
     positions: list
     bid: float
     ask: float
+    orders: list = field(default_factory=list)
     sent_requests: list = field(default_factory=list)
 
     TRADE_ACTION_SLTP = "SLTP"
@@ -33,6 +40,9 @@ class FakeMt5:
 
     def positions_get(self, symbol=None):
         return list(self.positions)
+
+    def orders_get(self, symbol=None):
+        return list(self.orders)
 
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(bid=self.bid, ask=self.ask)
@@ -119,3 +129,40 @@ def test_sell_basket_uses_ask_and_mirrors_math():
 
     assert applied is True
     assert all(req["sl"] == 4427.5 for req in fake.sent_requests)
+
+
+def test_campaign_has_open_trades_true_with_pending_orders():
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=[FakeOrder(ticket=1, magic=990000)])
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.campaign_has_open_trades(campaign) is True
+
+
+def test_campaign_has_open_trades_true_with_open_positions():
+    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0)]
+    fake = FakeMt5(positions=positions, bid=4420.0, ask=4420.2, orders=[])
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.campaign_has_open_trades(campaign) is True
+
+
+def test_campaign_has_open_trades_false_once_everything_closed():
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=[])
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.campaign_has_open_trades(campaign) is False
+
+
+def test_campaign_has_open_trades_ignores_other_campaigns_magic():
+    fake = FakeMt5(
+        positions=[FakePosition(ticket=1, magic=111111, price_open=4420.0, volume=0.01, tp=4426.0)],
+        bid=4420.0, ask=4420.2,
+        orders=[FakeOrder(ticket=2, magic=222222)],
+    )
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.campaign_has_open_trades(campaign) is False

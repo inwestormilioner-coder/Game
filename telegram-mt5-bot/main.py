@@ -83,12 +83,6 @@ class Bot:
 
         self.store.add(campaign)
 
-    def _active_campaigns(self, msg: ParsedMessage) -> list[Campaign]:
-        campaigns = self.store.most_recent_active(self.config.symbol)
-        if not campaigns:
-            log.warning("update message received but no active campaign is tracked: %s", msg.raw_text)
-        return campaigns
-
     def _handle_breakeven(self, msg: ParsedMessage) -> None:
         # Deliberately ignored: the channel's own "SL na BE" call is not
         # acted on. The bot manages SL itself - see monitor_campaigns() -
@@ -100,21 +94,24 @@ class Bot:
         )
 
     def _handle_close_all(self, msg: ParsedMessage) -> None:
-        for campaign in self._active_campaigns(msg):
-            log.info("CLOSE ALL update (+%.0f pips) for campaign %s", msg.profit_pips or 0, campaign.id)
-            if self.config.dry_run:
-                log.info("  [DRY RUN] would cancel pending orders and close open positions for campaign %s", campaign.id)
-            else:
-                self.executor.close_campaign(campaign)
-            self.store.deactivate(campaign.id)
+        # Deliberately ignored too: the channel's "Zamykam calosc" call is
+        # not acted on. Exits happen only from each order's own TP, or from
+        # SL (initial, then moved to the basket average by monitor_campaigns
+        # once 1:1 is reached) - never because the channel says so.
+        log.info(
+            "channel said 'Zamykam calosc' (+%.0f pips) - ignoring, bot only exits via TP/SL",
+            msg.profit_pips or 0,
+        )
 
     async def monitor_campaigns(self) -> None:
-        """Own SL logic, independent of the Telegram channel: polls open
-        campaigns and moves SL to the basket average once profit reaches
-        1:1 (configurable) risk:reward. No-op in DRY_RUN - there is no live
-        MT5 position/price data to check without a real connection."""
+        """Own trade management, independent of the Telegram channel: polls
+        open campaigns, moves SL to the basket average once profit reaches
+        1:1 (configurable) risk:reward, and marks a campaign inactive once
+        MT5 shows no pending orders or open positions left for it (all
+        closed via TP/SL). No-op in DRY_RUN - there is no live MT5
+        position/price data to check without a real connection."""
         if self.config.dry_run or self.executor is None:
-            log.info("DRY_RUN is on - SL monitoring loop is disabled")
+            log.info("DRY_RUN is on - trade monitoring loop is disabled")
             return
 
         while True:
@@ -123,8 +120,10 @@ class Bot:
                     applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)
                     if applied:
                         self.store.mark_breakeven_applied(campaign.id)
+                    if not self.executor.campaign_has_open_trades(campaign):
+                        self.store.deactivate(campaign.id)
                 except Exception:
-                    log.exception("error checking average breakeven for campaign %s", campaign.id)
+                    log.exception("error monitoring campaign %s", campaign.id)
             await asyncio.sleep(self.config.monitor_interval_seconds)
 
 
