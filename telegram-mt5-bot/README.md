@@ -62,15 +62,22 @@ Uzupełnij `.env`:
    ("API development tools"). To dane Twojego konta Telegram (nie bota) -
    tylko zwykłe konto może czytać wiadomości z kanału, do którego jesteś
    dopisany.
-2. `TELEGRAM_CHANNEL` - @username kanału albo jego numeryczne ID.
+2. `TELEGRAM_CHANNEL` - @username kanału, albo jego numeryczne ID jeśli
+   kanał jest prywatny (bez publicznego usernamu - większość kanałów z
+   sygnałami tak ma). Żeby znaleźć ID:
+   ```bash
+   python list_chats.py premium
+   ```
+   (Pierwsze uruchomienie poprosi o numer telefonu i kod z Telegrama -
+   jednorazowe logowanie, zapisuje się w pliku sesji `*.session`, nie
+   commituj go.) Wypisze listę Twoich czatów pasujących do słowa "premium" z
+   ID - skopiuj ID interesującego Cię kanału (razem ze znakiem "-", jeśli
+   jest) do `TELEGRAM_CHANNEL`. Bez argumentu (`python list_chats.py`)
+   wypisze wszystkie czaty.
 3. `MT5_LOGIN` / `MT5_PASSWORD` / `MT5_SERVER` - zostaw puste, jeśli MT5
    jest już otwarty i zalogowany na koncie, na którym ma handlować bot.
 4. Sprawdź `SYMBOL` (np. `XAUUSD`, czasem `XAUUSD.a` / `GOLD` zależnie od
    brokera) i `PIP_SIZE`.
-
-Pierwsze uruchomienie (`python main.py`) poprosi o numer telefonu i kod z
-Telegrama - to jednorazowe logowanie, zapisze się w pliku sesji
-(`*.session`, nie commituj go).
 
 ## Uruchomienie
 
@@ -109,4 +116,6 @@ campaign_store.py      - który magic/ticket należy do której strefy
 mt5_executor.py        - właściwe wywołania MetaTrader5 (tylko Windows)
 telegram_listener.py   - nasłuch kanału (Telethon)
 main.py                - spina wszystko, tryb live i --replay
+list_chats.py           - jednorazowa pomoc: wypisuje Twoje czaty z ID
+                          (do znalezienia ID prywatnego kanału bez usernamu)
 ```
