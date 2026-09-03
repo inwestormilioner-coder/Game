@@ -19,6 +19,7 @@ class FakePosition:
     price_open: float
     volume: float
     tp: float
+    sl: float
 
 
 @dataclass
@@ -71,12 +72,13 @@ def _executor_with(fake_mt5: FakeMt5) -> Mt5Executor:
 
 
 def test_no_action_below_1to1():
-    # BUY basket: avg entry 4422.5, risk = 60 pips * 0.1 = $6 -> needs bid >= 4428.5
+    # BUY basket: shared SL 4414.0 (one price for the whole grid), avg
+    # entry 4422.5 -> risk = 8.5, needs bid >= 4431.0 to trigger
     positions = [
-        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0),
-        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4431.0),
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4431.0, sl=4414.0),
     ]
-    fake = FakeMt5(positions=positions, bid=4427.0, ask=4427.2)  # profit_price = 4.5 < 6
+    fake = FakeMt5(positions=positions, bid=4429.0, ask=4429.2)  # profit_price = 6.5 < 8.5
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
@@ -88,10 +90,10 @@ def test_no_action_below_1to1():
 
 def test_moves_sl_to_basket_average_once_1to1_reached():
     positions = [
-        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0),
-        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4431.0),
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4431.0, sl=4414.0),
     ]
-    fake = FakeMt5(positions=positions, bid=4428.5, ask=4428.7)  # profit_price = 6.0 == risk
+    fake = FakeMt5(positions=positions, bid=4431.0, ask=4431.2)  # profit_price = 8.5 == risk
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
@@ -100,7 +102,7 @@ def test_moves_sl_to_basket_average_once_1to1_reached():
     assert applied is True
     assert len(fake.sent_requests) == 2
     for req in fake.sent_requests:
-        assert req["sl"] == 4422.5  # (4420 + 4425) / 2, NOT each position's own entry
+        assert req["sl"] == 4422.5  # (4420 + 4425) / 2, NOT each position's own entry/SL
     assert {req["position"] for req in fake.sent_requests} == {1, 2}
 
 
@@ -117,11 +119,11 @@ def test_skips_campaigns_already_marked_applied():
 
 def test_sell_basket_uses_ask_and_mirrors_math():
     positions = [
-        FakePosition(ticket=1, magic=990000, price_open=4430.0, volume=0.01, tp=4424.0),
-        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4419.0),
+        FakePosition(ticket=1, magic=990000, price_open=4430.0, volume=0.01, tp=4424.0, sl=4436.0),
+        FakePosition(ticket=2, magic=990000, price_open=4425.0, volume=0.01, tp=4419.0, sl=4436.0),
     ]
-    # avg entry 4427.5, risk $6 -> needs ask <= 4421.5
-    fake = FakeMt5(positions=positions, bid=4421.3, ask=4421.5)
+    # avg entry 4427.5, shared SL 4436.0 -> risk = 8.5, needs ask <= 4419.0
+    fake = FakeMt5(positions=positions, bid=4418.8, ask=4419.0)
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="SELL", magic=990000, sl_pips=60)
 
@@ -140,7 +142,7 @@ def test_campaign_has_open_trades_true_with_pending_orders():
 
 
 def test_campaign_has_open_trades_true_with_open_positions():
-    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0)]
+    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0, sl=4414.0)]
     fake = FakeMt5(positions=positions, bid=4420.0, ask=4420.2, orders=[])
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
@@ -158,7 +160,7 @@ def test_campaign_has_open_trades_false_once_everything_closed():
 
 def test_campaign_has_open_trades_ignores_other_campaigns_magic():
     fake = FakeMt5(
-        positions=[FakePosition(ticket=1, magic=111111, price_open=4420.0, volume=0.01, tp=4426.0)],
+        positions=[FakePosition(ticket=1, magic=111111, price_open=4420.0, volume=0.01, tp=4426.0, sl=4414.0)],
         bid=4420.0, ask=4420.2,
         orders=[FakeOrder(ticket=2, magic=222222)],
     )

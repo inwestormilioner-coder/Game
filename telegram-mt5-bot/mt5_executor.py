@@ -101,8 +101,15 @@ class Mt5Executor:
         position's SL to the basket's volume-weighted average entry price -
         not each position's own entry. Returns True if it just applied.
         Idempotent: campaign.breakeven_applied guards against reapplying.
+
+        Risk is measured from the grid's single shared SL price (all
+        positions in a campaign are opened with the same SL - see
+        order_planner.plan_orders), read back from a live position rather
+        than recomputed from sl_pips: since entries fill at different times,
+        the average entry of currently-open positions moves, so the
+        avg_entry-to-shared_sl distance isn't a fixed number of pips.
         """
-        if campaign.breakeven_applied or campaign.sl_pips <= 0:
+        if campaign.breakeven_applied:
             return False
 
         mt5 = self._mt5
@@ -112,7 +119,10 @@ class Mt5Executor:
 
         total_volume = sum(p.volume for p in positions)
         avg_entry = sum(p.price_open * p.volume for p in positions) / total_volume
-        risk_price = campaign.sl_pips * self.config.pip_size
+        shared_sl = positions[0].sl
+        risk_price = (avg_entry - shared_sl) if campaign.direction == "BUY" else (shared_sl - avg_entry)
+        if risk_price <= 0:
+            return False
 
         bid, ask = self.current_price()
         profit_price = (bid - avg_entry) if campaign.direction == "BUY" else (avg_entry - ask)

@@ -2,9 +2,12 @@
 
 Nasłuchuje kanału Telegram z sygnałami w stylu "PREMIUM SIGNALS (TAKE PROFIT)"
 i automatycznie wystawia w MT5 siatkę zleceń oczekujących pokrywającą całą
-podaną strefę, po 0.01 lota co `ZONE_STEP` (domyślnie 0.5$), z SL z sygnału
-i drabinką TP rosnącą co 10 pipsów od najniższej ceny w strefie
-(60 / 70 / 80 / 90 / 100 / 110 / ... pipsów, wg liczby zleceń w strefie).
+podaną strefę, po 0.01 lota co `ZONE_STEP` (domyślnie 0.5$), z drabinką TP
+rosnącą co 10 pipsów od najniższej ceny w strefie (60 / 70 / 80 / 90 / 100 /
+110 / ... pipsów, wg liczby zleceń w strefie). SL jest **jeden, wspólny dla
+całej siatki** - odległość z sygnału (np. 60 pips) liczona od najgorszego
+(najniższego dla BUY, najwyższego dla SELL) entry w strefie, nie osobno od
+ceny wejścia każdego zlecenia.
 
 ## Ograniczenia, o których musisz wiedzieć
 

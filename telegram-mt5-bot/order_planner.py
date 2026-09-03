@@ -1,7 +1,10 @@
 """Turns a parsed zone signal into a ladder of individual pending orders:
-one order every `step` dollars across the zone, each 0.01 lot, with the
-given SL and a TP ladder that starts at `start_tp_pips` for the lowest
-price in the zone and grows by `tp_increment_pips` for each order above it.
+one order every `step` dollars across the zone, each 0.01 lot, with a TP
+ladder that starts at `start_tp_pips` for the lowest price in the zone and
+grows by `tp_increment_pips` for each order above it. SL is a single shared
+price for the whole grid - sl_pips away from the zone's worst entry (the
+lowest price for a BUY zone, the highest for a SELL zone) - not a separate
+SL measured from each order's own entry.
 """
 from __future__ import annotations
 
@@ -56,23 +59,23 @@ def plan_orders(
 ) -> List[OrderPlan]:
     levels = generate_price_levels(zone.zone_low, zone.zone_high, step)
 
+    if zone.direction == "BUY":
+        shared_sl_price = round(min(levels) - zone.sl_pips * pip_size, 2)
+    elif zone.direction == "SELL":
+        shared_sl_price = round(max(levels) + zone.sl_pips * pip_size, 2)
+    else:
+        raise ValueError(f"unknown direction: {zone.direction}")
+
     plans: List[OrderPlan] = []
     for i, entry in enumerate(levels):
         tp_pips = start_tp_pips + i * tp_increment_pips
-        if zone.direction == "BUY":
-            sl_price = entry - zone.sl_pips * pip_size
-            tp_price = entry + tp_pips * pip_size
-        elif zone.direction == "SELL":
-            sl_price = entry + zone.sl_pips * pip_size
-            tp_price = entry - tp_pips * pip_size
-        else:
-            raise ValueError(f"unknown direction: {zone.direction}")
+        tp_price = entry + tp_pips * pip_size if zone.direction == "BUY" else entry - tp_pips * pip_size
 
         plans.append(
             OrderPlan(
                 direction=zone.direction,
                 entry_price=round(entry, 2),
-                sl_price=round(sl_price, 2),
+                sl_price=shared_sl_price,
                 tp_price=round(tp_price, 2),
                 tp_pips=tp_pips,
                 lot=lot,
