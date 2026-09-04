@@ -4,3 +4,4 @@
 state/*.json
 __pycache__/
 .pytest_cache/
+mt5_expert/compile.log

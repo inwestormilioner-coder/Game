@@ -47,6 +47,23 @@ That's it - leave that chart open (can be minimized) while the Python bot
 runs. No changes needed to `.env`; `mt5_executor.py` finds the same shared
 `Common\Files\tg_bridge` folder automatically via the MT5 connection.
 
+## Updating after this first install
+
+Whenever `TelegramBridgeEA.mq5` changes (e.g. after `git pull`), you need
+to copy the new source over the old one and recompile. Two ways:
+
+- **`update_ea.bat`** (in this folder) does both in one double-click - it
+  copies the file into your MT5 data folder and compiles it via
+  MetaEditor's command-line mode, then prints the compile result. The two
+  paths at the top of the script are already filled in for this install;
+  only edit them if you reinstall MT5 or move it elsewhere.
+- Or do it manually: repeat steps 2-3 above (copy the file, open it in
+  MetaEditor, press F7).
+
+Either way, check MT5's **Eksperci** tab afterwards - the EA should keep
+running with the new code (MT5 usually hot-reloads a recompiled EA
+automatically), or remove and re-drag it onto the chart if it doesn't.
+
 ## How to tell it's working
 
 - MT5 **Eksperci** tab logs every order it places/fails and every SL move,
