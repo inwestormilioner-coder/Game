@@ -105,19 +105,24 @@ class Bot:
         )
 
     def _check_trading_allowed(self) -> None:
-        """Logs once on each transition of MT5's "Algo Trading" toggle, so
-        it going off (e.g. after the terminal reconnects overnight) is
-        noticed right away instead of only surfacing as a run of failed
-        order_send calls the next time a signal comes in."""
+        """Logs once on each transition of what the Python API reports for
+        MT5's "Algo Trading" toggle. Informational only: orders are placed
+        by TelegramBridgeEA from inside the terminal (see mt5_executor.py),
+        not via this API connection, and on at least one account this
+        reading has been observed to say OFF even while manual trades and
+        EAs traded fine - so treat this as a hint, not proof. The EA's own
+        Eksperci/Experts log is the reliable source for whether it's
+        actually placing orders."""
         allowed = self.executor.is_trading_allowed()
         if allowed != self._last_trading_allowed:
             if allowed:
-                log.info("MT5 Algo Trading is ON - orders will be sent normally.")
+                log.info("MT5 Algo Trading (as seen by the Python API) is ON.")
             else:
-                log.warning("=" * 70)
-                log.warning("MT5 Algo Trading just turned OFF - no orders can be sent until")
-                log.warning("you click 'Algo Trading' again in the MT5 toolbar.")
-                log.warning("=" * 70)
+                log.info(
+                    "MT5 Algo Trading (as seen by the Python API) is OFF - this may not be "
+                    "accurate on this account/build; check the EA's own Eksperci log if orders "
+                    "aren't appearing rather than relying on this line."
+                )
             self._last_trading_allowed = allowed
 
     async def monitor_campaigns(self) -> None:

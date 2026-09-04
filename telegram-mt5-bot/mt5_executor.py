@@ -96,10 +96,11 @@ class Mt5Executor:
         module docstring. Returns [] (no tickets available immediately);
         campaign_has_open_trades() picks up what the EA actually placed."""
         if not self.is_trading_allowed():
-            log.warning("=" * 70)
-            log.warning("MT5 Algo Trading is OFF right now - the EA will not be able to trade.")
-            log.warning("Click 'Algo Trading' in the MT5 toolbar, then wait for the next signal.")
-            log.warning("=" * 70)
+            log.info(
+                "note: the Python API reports Algo Trading as OFF - this reading isn't always "
+                "accurate (TelegramBridgeEA trades independently of it); check the EA's own "
+                "Eksperci log if these orders don't show up in MT5."
+            )
 
         comment = f"tg-{campaign.id}"[:31]
         lines = [
