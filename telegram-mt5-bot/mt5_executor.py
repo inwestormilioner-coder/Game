@@ -4,10 +4,24 @@ This package only works on Windows, next to a running MT5 terminal - it is
 imported lazily so the rest of the bot (parser/planner/tests) can be
 developed and tested on any OS. In DRY_RUN mode this module is never
 touched; every "would send" line is only logged.
+
+Trade-modifying calls (opening orders, changing SL) do NOT go through
+mt5.order_send() directly - some brokers/terminal builds silently reject
+order_send() from the external Python API (retcode 10027 "AutoTrading
+disabled by client") even though the terminal's own "Algo Trading" toggle
+is on and manual trades work fine. Instead this writes a plain-text command
+file into MT5's shared "Common\\Files" folder, which the companion
+TelegramBridgeEA.mq5 (attached to a chart inside the terminal) picks up and
+executes with native OrderSend() calls - the same trading path a human
+clicking "New Order" uses, unaffected by that restriction. All read-only
+calls (prices, positions, orders, terminal state) still go straight through
+the Python API, which works fine either way - see mt5_expert/README.md.
 """
 from __future__ import annotations
 
 import logging
+import time
+from pathlib import Path
 from typing import List
 
 from campaign_store import Campaign
@@ -41,6 +55,7 @@ class Mt5Executor:
             raise RuntimeError(f"could not select symbol {self.config.symbol}")
 
         log.info("Connected to MT5, symbol=%s", self.config.symbol)
+        log.info("EA bridge folder: %s", self._bridge_dir())
 
     def shutdown(self) -> None:
         if self._mt5:
@@ -54,70 +69,61 @@ class Mt5Executor:
         return tick.bid, tick.ask
 
     def is_trading_allowed(self) -> bool:
-        """False when MT5's "Algo Trading" toggle is off - every order_send
-        will be rejected with retcode 10027 while this is the case. This can
-        flip without the bot's Telegram-side log making it obvious why
-        orders failed (e.g. the terminal resets it after a reconnect), so
-        callers should check it explicitly rather than only reacting to a
-        failed order_send after the fact."""
+        """False when MT5's "Algo Trading" toggle is off. Kept as an early,
+        loud warning for the common case, even though actual order placement
+        no longer depends on it directly (the EA does) - Algo Trading off
+        also blocks EAs from trading, so it's still worth flagging."""
         info = self._mt5.terminal_info()
         return bool(info and info.trade_allowed)
 
-    def _order_type_for(self, direction: str, entry_price: float, bid: float, ask: float) -> int:
-        mt5 = self._mt5
-        if direction == "BUY":
-            return mt5.ORDER_TYPE_BUY_LIMIT if entry_price < ask else mt5.ORDER_TYPE_BUY_STOP
-        return mt5.ORDER_TYPE_SELL_LIMIT if entry_price > bid else mt5.ORDER_TYPE_SELL_STOP
+    def _bridge_dir(self) -> Path:
+        """MT5's shared "Common\\Files" folder (same for every terminal
+        install on this machine), where TelegramBridgeEA.mq5 - attached to
+        a chart with FILE_COMMON file access - looks for command files."""
+        info = self._mt5.terminal_info()
+        bridge_dir = Path(info.commondata_path) / "Files" / "tg_bridge"
+        bridge_dir.mkdir(parents=True, exist_ok=True)
+        return bridge_dir
+
+    def _write_command(self, name_prefix: str, lines: List[str]) -> Path:
+        path = self._bridge_dir() / f"{name_prefix}_{int(time.time() * 1000)}.txt"
+        path.write_text("\n".join(lines) + "\n", encoding="ascii")
+        return path
 
     def place_zone_orders(self, plans: List[OrderPlan], campaign: Campaign) -> List[int]:
-        """Sends one pending order per plan, tagged with campaign.magic.
-        Returns the list of ticket numbers that were successfully placed."""
-        mt5 = self._mt5
-
+        """Queues one OPEN_ORDERS command for TelegramBridgeEA to place all
+        of a zone's pending orders. Doesn't call order_send() itself - see
+        module docstring. Returns [] (no tickets available immediately);
+        campaign_has_open_trades() picks up what the EA actually placed."""
         if not self.is_trading_allowed():
             log.warning("=" * 70)
-            log.warning("MT5 Algo Trading is OFF right now - these orders will be REJECTED.")
+            log.warning("MT5 Algo Trading is OFF right now - the EA will not be able to trade.")
             log.warning("Click 'Algo Trading' in the MT5 toolbar, then wait for the next signal.")
             log.warning("=" * 70)
 
-        bid, ask = self.current_price()
-        tickets: List[int] = []
-
+        comment = f"tg-{campaign.id}"[:31]
+        lines = [
+            "TYPE=OPEN_ORDERS",
+            f"MAGIC={campaign.magic}",
+            f"SYMBOL={self.config.symbol}",
+            f"COMMENT={comment}",
+            f"DEVIATION={self.config.deviation_points}",
+        ]
         for plan in plans:
-            order_type = self._order_type_for(plan.direction, plan.entry_price, bid, ask)
-            request = {
-                "action": mt5.TRADE_ACTION_PENDING,
-                "symbol": self.config.symbol,
-                "volume": plan.lot,
-                "type": order_type,
-                "price": plan.entry_price,
-                "sl": plan.sl_price,
-                "tp": plan.tp_price,
-                "deviation": self.config.deviation_points,
-                "magic": campaign.magic,
-                "comment": f"tg-{campaign.id}"[:31],
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_RETURN,
-            }
-            result = mt5.order_send(request)
-            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                log.error("order_send failed for %.2f: %s", plan.entry_price, result)
-                continue
-            tickets.append(result.order)
-            log.info(
-                "placed %s @ %.2f sl=%.2f tp=%.2f (%.0f pips) ticket=%s",
-                plan.direction, plan.entry_price, plan.sl_price, plan.tp_price, plan.tp_pips, result.order,
-            )
+            lines.append(f"ORDER={plan.direction},{plan.entry_price},{plan.sl_price},{plan.tp_price},{plan.lot}")
 
-        return tickets
+        path = self._write_command(f"orders_{campaign.id}", lines)
+        log.info("queued %d orders for EA bridge (campaign %s) -> %s", len(plans), campaign.id, path.name)
+        return []
 
     def check_average_breakeven(self, campaign: Campaign, risk_reward_trigger: float) -> bool:
         """Own SL management (channel's "SL na BE" messages are ignored -
         see main.py): once the whole basket's floating profit reaches
-        risk_reward_trigger * initial risk (1.0 = 1:1), move every open
-        position's SL to the basket's volume-weighted average entry price -
-        not each position's own entry. Returns True if it just applied.
-        Idempotent: campaign.breakeven_applied guards against reapplying.
+        risk_reward_trigger * initial risk (1.0 = 1:1), queues a MODIFY_SL
+        command for TelegramBridgeEA to move every open position's SL to
+        the basket's volume-weighted average entry price - not each
+        position's own entry. Returns True once queued. Idempotent:
+        campaign.breakeven_applied guards against reapplying.
 
         Risk is measured from the grid's single shared SL price (all
         positions in a campaign are opened with the same SL - see
@@ -148,20 +154,14 @@ class Mt5Executor:
             return False
 
         avg_entry = round(avg_entry, 2)
-        for pos in positions:
-            request = {
-                "action": mt5.TRADE_ACTION_SLTP,
-                "symbol": self.config.symbol,
-                "position": pos.ticket,
-                "sl": avg_entry,
-                "tp": pos.tp,
-            }
-            result = mt5.order_send(request)
-            if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                log.error("average breakeven move failed for ticket %s: %s", pos.ticket, result)
-            else:
-                log.info("moved SL to basket average %.2f for ticket %s", avg_entry, pos.ticket)
-
+        lines = [
+            "TYPE=MODIFY_SL",
+            f"MAGIC={campaign.magic}",
+            f"SYMBOL={self.config.symbol}",
+            f"NEW_SL={avg_entry}",
+        ]
+        path = self._write_command(f"modify_{campaign.id}", lines)
+        log.info("queued SL update to basket average %.2f for campaign %s -> %s", avg_entry, campaign.id, path.name)
         return True
 
     def campaign_has_open_trades(self, campaign: Campaign) -> bool:
@@ -176,3 +176,23 @@ class Mt5Executor:
             return True
         positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
         return bool(positions)
+
+    def check_bridge_backlog(self, max_age_seconds: float = 30) -> None:
+        """Warns if command files are piling up unprocessed in the bridge
+        folder - the most likely cause is TelegramBridgeEA not being
+        attached/running on a chart."""
+        bridge_dir = self._bridge_dir()
+        now = time.time()
+        stale = [p for p in bridge_dir.glob("*.txt") if now - p.stat().st_mtime > max_age_seconds]
+        if not stale:
+            return
+
+        log.warning("=" * 70)
+        log.warning(
+            "%d command file(s) in the EA bridge folder are still unprocessed after %.0fs.",
+            len(stale), max_age_seconds,
+        )
+        log.warning("Is TelegramBridgeEA attached and running on a chart? Folder: %s", bridge_dir)
+        for p in stale:
+            log.warning("  stuck: %s", p.name)
+        log.warning("=" * 70)

@@ -133,6 +133,7 @@ class Bot:
 
         while True:
             self._check_trading_allowed()
+            self.executor.check_bridge_backlog()
             for campaign in self.store.most_recent_active(self.config.symbol):
                 try:
                     applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)

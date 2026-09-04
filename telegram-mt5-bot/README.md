@@ -9,6 +9,20 @@ całej siatki** - odległość z sygnału (np. 60 pips) liczona od najgorszego
 (najniższego dla BUY, najwyższego dla SELL) entry w strefie, nie osobno od
 ceny wejścia każdego zlecenia.
 
+## Jak bot faktycznie wystawia zlecenia
+
+Python (ten kod) robi wszystko oprócz samego kliknięcia "kup/sprzedaj":
+czyta kanał, parsuje sygnał, liczy siatkę cen/SL/TP, pilnuje 1:1 do
+przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
+**Expert Advisora działającego wewnątrz MT5** (`mt5_expert/TelegramBridgeEA.mq5`)
+- Python zapisuje polecenie do pliku, EA je odczytuje i wykonuje. Powód:
+  na części kont/buildów MT5 wywołania `order_send()` z zewnętrznego API
+  Pythona są odrzucane (`retcode=10027 "AutoTrading disabled by client"`)
+  mimo że przycisk Algo Trading jest włączony i ręczne zlecenia działają -
+  EA handlujący "od środka" terminala nie ma tego problemu. Zobacz
+  **`mt5_expert/README.md`** - instalacja jest wymagana, bez tego bot
+  policzy zlecenia, ale nic się nie wystawi w MT5.
+
 ## Ograniczenia, o których musisz wiedzieć
 
 - **Pakiet `MetaTrader5` działa tylko na Windows**, obok uruchomionego i
@@ -81,6 +95,8 @@ Uzupełnij `.env`:
    jest już otwarty i zalogowany na koncie, na którym ma handlować bot.
 4. Sprawdź `SYMBOL` (np. `XAUUSD`, czasem `XAUUSD.a` / `GOLD` zależnie od
    brokera) i `PIP_SIZE`.
+5. Zainstaluj `TelegramBridgeEA` w MT5 - patrz **`mt5_expert/README.md`**.
+   Bez tego kroku bot nie wystawi żadnego zlecenia.
 
 ## Uruchomienie
 
@@ -116,13 +132,16 @@ config.py            - wczytywanie .env
 signal_parser.py      - tekst wiadomości -> ZONE / BREAKEVEN / CLOSE_ALL / ...
 order_planner.py       - strefa -> lista zleceń (cena wejścia, SL, TP, lot)
 campaign_store.py      - który magic/ticket należy do której strefy
-mt5_executor.py        - właściwe wywołania MetaTrader5 (tylko Windows)
+mt5_executor.py        - czyta ceny/pozycje przez API, zlecenia/SL zleca
+                          EA pisząc polecenia do wspólnego folderu (tylko Windows)
 telegram_listener.py   - nasłuch kanału (Telethon)
 main.py                - spina wszystko, tryb live i --replay
 list_chats.py           - jednorazowa pomoc: wypisuje Twoje czaty z ID
                           (do znalezienia ID prywatnego kanału bez usernamu)
 login_qr.py             - alternatywne logowanie przez zeskanowanie kodu QR,
                           gdy przepisywanie kodu SMS/z Telegrama nie działa
+mt5_expert/              - TelegramBridgeEA.mq5 + instrukcja instalacji -
+                          EA w MT5, który faktycznie wystawia zlecenia
 ```
 
 ## Logowanie do Telegrama nie działa (kod nieprawidłowy / nie przychodzi)
