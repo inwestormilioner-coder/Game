@@ -53,6 +53,16 @@ class Mt5Executor:
             raise RuntimeError(f"no tick data for {self.config.symbol}")
         return tick.bid, tick.ask
 
+    def is_trading_allowed(self) -> bool:
+        """False when MT5's "Algo Trading" toggle is off - every order_send
+        will be rejected with retcode 10027 while this is the case. This can
+        flip without the bot's Telegram-side log making it obvious why
+        orders failed (e.g. the terminal resets it after a reconnect), so
+        callers should check it explicitly rather than only reacting to a
+        failed order_send after the fact."""
+        info = self._mt5.terminal_info()
+        return bool(info and info.trade_allowed)
+
     def _order_type_for(self, direction: str, entry_price: float, bid: float, ask: float) -> int:
         mt5 = self._mt5
         if direction == "BUY":
@@ -63,6 +73,13 @@ class Mt5Executor:
         """Sends one pending order per plan, tagged with campaign.magic.
         Returns the list of ticket numbers that were successfully placed."""
         mt5 = self._mt5
+
+        if not self.is_trading_allowed():
+            log.warning("=" * 70)
+            log.warning("MT5 Algo Trading is OFF right now - these orders will be REJECTED.")
+            log.warning("Click 'Algo Trading' in the MT5 toolbar, then wait for the next signal.")
+            log.warning("=" * 70)
+
         bid, ask = self.current_price()
         tickets: List[int] = []
 

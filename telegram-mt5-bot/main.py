@@ -27,6 +27,7 @@ class Bot:
         self.config = config
         self.store = store or CampaignStore()
         self.executor = None
+        self._last_trading_allowed: bool | None = None
         if not config.dry_run:
             from mt5_executor import Mt5Executor
 
@@ -103,6 +104,22 @@ class Bot:
             msg.profit_pips or 0,
         )
 
+    def _check_trading_allowed(self) -> None:
+        """Logs once on each transition of MT5's "Algo Trading" toggle, so
+        it going off (e.g. after the terminal reconnects overnight) is
+        noticed right away instead of only surfacing as a run of failed
+        order_send calls the next time a signal comes in."""
+        allowed = self.executor.is_trading_allowed()
+        if allowed != self._last_trading_allowed:
+            if allowed:
+                log.info("MT5 Algo Trading is ON - orders will be sent normally.")
+            else:
+                log.warning("=" * 70)
+                log.warning("MT5 Algo Trading just turned OFF - no orders can be sent until")
+                log.warning("you click 'Algo Trading' again in the MT5 toolbar.")
+                log.warning("=" * 70)
+            self._last_trading_allowed = allowed
+
     async def monitor_campaigns(self) -> None:
         """Own trade management, independent of the Telegram channel: polls
         open campaigns, moves SL to the basket average once profit reaches
@@ -115,6 +132,7 @@ class Bot:
             return
 
         while True:
+            self._check_trading_allowed()
             for campaign in self.store.most_recent_active(self.config.symbol):
                 try:
                     applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)

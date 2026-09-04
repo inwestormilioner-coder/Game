@@ -35,6 +35,7 @@ class FakeMt5:
     ask: float
     orders: list = field(default_factory=list)
     sent_requests: list = field(default_factory=list)
+    trade_allowed: bool = True
 
     TRADE_ACTION_SLTP = "SLTP"
     TRADE_RETCODE_DONE = 10009
@@ -47,6 +48,9 @@ class FakeMt5:
 
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(bid=self.bid, ask=self.ask)
+
+    def terminal_info(self):
+        return SimpleNamespace(trade_allowed=self.trade_allowed)
 
     def order_send(self, request):
         self.sent_requests.append(request)
@@ -156,6 +160,14 @@ def test_campaign_has_open_trades_false_once_everything_closed():
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
     assert executor.campaign_has_open_trades(campaign) is False
+
+
+def test_is_trading_allowed_reflects_terminal_state():
+    allowed = FakeMt5(positions=[], bid=4420.0, ask=4420.2, trade_allowed=True)
+    disabled = FakeMt5(positions=[], bid=4420.0, ask=4420.2, trade_allowed=False)
+
+    assert _executor_with(allowed).is_trading_allowed() is True
+    assert _executor_with(disabled).is_trading_allowed() is False
 
 
 def test_campaign_has_open_trades_ignores_other_campaigns_magic():
