@@ -86,8 +86,14 @@ class Mt5Executor:
         return bridge_dir
 
     def _write_command(self, name_prefix: str, lines: List[str]) -> Path:
+        """Writes via a temp file + atomic rename, so the EA (polling for
+        *.txt files) never sees a command file mid-write - a real, observed
+        failure mode: the EA read a partially-flushed file and only acted
+        on the first few ORDER= lines of an 11-line zone."""
         path = self._bridge_dir() / f"{name_prefix}_{int(time.time() * 1000)}.txt"
-        path.write_text("\n".join(lines) + "\n", encoding="ascii")
+        tmp_path = path.with_suffix(".tmp")
+        tmp_path.write_text("\n".join(lines) + "\n", encoding="ascii")
+        tmp_path.replace(path)
         return path
 
     def place_zone_orders(self, plans: List[OrderPlan], campaign: Campaign) -> List[int]:
@@ -109,6 +115,7 @@ class Mt5Executor:
             f"SYMBOL={self.config.symbol}",
             f"COMMENT={comment}",
             f"DEVIATION={self.config.deviation_points}",
+            f"COUNT={len(plans)}",
         ]
         for plan in plans:
             lines.append(f"ORDER={plan.direction},{plan.entry_price},{plan.sl_price},{plan.tp_price},{plan.lot}")

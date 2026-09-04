@@ -131,6 +131,7 @@ void ProcessCommandFile(string relativePath)
    string symbol = "";
    string comment = "";
    int    deviation = 20;
+   int    expectedCount = -1;
    double newSl = 0;
    string orderLines[];
    int    orderCount = 0;
@@ -154,6 +155,8 @@ void ProcessCommandFile(string relativePath)
          comment = value;
       else if(key == "DEVIATION")
          deviation = (int)StringToInteger(value);
+      else if(key == "COUNT")
+         expectedCount = (int)StringToInteger(value);
       else if(key == "NEW_SL")
          newSl = StringToDouble(value);
       else if(key == "ORDER")
@@ -165,7 +168,17 @@ void ProcessCommandFile(string relativePath)
      }
 
    if(type == "OPEN_ORDERS")
+     {
+      if(expectedCount >= 0 && orderCount != expectedCount)
+        {
+         PrintFormat(
+            "Bridge: %s declared COUNT=%d but only %d ORDER line(s) were read - "
+            "file may have been read while still being written. Placing what was found; "
+            "check the Python bot's log and the zone signal for the rest.",
+            relativePath, expectedCount, orderCount);
+        }
       HandleOpenOrders(magic, symbol, comment, deviation, orderLines, orderCount);
+     }
    else if(type == "MODIFY_SL")
       HandleModifySl(magic, symbol, newSl);
    else

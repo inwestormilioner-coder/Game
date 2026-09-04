@@ -181,6 +181,7 @@ def test_place_zone_orders_writes_one_command_file(tmp_path):
     assert "MAGIC=990000" in content
     assert "SYMBOL=XAUUSD" in content
     assert "COMMENT=tg-c1" in content
+    assert f"COUNT={len(plans)}" in content
     assert content.count("ORDER=") == len(plans)
     assert "ORDER=BUY,4420.0,4414.0,4426.0,0.01" in content
 
