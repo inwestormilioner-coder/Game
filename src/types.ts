@@ -104,9 +104,43 @@ export const SKILL_RATE_MULTIPLIER: Record<SkillRate, number> = {
   verySlow: 3.0,
 };
 
-/** Successful actions needed to advance a skill from level S to S+1. */
+/** Successful actions needed to advance a skill from level S to S+1. Floored at 1 so the
+ * S=0 case (Arcane Level's starting point) can't produce a free/zero-cost level-up. */
 export function actionsToAdvanceSkill(skillLevel: number, rate: SkillRate): number {
-  return Math.ceil(6 * SKILL_RATE_MULTIPLIER[rate] * Math.pow(skillLevel, 1.7));
+  return Math.max(1, Math.ceil(6 * SKILL_RATE_MULTIPLIER[rate] * Math.pow(skillLevel, 1.7)));
+}
+
+// Every class's signature weapon skill (GDD Section 1/5) — the one this MVP
+// trains via the basic attack, always at the VERY FAST rate for its own class.
+// Off-class skills (a Knight's Distance, Wardcraft for everyone, etc.) are a
+// later pass once there's more than one attack action to train them with.
+export type SkillId = 'bladeFighting' | 'marksmanship' | 'talonFighting' | 'arcaneLevel' | 'wardcraft';
+
+export const SKILL_NAMES: Record<SkillId, string> = {
+  bladeFighting: 'Blade Fighting',
+  marksmanship: 'Marksmanship',
+  talonFighting: 'Talon Fighting',
+  arcaneLevel: 'Arcane Level',
+  wardcraft: 'Wardcraft',
+};
+
+export const PRIMARY_SKILL: Record<ClassId, SkillId> = {
+  knight: 'bladeFighting',
+  archer: 'marksmanship',
+  mage: 'arcaneLevel',
+  druid: 'arcaneLevel',
+  assassin: 'talonFighting',
+};
+
+/** Weapon skills start at 10, Arcane Level starts at 0 (GDD Section 5). */
+export function initialSkillLevel(skillId: SkillId): number {
+  return skillId === 'arcaneLevel' ? 0 : 10;
+}
+
+export interface SkillProgress {
+  level: number;
+  /** Successful actions banked toward the next level. */
+  progress: number;
 }
 
 // GDD Section 26: ten real slots, no shared "accessory" catch-all.
@@ -147,6 +181,7 @@ export interface Stats {
   satietySeconds: number;
   poisonTicksRemaining: number;
   poisonDamagePerTick: number;
+  skills: Partial<Record<SkillId, SkillProgress>>;
 }
 
 export function createInitialStats(classId: ClassId = 'knight'): Stats {
@@ -170,6 +205,9 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     satietySeconds: 0,
     poisonTicksRemaining: 0,
     poisonDamagePerTick: 0,
+    skills: {
+      [PRIMARY_SKILL[classId]]: { level: initialSkillLevel(PRIMARY_SKILL[classId]), progress: 0 },
+    },
   };
 }
 

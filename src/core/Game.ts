@@ -8,7 +8,7 @@ import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
-import { applyLevelStats, type ClassId } from '../types';
+import { applyLevelStats, SKILL_NAMES, type ClassId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
 // should create different hunting strategies, not one best monster.
@@ -82,10 +82,7 @@ export class Game {
     this.hud = new HUD(root);
     this.lootPanel = new LootPanel(root);
     this.inventoryPanel = new InventoryPanel(root);
-    this.hud.update(this.player.stats, {
-      carriedWeight: this.player.carriedWeight,
-      maxResource: this.player.effectiveMaxResource,
-    });
+    this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
 
@@ -118,6 +115,15 @@ export class Game {
     this.renderer.setAnimationLoop(this.tick);
   }
 
+  private hudDerived() {
+    return {
+      carriedWeight: this.player.carriedWeight,
+      maxResource: this.player.effectiveMaxResource,
+      skillName: SKILL_NAMES[this.player.primarySkillId],
+      skillLevel: this.player.primarySkillLevel,
+    };
+  }
+
   /** Dev-only hooks (see main.ts) for driving the game from automated smoke tests. */
   debugTeleportPlayerTo(x: number, z: number): void {
     this.player.position.set(x, 0, z);
@@ -132,8 +138,18 @@ export class Game {
     applyLevelStats(this.player.stats);
   }
 
+  debugTrainSkill(times: number): { leveledUp: boolean; newLevel: number } {
+    let result = { leveledUp: false, newLevel: this.player.primarySkillLevel };
+    for (let i = 0; i < times; i++) result = this.player.trainPrimarySkill();
+    return result;
+  }
+
   get debugPlayerStats() {
     return this.player.stats;
+  }
+
+  get debugEffectiveAttack(): number {
+    return this.player.effectiveAttack;
   }
 
   get debugTargetMonster() {
@@ -154,10 +170,7 @@ export class Game {
     }
 
     this.updateCamera(dt);
-    this.hud.update(this.player.stats, {
-      carriedWeight: this.player.carriedWeight,
-      maxResource: this.player.effectiveMaxResource,
-    });
+    this.hud.update(this.player.stats, this.hudDerived());
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -250,6 +263,11 @@ export class Game {
     if (!this.targetMonster || !this.player.isInRange(this.targetMonster.mesh.position)) return;
 
     this.targetMonster.takeDamage(this.player.effectiveAttack);
+    const skillResult = this.player.trainPrimarySkill();
+    if (skillResult.leveledUp) {
+      this.hud.showToast(`${SKILL_NAMES[this.player.primarySkillId]} → ${skillResult.newLevel}!`);
+    }
+
     if (!this.targetMonster.alive) {
       // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
       // a corpse anyone can race to open, not straight to the killer.

@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import {
+  actionsToAdvanceSkill,
   applyLevelStats,
   CAPE_UNLOCK_LEVEL,
   CLASSES,
   createInitialStats,
   HP_REGEN_RATE,
+  initialSkillLevel,
+  PRIMARY_SKILL,
   REGEN_TICK_SECONDS,
   SATIETY_CAP_SECONDS,
   speedRatingForLevel,
   type ClassId,
   type EquipSlot,
+  type SkillId,
   type Stats,
 } from '../types';
 import { ITEMS } from '../data/items';
@@ -94,11 +98,43 @@ export class Player {
     return this.position.distanceTo(target) <= ATTACK_RANGE;
   }
 
-  /** Base attack (from level/class) plus the equipped weapon's bonus, if any. */
+  get primarySkillId(): SkillId {
+    return PRIMARY_SKILL[this.stats.classId];
+  }
+
+  get primarySkillLevel(): number {
+    return this.stats.skills[this.primarySkillId]?.level ?? initialSkillLevel(this.primarySkillId);
+  }
+
+  /**
+   * GDD Section 3: `(WeaponBaseDamage + LevelBonus) × (1 + WeaponSkillLevel/100) × EquipmentModifiers`.
+   * `stats.attack` already carries BaseDamage+LevelBonus (see applyLevelStats); the flat weapon-gear
+   * bonus stands in for EquipmentModifiers until items get real multiplier affixes.
+   */
   get effectiveAttack(): number {
     const weaponId = this.stats.equipment.weapon;
-    const bonus = weaponId ? (ITEMS[weaponId].equip?.attackBonus ?? 0) : 0;
-    return this.stats.attack + bonus;
+    const gearBonus = weaponId ? (ITEMS[weaponId].equip?.attackBonus ?? 0) : 0;
+    const skillMultiplier = 1 + this.primarySkillLevel / 100;
+    return Math.round((this.stats.attack + gearBonus) * skillMultiplier);
+  }
+
+  /** Call on every successful hit/cast — trains the class's signature skill (GDD Section 5). */
+  trainPrimarySkill(): { leveledUp: boolean; newLevel: number } {
+    const skillId = this.primarySkillId;
+    const current = this.stats.skills[skillId] ?? { level: initialSkillLevel(skillId), progress: 0 };
+    current.progress += 1;
+
+    let leveledUp = false;
+    let needed = actionsToAdvanceSkill(current.level, 'veryFast');
+    while (current.progress >= needed) {
+      current.progress -= needed;
+      current.level += 1;
+      leveledUp = true;
+      needed = actionsToAdvanceSkill(current.level, 'veryFast');
+    }
+
+    this.stats.skills[skillId] = current;
+    return { leveledUp, newLevel: current.level };
   }
 
   /** Base armor (from level/class) plus every equipped piece's armor bonus (all ten slots can carry one). */

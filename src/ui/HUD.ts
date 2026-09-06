@@ -13,6 +13,7 @@ export class HUD {
   private xpFill: HTMLElement;
   private levelLabel: HTMLElement;
   private classLabel: HTMLElement;
+  private skillLabel: HTMLElement;
   private goldLabel: HTMLElement;
   private capacityLabel: HTMLElement;
   private satietyIndicator: HTMLElement;
@@ -30,6 +31,7 @@ export class HUD {
     this.xpFill = root.querySelector('#xp-fill')!;
     this.levelLabel = root.querySelector('#level-label')!;
     this.classLabel = root.querySelector('#class-label')!;
+    this.skillLabel = root.querySelector('#skill-label')!;
     this.goldLabel = root.querySelector('#gold-label')!;
     this.capacityLabel = root.querySelector('#capacity-label')!;
     this.satietyIndicator = root.querySelector('#satiety-indicator')!;
@@ -40,13 +42,17 @@ export class HUD {
     this.flash = root.querySelector('#level-up-flash')!;
   }
 
-  update(stats: Stats, derived: { carriedWeight: number; maxResource: number }): void {
+  update(
+    stats: Stats,
+    derived: { carriedWeight: number; maxResource: number; skillName: string; skillLevel: number },
+  ): void {
     this.hpFill.style.width = `${(stats.hp / stats.maxHp) * 100}%`;
     this.resourceFill.style.width = `${(stats.resource / derived.maxResource) * 100}%`;
     this.resourceLabel.textContent = stats.resourceName;
     this.xpFill.style.width = `${(stats.exp / stats.expToNext) * 100}%`;
     this.levelLabel.textContent = `Lvl ${stats.level}`;
     this.classLabel.textContent = CLASSES[stats.classId].name;
+    this.skillLabel.textContent = `${derived.skillName} ${derived.skillLevel}`;
     this.goldLabel.textContent = String(stats.gold);
     this.capacityLabel.textContent = `${derived.carriedWeight.toFixed(1)} / ${stats.maxCapacity}`;
     this.capacityLabel.parentElement!.classList.toggle('over-limit', derived.carriedWeight >= stats.maxCapacity);
