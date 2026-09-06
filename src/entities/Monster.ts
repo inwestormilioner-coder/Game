@@ -19,6 +19,9 @@ export class Monster {
   private wanderTarget = new THREE.Vector3();
   private wanderTimer = 0;
   private attackTimer = 0;
+  private stunRemaining = 0;
+  private slowPercent = 0;
+  private slowRemaining = 0;
   private readonly homePosition: THREE.Vector3;
 
   constructor(def: MonsterDef, spawnPosition: THREE.Vector3) {
@@ -62,17 +65,28 @@ export class Monster {
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
 
+    if (this.slowRemaining > 0) {
+      this.slowRemaining -= dt;
+      if (this.slowRemaining <= 0) this.slowPercent = 0;
+    }
+
+    if (this.stunRemaining > 0) {
+      this.stunRemaining -= dt;
+      return 0; // frozen — no movement, no attacks, while stunned
+    }
+
+    const moveSpeed = this.def.moveSpeed * (1 - this.slowPercent);
     const distToPlayer = this.mesh.position.distanceTo(playerPosition);
     const inAggro = distToPlayer <= this.def.aggroRange;
 
     if (this.def.behavior === 'passive') {
       if (inAggro) {
-        this.fleeFrom(playerPosition, dt);
+        this.fleeFrom(playerPosition, dt, moveSpeed);
         return 0;
       }
     } else if (inAggro) {
       if (distToPlayer > this.def.attackRange) {
-        this.stepToward(playerPosition, this.def.moveSpeed, dt);
+        this.stepToward(playerPosition, moveSpeed, dt);
       } else if (this.attackTimer <= 0) {
         this.attackTimer = this.def.attackCooldown;
         return this.def.damageMin + Math.floor(Math.random() * (this.def.damageMax - this.def.damageMin + 1));
@@ -82,8 +96,18 @@ export class Monster {
 
     this.wanderTimer -= dt;
     if (this.wanderTimer <= 0) this.pickNewWanderTarget();
-    this.stepToward(this.wanderTarget, this.def.moveSpeed, dt);
+    this.stepToward(this.wanderTarget, moveSpeed, dt);
     return 0;
+  }
+
+  /** Stacks/refreshes to the stronger of the current and incoming effect (GDD Section 8 abilities). */
+  applyStun(duration: number): void {
+    this.stunRemaining = Math.max(this.stunRemaining, duration);
+  }
+
+  applySlow(percent: number, duration: number): void {
+    this.slowPercent = Math.max(this.slowPercent, percent);
+    this.slowRemaining = Math.max(this.slowRemaining, duration);
   }
 
   private stepToward(target: THREE.Vector3, speed: number, dt: number): void {
@@ -95,12 +119,12 @@ export class Monster {
     this.mesh.position.y = this.def.radius;
   }
 
-  private fleeFrom(threat: THREE.Vector3, dt: number): void {
+  private fleeFrom(threat: THREE.Vector3, dt: number, speed: number): void {
     const away = new THREE.Vector3().subVectors(this.mesh.position, threat);
     away.y = 0;
     if (away.lengthSq() <= 0.0001) return;
     away.normalize();
-    this.mesh.position.addScaledVector(away, this.def.moveSpeed * 1.3 * dt);
+    this.mesh.position.addScaledVector(away, speed * 1.3 * dt);
     this.mesh.position.y = this.def.radius;
   }
 
@@ -119,6 +143,9 @@ export class Monster {
   private die(): void {
     this.alive = false;
     this.respawnTimer = this.def.respawnDelay;
+    this.stunRemaining = 0;
+    this.slowPercent = 0;
+    this.slowRemaining = 0;
     this.mesh.visible = false;
   }
 

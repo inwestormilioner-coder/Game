@@ -395,6 +395,18 @@ Each class ships with **10 abilities total across two switchable 5-ability bars*
 
 Ability costs draw from the class resource (Section 6); cooldowns range 4–90s depending on power. No ability is a flat "biggest number, spam on cooldown" — high-value abilities key off *combo state* (e.g., Assassin's finisher requires Momentum ≥ threshold; Knight's taunt-mitigation cooldown is short but Fervor-gated; Druid's group heal has a long cooldown specifically to force triage decisions rather than constant topping-off).
 
+**Current build status: Loadout A is real and playable for all five classes; Loadout B is a working, switchable placeholder with no abilities in it yet** — the toggle itself (button, instant switch, per-slot UI) is fully wired, it just has nothing to show until a second five are designed. Every ability composes from a small, shared set of effect fields (damage, an optional AoE radius around the target, a stun or slow duration, a self-heal, a self-buff to attack or armor, or a short dash) rather than needing bespoke code per ability — this is what keeps 25 abilities maintainable as a single data table instead of 25 special cases. Loadout A:
+
+| Class | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Knight | Shield Bash (dmg+stun) | Cleave (AoE dmg) | Fortify (armor buff) | Second Wind (self-heal) | Warcry (attack buff) |
+| Archer | Aimed Shot (big single dmg) | Multishot (AoE dmg) | Crippling Shot (dmg+slow) | Evasive Roll (dash away) | Focus Aim (attack buff) |
+| Mage | Firebolt (single dmg) | Fireball (AoE dmg) | Frost Nova (AoE dmg+stun) | Arcane Shield (armor buff) | Blink (dash to target) |
+| Druid | Wrath (single dmg) | Bramble Growth (AoE dmg+slow) | Thorn Snare (dmg+stun) | Regrowth (self-heal) | Verdant Ward (armor buff) |
+| Assassin | Backstab (biggest single dmg) | Shadow Step (dash to target) | Fan of Knives (AoE dmg) | Crippling Strike (dmg+slow) | Adrenaline (attack buff) |
+
+A damage-dealing cast trains the class's primary skill exactly like a basic-attack hit does (Section 5) — an ability is still a "successful action," not a separate progression track.
+
 ---
 
 ## 9. Rune System

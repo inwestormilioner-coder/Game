@@ -7,11 +7,15 @@ export class InputController {
   moveX = 0;
   moveY = 0;
   attackRequested = false;
+  loadoutSwitchRequested = false;
 
   private zone: HTMLElement;
   private base: HTMLElement;
   private stick: HTMLElement;
   private attackBtn: HTMLElement;
+  private abilityButtons: HTMLElement[];
+  private loadoutBtn: HTMLElement;
+  private abilityRequested = [false, false, false, false, false];
 
   private dragging = false;
   private pointerId: number | null = null;
@@ -24,6 +28,8 @@ export class InputController {
     this.base = root.querySelector('#joystick-base')!;
     this.stick = root.querySelector('#joystick-stick')!;
     this.attackBtn = root.querySelector('#attack-btn')!;
+    this.abilityButtons = Array.from(root.querySelectorAll('.ability-btn'));
+    this.loadoutBtn = root.querySelector('#loadout-switch')!;
 
     this.zone.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
@@ -33,6 +39,18 @@ export class InputController {
     this.attackBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.attackRequested = true;
+    });
+
+    this.abilityButtons.forEach((btn, slot) => {
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.abilityRequested[slot] = true;
+      });
+    });
+
+    this.loadoutBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.loadoutSwitchRequested = true;
     });
 
     // keyboard fallback for quick iteration on desktop
@@ -108,5 +126,30 @@ export class InputController {
   /** The button is context-sensitive: "ATAK" against a monster, "SZUKAJ" over a corpse. */
   setActionLabel(text: string): void {
     this.attackBtn.textContent = text;
+  }
+
+  consumeAbility(slot: number): boolean {
+    const v = this.abilityRequested[slot];
+    this.abilityRequested[slot] = false;
+    return v;
+  }
+
+  consumeLoadoutSwitch(): boolean {
+    const v = this.loadoutSwitchRequested;
+    this.loadoutSwitchRequested = false;
+    return v;
+  }
+
+  /** Icon/cooldown text and disabled look for one ability slot; called every frame from Game.ts. */
+  setAbilityDisplay(slot: number, icon: string, cooldownText: string, disabled: boolean): void {
+    const btn = this.abilityButtons[slot];
+    if (!btn) return;
+    btn.querySelector('.ability-icon')!.textContent = icon;
+    btn.querySelector('.ability-cd')!.textContent = cooldownText;
+    btn.classList.toggle('on-cooldown', disabled);
+  }
+
+  setLoadoutLabel(text: string): void {
+    this.loadoutBtn.textContent = text;
   }
 }

@@ -470,6 +470,74 @@ canvas {
   transform: scale(0.92);
 }
 
+/* ---------- ability bar ---------- */
+
+.ability-btn {
+  all: unset;
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 28%, #2c2415, #14100a);
+  border: 2px solid rgba(255, 210, 77, 0.7);
+  color: #fff;
+  pointer-events: auto;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+.ability-btn:active {
+  transform: scale(0.92);
+}
+
+.ability-btn.on-cooldown {
+  filter: grayscale(0.8);
+  opacity: 0.6;
+}
+
+.ability-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.ability-cd {
+  font-size: 10px;
+  font-weight: 700;
+  min-height: 12px;
+}
+
+.ability-1 { right: 30px; bottom: 132px; }
+.ability-2 { right: 76px; bottom: 118px; }
+.ability-3 { right: 116px; bottom: 88px; }
+.ability-4 { right: 142px; bottom: 46px; }
+.ability-5 { right: 148px; bottom: 0px; }
+
+#loadout-switch {
+  all: unset;
+  position: absolute;
+  right: 30px;
+  bottom: 190px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px dashed rgba(255, 255, 255, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  pointer-events: auto;
+}
+
+#loadout-switch:active {
+  transform: scale(0.92);
+}
+
 #level-up-flash {
   position: absolute;
   inset: 0;

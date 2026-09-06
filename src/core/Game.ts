@@ -8,6 +8,7 @@ import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
+import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
 import { applyLevelStats, SKILL_NAMES, type ClassId, type SkillId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
@@ -49,6 +50,8 @@ export class Game {
   /** The corpse the loot panel is currently showing, if any (distinct from targetCorpse,
    * which recomputes every frame by proximity and would otherwise yank the panel around). */
   private openedCorpse: Corpse | null = null;
+  /** Loadout B is a switchable but currently empty placeholder (GDD Section 10). */
+  private currentLoadout: 'A' | 'B' = 'A';
 
   constructor(root: HTMLElement, canvasHost: HTMLElement, classId: ClassId) {
     this.player = new Player(classId);
@@ -152,6 +155,18 @@ export class Game {
     return this.player.takeDamage(amount);
   }
 
+  debugCastAbility(abilityId: string): void {
+    this.castAbility(abilityId);
+  }
+
+  debugSetResource(amount: number): void {
+    this.player.stats.resource = amount;
+  }
+
+  get debugMonsters() {
+    return this.monsters;
+  }
+
   get debugPlayerStats() {
     return this.player.stats;
   }
@@ -170,11 +185,14 @@ export class Game {
     if (!this.player.isDead) {
       this.player.update(dt, this.input.moveX, this.input.moveY);
       this.player.updateSurvival(dt);
+      this.player.updateAbilities(dt);
       clampToWorld(this.player.position);
       this.updateCorpses(dt);
       this.updateTargets();
       this.handleMonsterUpdates(dt);
       this.handleActionInput();
+      this.handleAbilityInput();
+      this.updateAbilityUI();
     }
 
     this.updateCamera(dt);
@@ -273,32 +291,112 @@ export class Game {
     if (!this.player.tryAttack()) return;
     if (!this.targetMonster || !this.player.isInRange(this.targetMonster.mesh.position)) return;
 
-    this.targetMonster.takeDamage(this.player.effectiveAttack);
-    const skillResult = this.player.trainPrimarySkill();
-    if (skillResult.leveledUp) {
-      this.hud.showToast(`${SKILL_NAMES[this.player.primarySkillId]} → ${skillResult.newLevel}!`);
+    const wasAlive = this.targetMonster.alive;
+    this.applyDamageToMonster(this.targetMonster, this.player.effectiveAttack);
+    if (wasAlive) {
+      const skillResult = this.player.trainPrimarySkill();
+      if (skillResult.leveledUp) {
+        this.hud.showToast(`${SKILL_NAMES[this.player.primarySkillId]} → ${skillResult.newLevel}!`);
+      }
+    }
+  }
+
+  /** Handles the 5 ability buttons + the A/B loadout switch (GDD Section 8/10). */
+  private handleAbilityInput(): void {
+    if (this.input.consumeLoadoutSwitch()) {
+      this.currentLoadout = this.currentLoadout === 'A' ? 'B' : 'A';
+      this.hud.showToast(`Zestaw ${this.currentLoadout}`);
     }
 
-    if (!this.targetMonster.alive) {
-      // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
-      // a corpse anyone can race to open, not straight to the killer.
-      const { exp, gold, items } = this.targetMonster.rollResult();
-      const corpse = new Corpse(
-        this.targetMonster.def.name,
-        this.targetMonster.mesh.position,
-        this.targetMonster.def.color,
-        { gold, items },
-      );
-      this.corpses.push(corpse);
-      this.scene.add(corpse.mesh);
+    if (this.currentLoadout !== 'A') return; // Loadout B has no abilities yet
 
-      const leveledUp = this.player.gainExp(exp);
-      this.hud.showToast(`+${exp} EXP — zwłoki ${this.targetMonster.def.name} czekają na złupienie`);
-      if (leveledUp) {
-        this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
-        this.hud.flashLevelUp();
+    const loadout = CLASS_LOADOUT_A[this.player.stats.classId];
+    for (let slot = 0; slot < loadout.length; slot++) {
+      if (this.input.consumeAbility(slot)) this.castAbility(loadout[slot]);
+    }
+  }
+
+  private castAbility(abilityId: string): void {
+    const def = ABILITIES[abilityId];
+    const { effect } = def;
+    const needsTarget = effect.damageMultiplier !== undefined || effect.stunDuration !== undefined || effect.slowPercent !== undefined;
+
+    if (needsTarget) {
+      const inRange = this.targetMonster && this.player.position.distanceTo(this.targetMonster.mesh.position) <= def.range;
+      if (!inRange) {
+        this.hud.showToast('Brak celu w zasięgu');
+        return;
       }
-      this.targetMonster = null;
+    }
+
+    const result = this.player.tryUseAbility(abilityId);
+    if (!result.ok) {
+      this.hud.showToast(result.reason === 'cooldown' ? 'Jeszcze się ładuje' : 'Za mało zasobu');
+      return;
+    }
+
+    if (needsTarget) {
+      const target = this.targetMonster!;
+      if (effect.damageMultiplier) {
+        if (effect.aoeRadius) {
+          const center = target.mesh.position;
+          for (const m of this.monsters) {
+            if (m.alive && m.mesh.position.distanceTo(center) <= effect.aoeRadius) {
+              this.applyDamageToMonster(m, result.power);
+            }
+          }
+        } else {
+          this.applyDamageToMonster(target, result.power);
+        }
+      }
+      if (target.alive) {
+        if (effect.stunDuration) target.applyStun(effect.stunDuration);
+        if (effect.slowPercent && effect.slowDuration) target.applySlow(effect.slowPercent, effect.slowDuration);
+      }
+
+      const skillResult = this.player.trainPrimarySkill();
+      if (skillResult.leveledUp) {
+        this.hud.showToast(`${SKILL_NAMES[this.player.primarySkillId]} → ${skillResult.newLevel}!`);
+      }
+    }
+
+    this.hud.showToast(`${def.icon} ${def.name}`);
+  }
+
+  /** Shared by the basic attack and every damage-dealing ability — handles death, corpse, EXP. */
+  private applyDamageToMonster(monster: Monster, amount: number): void {
+    monster.takeDamage(amount);
+    if (monster.alive) return;
+
+    // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
+    // a corpse anyone can race to open, not straight to the killer.
+    const { exp, gold, items } = monster.rollResult();
+    const corpse = new Corpse(monster.def.name, monster.mesh.position, monster.def.color, { gold, items });
+    this.corpses.push(corpse);
+    this.scene.add(corpse.mesh);
+
+    const leveledUp = this.player.gainExp(exp);
+    this.hud.showToast(`+${exp} EXP — zwłoki ${monster.def.name} czekają na złupienie`);
+    if (leveledUp) {
+      this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
+      this.hud.flashLevelUp();
+    }
+    if (monster === this.targetMonster) this.targetMonster = null;
+  }
+
+  private updateAbilityUI(): void {
+    const loadout = this.currentLoadout === 'A' ? CLASS_LOADOUT_A[this.player.stats.classId] : [];
+    this.input.setLoadoutLabel(this.currentLoadout);
+    for (let slot = 0; slot < 5; slot++) {
+      const abilityId = loadout[slot];
+      if (!abilityId) {
+        this.input.setAbilityDisplay(slot, '', '', true);
+        continue;
+      }
+      const def = ABILITIES[abilityId];
+      const cd = this.player.getCooldownRemaining(abilityId);
+      const affordable = this.player.stats.resource >= def.resourceCost;
+      this.input.setAbilityDisplay(slot, def.icon, cd > 0 ? Math.ceil(cd).toString() : '', cd > 0 || !affordable);
     }
   }
 

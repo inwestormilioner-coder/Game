@@ -20,11 +20,21 @@ import {
   type Stats,
 } from '../types';
 import { ITEMS } from '../data/items';
+import { ABILITIES, type AbilityDef } from '../data/abilities';
 
 // World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
 const BASE_MOVE_SPEED = 5.5;
 const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
+
+export type AbilityCastReason = 'cooldown' | 'resource';
+
+export interface AbilityCastResult {
+  ok: boolean;
+  reason?: AbilityCastReason;
+  /** effectiveAttack x damageMultiplier — only meaningful when the ability deals damage. */
+  power: number;
+}
 
 export class Player {
   readonly mesh: THREE.Group;
@@ -32,6 +42,11 @@ export class Player {
 
   private attackTimer = 0;
   private regenAccumulator = 0;
+  private cooldowns: Record<string, number> = {};
+  private attackBuffPercent = 0;
+  private attackBuffRemaining = 0;
+  private armorBuffPercent = 0;
+  private armorBuffRemaining = 0;
   facing = new THREE.Vector3(0, 0, 1);
 
   constructor(classId: ClassId = 'knight') {
@@ -118,7 +133,8 @@ export class Player {
     const weaponId = this.stats.equipment.weapon;
     const gearBonus = weaponId ? (ITEMS[weaponId].equip?.attackBonus ?? 0) : 0;
     const skillMultiplier = 1 + this.primarySkillLevel / 100;
-    return Math.round((this.stats.attack + gearBonus) * skillMultiplier);
+    const buffMultiplier = 1 + this.attackBuffPercent;
+    return Math.round((this.stats.attack + gearBonus) * skillMultiplier * buffMultiplier);
   }
 
   private trainSkill(skillId: SkillId, rate: SkillRate): { leveledUp: boolean; newLevel: number } {
@@ -152,13 +168,13 @@ export class Player {
     return this.stats.equipment.shield ? blockChance(this.wardcraftLevel) : 0;
   }
 
-  /** Base armor (from level/class) plus every equipped piece's armor bonus (all ten slots can carry one). */
+  /** Base armor (from level/class) plus gear bonuses plus any active armor buff (Fortify, Arcane Shield, ...). */
   get effectiveArmor(): number {
     let bonus = 0;
     for (const itemId of Object.values(this.stats.equipment)) {
       if (itemId) bonus += ITEMS[itemId].equip?.armorBonus ?? 0;
     }
-    return this.stats.armor + bonus;
+    return Math.round((this.stats.armor + bonus) * (1 + this.armorBuffPercent));
   }
 
   /** Base resource pool plus bonuses from the amulet/reagent slots (Section 26). */
@@ -168,6 +184,60 @@ export class Player {
       if (itemId) bonus += ITEMS[itemId].equip?.resourceBonus ?? 0;
     }
     return this.stats.maxResource + bonus;
+  }
+
+  /** Ticks ability cooldowns and buff durations — call once per frame (GDD Section 8/10). */
+  updateAbilities(dt: number): void {
+    for (const id of Object.keys(this.cooldowns)) {
+      this.cooldowns[id] = Math.max(0, this.cooldowns[id] - dt);
+    }
+    if (this.attackBuffRemaining > 0) {
+      this.attackBuffRemaining -= dt;
+      if (this.attackBuffRemaining <= 0) this.attackBuffPercent = 0;
+    }
+    if (this.armorBuffRemaining > 0) {
+      this.armorBuffRemaining -= dt;
+      if (this.armorBuffRemaining <= 0) this.armorBuffPercent = 0;
+    }
+  }
+
+  getCooldownRemaining(abilityId: string): number {
+    return this.cooldowns[abilityId] ?? 0;
+  }
+
+  /**
+   * Spends resource/starts cooldown and applies every self-only effect field (heal, buffs, dash)
+   * immediately. Anything that needs to touch a monster (damage/aoe/stun/slow) is left for the
+   * caller (Game.ts) to apply, using the returned `power` for damage-scaled effects.
+   */
+  tryUseAbility(abilityId: string): AbilityCastResult {
+    const def: AbilityDef | undefined = ABILITIES[abilityId];
+    if (!def) return { ok: false, power: 0 };
+    if (this.getCooldownRemaining(abilityId) > 0) return { ok: false, reason: 'cooldown', power: 0 };
+    if (this.stats.resource < def.resourceCost) return { ok: false, reason: 'resource', power: 0 };
+
+    this.stats.resource -= def.resourceCost;
+    this.cooldowns[abilityId] = def.cooldown;
+    const { effect } = def;
+    const power = effect.damageMultiplier ? Math.round(this.effectiveAttack * effect.damageMultiplier) : 0;
+
+    if (effect.healPercent) {
+      this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + Math.round(this.stats.maxHp * effect.healPercent));
+    }
+    if (effect.buffAttackPercent && effect.buffDuration) {
+      this.attackBuffPercent = effect.buffAttackPercent;
+      this.attackBuffRemaining = effect.buffDuration;
+    }
+    if (effect.buffArmorPercent && effect.buffDuration) {
+      this.armorBuffPercent = effect.buffArmorPercent;
+      this.armorBuffRemaining = effect.buffDuration;
+    }
+    if (effect.dashDistance) {
+      const dir = effect.dashDirection === 'away' ? this.facing.clone().negate() : this.facing.clone();
+      this.mesh.position.addScaledVector(dir, effect.dashDistance);
+    }
+
+    return { ok: true, power };
   }
 
   /**
