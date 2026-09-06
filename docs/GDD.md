@@ -273,6 +273,16 @@ Same Knight training **Distance (Marksmanship)**, SLOW, Rate 1.8 — at skill 50
 
 A Mage training **Wardcraft**, VERY SLOW, Rate 3.0 — at skill 50→51: `ceil(6 × 3.0 × 50^1.7) ≈ 2,321` hits, roughly **5×** slower than a Knight's Wardcraft (VERY FAST) at the same skill level, cementing "Mage will basically never out-block a Knight."
 
+### Wardcraft mechanics
+
+Wardcraft only does something with a **shield (or off-hand parry item) equipped** — the skill governs how good the block is, not whether one is possible at all; a character with no shield has 0% block chance no matter how high Wardcraft climbs. With one equipped:
+
+```
+BlockChance = Wardcraft / (Wardcraft + 200)
+```
+
+The same diminishing-returns shape as the armor mitigation formula (Section 3) — asymptotic, never reaches 100%. At the weapon-skill starting level of 10 that's a 4.8% block chance; it takes Wardcraft 200 to reach 50%, and it keeps climbing slowly forever past that. A successful block halves the incoming hit *before* armor mitigation is applied on top, and — per the "advance through use" rule above — only a **successful** block trains Wardcraft; a hit that lands clean teaches nothing.
+
 ### What problem it solves
 Use-based, exponentially-slowing advancement means skill mastery is a genuine long-term investment (a level-300 character can still have room to grow a favored skill), and the per-class rate table is a single tuning surface — a designer can nudge one number (e.g., Archer's Wardcraft from MEDIUM to SLOW) to retune an entire class's secondary identity without touching any other formula.
 

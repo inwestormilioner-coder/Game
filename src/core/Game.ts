@@ -8,7 +8,7 @@ import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
-import { applyLevelStats, SKILL_NAMES, type ClassId } from '../types';
+import { applyLevelStats, SKILL_NAMES, type ClassId, type SkillId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
 // should create different hunting strategies, not one best monster.
@@ -144,6 +144,14 @@ export class Game {
     return result;
   }
 
+  debugSetSkillLevel(skillId: SkillId, level: number): void {
+    this.player.stats.skills[skillId] = { level, progress: 0 };
+  }
+
+  debugTakeDamage(amount: number) {
+    return this.player.takeDamage(amount);
+  }
+
   get debugPlayerStats() {
     return this.player.stats;
   }
@@ -244,7 +252,10 @@ export class Game {
     for (const monster of this.monsters) {
       const damage = monster.update(dt, this.player.position);
       if (damage > 0) {
-        this.player.takeDamage(damage);
+        const result = this.player.takeDamage(damage);
+        if (result.wardcraftLeveledUp) {
+          this.hud.showToast(`${SKILL_NAMES.wardcraft} → ${result.wardcraftLevel}!`);
+        }
         if (this.player.isDead) this.onPlayerDeath();
       }
     }

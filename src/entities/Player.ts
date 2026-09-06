@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   actionsToAdvanceSkill,
   applyLevelStats,
+  blockChance,
   CAPE_UNLOCK_LEVEL,
   CLASSES,
   createInitialStats,
@@ -11,9 +12,11 @@ import {
   REGEN_TICK_SECONDS,
   SATIETY_CAP_SECONDS,
   speedRatingForLevel,
+  WARDCRAFT_RATE,
   type ClassId,
   type EquipSlot,
   type SkillId,
+  type SkillRate,
   type Stats,
 } from '../types';
 import { ITEMS } from '../data/items';
@@ -118,23 +121,35 @@ export class Player {
     return Math.round((this.stats.attack + gearBonus) * skillMultiplier);
   }
 
-  /** Call on every successful hit/cast — trains the class's signature skill (GDD Section 5). */
-  trainPrimarySkill(): { leveledUp: boolean; newLevel: number } {
-    const skillId = this.primarySkillId;
+  private trainSkill(skillId: SkillId, rate: SkillRate): { leveledUp: boolean; newLevel: number } {
     const current = this.stats.skills[skillId] ?? { level: initialSkillLevel(skillId), progress: 0 };
     current.progress += 1;
 
     let leveledUp = false;
-    let needed = actionsToAdvanceSkill(current.level, 'veryFast');
+    let needed = actionsToAdvanceSkill(current.level, rate);
     while (current.progress >= needed) {
       current.progress -= needed;
       current.level += 1;
       leveledUp = true;
-      needed = actionsToAdvanceSkill(current.level, 'veryFast');
+      needed = actionsToAdvanceSkill(current.level, rate);
     }
 
     this.stats.skills[skillId] = current;
     return { leveledUp, newLevel: current.level };
+  }
+
+  /** Call on every successful hit/cast — trains the class's signature skill (GDD Section 5). */
+  trainPrimarySkill(): { leveledUp: boolean; newLevel: number } {
+    return this.trainSkill(this.primarySkillId, 'veryFast');
+  }
+
+  get wardcraftLevel(): number {
+    return this.stats.skills.wardcraft?.level ?? initialSkillLevel('wardcraft');
+  }
+
+  /** 0 without a shield equipped — Wardcraft governs how good you are at blocking, not whether you can. */
+  get blockChance(): number {
+    return this.stats.equipment.shield ? blockChance(this.wardcraftLevel) : 0;
   }
 
   /** Base armor (from level/class) plus every equipped piece's armor bonus (all ten slots can carry one). */
@@ -155,11 +170,25 @@ export class Player {
     return this.stats.maxResource + bonus;
   }
 
-  /** GDD Section 3: Mitigation = Armor / (Armor + 50) — asymptotic, never reaches 100%. */
-  takeDamage(amount: number): void {
+  /**
+   * A successful block (shield + Wardcraft roll, Section 5) halves the incoming hit and trains
+   * Wardcraft; armor mitigation (Section 3, Armor/(Armor+50)) always applies on top of that.
+   */
+  takeDamage(amount: number): { dealt: number; blocked: boolean; wardcraftLeveledUp: boolean; wardcraftLevel: number } {
+    let incoming = amount;
+    let blocked = false;
+    let wardcraftLeveledUp = false;
+
+    if (this.stats.equipment.shield && Math.random() < this.blockChance) {
+      blocked = true;
+      incoming = Math.round(incoming * 0.5);
+      wardcraftLeveledUp = this.trainSkill('wardcraft', WARDCRAFT_RATE[this.stats.classId]).leveledUp;
+    }
+
     const mitigation = this.effectiveArmor / (this.effectiveArmor + 50);
-    const dealt = Math.round(amount * (1 - mitigation));
+    const dealt = Math.round(incoming * (1 - mitigation));
     this.stats.hp = Math.max(0, this.stats.hp - dealt);
+    return { dealt, blocked, wardcraftLeveledUp, wardcraftLevel: this.wardcraftLevel };
   }
 
   get isFed(): boolean {

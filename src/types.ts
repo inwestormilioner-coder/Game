@@ -112,8 +112,9 @@ export function actionsToAdvanceSkill(skillLevel: number, rate: SkillRate): numb
 
 // Every class's signature weapon skill (GDD Section 1/5) — the one this MVP
 // trains via the basic attack, always at the VERY FAST rate for its own class.
-// Off-class skills (a Knight's Distance, Wardcraft for everyone, etc.) are a
-// later pass once there's more than one attack action to train them with.
+// Off-class weapon skills (a Knight's Distance, etc.) are a later pass once
+// there's more than one attack action to train them with; Wardcraft (below)
+// is in now since blocking already happens on every incoming hit.
 export type SkillId = 'bladeFighting' | 'marksmanship' | 'talonFighting' | 'arcaneLevel' | 'wardcraft';
 
 export const SKILL_NAMES: Record<SkillId, string> = {
@@ -131,6 +132,21 @@ export const PRIMARY_SKILL: Record<ClassId, SkillId> = {
   druid: 'arcaneLevel',
   assassin: 'talonFighting',
 };
+
+/** Per-class Wardcraft training rate (GDD Section 1): Knight fastest, Mage slowest. */
+export const WARDCRAFT_RATE: Record<ClassId, SkillRate> = {
+  knight: 'veryFast',
+  archer: 'medium',
+  mage: 'verySlow',
+  druid: 'slow',
+  assassin: 'medium',
+};
+
+// GDD Section 5: block chance from a shield/parry item, gated on Wardcraft.
+// Same diminishing-returns shape as armor mitigation — asymptotic, never 100%.
+export function blockChance(wardcraftLevel: number): number {
+  return wardcraftLevel / (wardcraftLevel + 200);
+}
 
 /** Weapon skills start at 10, Arcane Level starts at 0 (GDD Section 5). */
 export function initialSkillLevel(skillId: SkillId): number {
