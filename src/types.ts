@@ -96,6 +96,8 @@ export interface Stats {
   attack: number;
   armor: number;
   gold: number;
+  /** itemId -> quantity. No dedicated inventory UI/slots yet (that's next). */
+  inventory: Record<string, number>;
 }
 
 export function createInitialStats(classId: ClassId = 'knight'): Stats {
@@ -113,6 +115,7 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     attack: def.baseAttack,
     armor: def.baseArmor,
     gold: 0,
+    inventory: {},
   };
 }
 

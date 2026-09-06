@@ -1,0 +1,115 @@
+import type { LootEntry } from '../systems/loot';
+
+// GDD Section 11: monsters have no character level. Difficulty comes from
+// these hand-authored stats/behavior, not a scaling number.
+export type MonsterBehavior = 'passive' | 'aggressive';
+
+export interface MonsterDef {
+  id: string;
+  name: string;
+  hp: number;
+  damageMin: number;
+  damageMax: number;
+  attackRange: number;
+  aggroRange: number;
+  moveSpeed: number;
+  attackCooldown: number;
+  respawnDelay: number;
+  xp: number;
+  goldMin: number;
+  goldMax: number;
+  behavior: MonsterBehavior;
+  /** Placeholder look until real art lands: a flat color + size per type. */
+  color: number;
+  radius: number;
+  lootTable: LootEntry[];
+}
+
+export const MONSTER_DEFS: Record<string, MonsterDef> = {
+  mudclawGrub: {
+    id: 'mudclawGrub',
+    name: 'Mudclaw Grub',
+    hp: 20,
+    damageMin: 2,
+    damageMax: 4,
+    attackRange: 1.2,
+    aggroRange: 2.4,
+    moveSpeed: 0.8,
+    attackCooldown: 1.4,
+    respawnDelay: 5,
+    xp: 4,
+    goldMin: 0,
+    goldMax: 1,
+    behavior: 'passive',
+    color: 0x8a6a3a,
+    radius: 0.35,
+    lootTable: [{ itemId: 'grubIchor', rarity: 'guaranteed', chance: 1, qtyMin: 1, qtyMax: 1 }],
+  },
+  brambleWolf: {
+    id: 'brambleWolf',
+    name: 'Bramble Wolf',
+    hp: 45,
+    damageMin: 5,
+    damageMax: 9,
+    attackRange: 1.6,
+    aggroRange: 4.5,
+    moveSpeed: 1.8,
+    attackCooldown: 1.1,
+    respawnDelay: 8,
+    xp: 14,
+    goldMin: 1,
+    goldMax: 3,
+    behavior: 'aggressive',
+    color: 0x6b6b6b,
+    radius: 0.45,
+    lootTable: [
+      { itemId: 'wolfPelt', rarity: 'common', chance: 0.4, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'wolfFang', rarity: 'common', chance: 0.3, qtyMin: 1, qtyMax: 2 },
+      { itemId: 'alphasFang', rarity: 'rare', chance: 0.02, qtyMin: 1, qtyMax: 1 },
+    ],
+  },
+  ashfenGoblin: {
+    id: 'ashfenGoblin',
+    name: 'Ashfen Goblin',
+    hp: 60,
+    damageMin: 6,
+    damageMax: 11,
+    attackRange: 1.6,
+    aggroRange: 4,
+    moveSpeed: 1.5,
+    attackCooldown: 1.0,
+    respawnDelay: 10,
+    xp: 20,
+    goldMin: 2,
+    goldMax: 5,
+    behavior: 'aggressive',
+    color: 0x4a7a3a,
+    radius: 0.42,
+    lootTable: [
+      { itemId: 'goblinEar', rarity: 'common', chance: 0.45, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'rustyDagger', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
+    ],
+  },
+  ironhideBoar: {
+    id: 'ironhideBoar',
+    name: 'Ironhide Boar',
+    hp: 90,
+    damageMin: 10,
+    damageMax: 16,
+    attackRange: 1.8,
+    aggroRange: 3.5,
+    moveSpeed: 2.0,
+    attackCooldown: 1.3,
+    respawnDelay: 14,
+    xp: 28,
+    goldMin: 3,
+    goldMax: 7,
+    behavior: 'aggressive',
+    color: 0x5a4030,
+    radius: 0.55,
+    lootTable: [
+      { itemId: 'boarHide', rarity: 'common', chance: 0.5, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'boarTusk', rarity: 'uncommon', chance: 0.15, qtyMin: 1, qtyMax: 2 },
+    ],
+  },
+};

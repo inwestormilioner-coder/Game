@@ -4,10 +4,22 @@ import { Monster } from '../entities/Monster';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { buildWorld, clampToWorld } from '../world/World';
+import { MONSTER_DEFS } from '../data/monsters';
+import { ITEMS } from '../data/items';
 import type { ClassId } from '../types';
 
-const MONSTER_SPAWN_POINTS: Array<[number, number]> = [
-  [6, 4], [-8, 5], [10, -6], [-5, -9], [14, 8], [-14, -3], [3, 14], [-3, -14],
+// No two spots share a monster type — GDD Section 13: different creatures
+// should create different hunting strategies, not one best monster.
+const MONSTER_SPAWNS: Array<[keyof typeof MONSTER_DEFS, number, number]> = [
+  ['mudclawGrub', 4, 3],
+  ['mudclawGrub', -6, 2],
+  ['brambleWolf', 6, 4],
+  ['brambleWolf', -8, 5],
+  ['brambleWolf', 10, -6],
+  ['ashfenGoblin', -5, -9],
+  ['ashfenGoblin', 14, 8],
+  ['ironhideBoar', -14, -3],
+  ['ironhideBoar', 3, 14],
 ];
 
 // Fixed for every player — no rotation, no zoom (GDD Section 28). Seeing
@@ -49,8 +61,8 @@ export class Game {
     buildWorld(this.scene);
     this.scene.add(this.player.mesh);
 
-    for (const [x, z] of MONSTER_SPAWN_POINTS) {
-      const monster = new Monster(new THREE.Vector3(x, 0, z));
+    for (const [type, x, z] of MONSTER_SPAWNS) {
+      const monster = new Monster(MONSTER_DEFS[type], new THREE.Vector3(x, 0, z));
       this.monsters.push(monster);
       this.scene.add(monster.mesh);
     }
@@ -128,10 +140,15 @@ export class Game {
 
     this.targetMonster.takeDamage(this.player.stats.attack);
     if (!this.targetMonster.alive) {
-      const { exp, gold } = this.targetMonster.drop;
+      const { exp, gold, items } = this.targetMonster.rollResult();
       this.player.gainGold(gold);
+      for (const drop of items) this.player.addItem(drop.itemId, drop.qty);
       const leveledUp = this.player.gainExp(exp);
-      this.hud.showToast(`+${exp} EXP  +${gold} złota`);
+
+      const itemText = items
+        .map((drop) => (drop.qty > 1 ? `${ITEMS[drop.itemId].name} x${drop.qty}` : ITEMS[drop.itemId].name))
+        .join(', ');
+      this.hud.showToast(`+${exp} EXP  +${gold} złota${itemText ? '  ' + itemText : ''}`);
       if (leveledUp) {
         this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
         this.hud.flashLevelUp();

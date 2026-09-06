@@ -106,6 +106,10 @@ export class Player {
     this.stats.gold += amount;
   }
 
+  addItem(itemId: string, qty: number): void {
+    this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + qty;
+  }
+
   get isDead(): boolean {
     return this.stats.hp <= 0;
   }
