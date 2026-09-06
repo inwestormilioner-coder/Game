@@ -85,9 +85,18 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     behavior: 'aggressive',
     color: 0x4a7a3a,
     radius: 0.42,
+    // A humanoid raider, unlike the wolf/boar/grub — plausibly carries or has
+    // looted crafted gear from past victims, including a lost quiver or pouch.
     lootTable: [
       { itemId: 'goblinEar', rarity: 'common', chance: 0.45, qtyMin: 1, qtyMax: 1 },
       { itemId: 'rustyDagger', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'leatherCap', rarity: 'uncommon', chance: 0.1, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'raggedGloves', rarity: 'common', chance: 0.2, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'woodenBuckler', rarity: 'rare', chance: 0.04, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'copperAmulet', rarity: 'rare', chance: 0.03, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'huntersQuiver', rarity: 'rare', chance: 0.03, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'essencePouch', rarity: 'rare', chance: 0.03, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'travelersCape', rarity: 'veryRare', chance: 0.01, qtyMin: 1, qtyMax: 1 },
     ],
   },
   ironhideBoar: {
@@ -111,6 +120,8 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
       { itemId: 'boarHide', rarity: 'common', chance: 0.5, qtyMin: 1, qtyMax: 1 },
       { itemId: 'boarTusk', rarity: 'uncommon', chance: 0.15, qtyMin: 1, qtyMax: 2 },
       { itemId: 'boarhideVest', rarity: 'rare', chance: 0.05, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'leatherLegs', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'wornBoots', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
     ],
   },
 };

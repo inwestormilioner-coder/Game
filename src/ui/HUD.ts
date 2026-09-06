@@ -26,16 +26,16 @@ export class HUD {
     this.flash = root.querySelector('#level-up-flash')!;
   }
 
-  update(stats: Stats, carriedWeight: number): void {
+  update(stats: Stats, derived: { carriedWeight: number; maxResource: number }): void {
     this.hpFill.style.width = `${(stats.hp / stats.maxHp) * 100}%`;
-    this.resourceFill.style.width = `${(stats.resource / stats.maxResource) * 100}%`;
+    this.resourceFill.style.width = `${(stats.resource / derived.maxResource) * 100}%`;
     this.resourceLabel.textContent = stats.resourceName;
     this.xpFill.style.width = `${(stats.exp / stats.expToNext) * 100}%`;
     this.levelLabel.textContent = `Lvl ${stats.level}`;
     this.classLabel.textContent = CLASSES[stats.classId].name;
     this.goldLabel.textContent = String(stats.gold);
-    this.capacityLabel.textContent = `${carriedWeight.toFixed(1)} / ${stats.maxCapacity}`;
-    this.capacityLabel.parentElement!.classList.toggle('over-limit', carriedWeight >= stats.maxCapacity);
+    this.capacityLabel.textContent = `${derived.carriedWeight.toFixed(1)} / ${stats.maxCapacity}`;
+    this.capacityLabel.parentElement!.classList.toggle('over-limit', derived.carriedWeight >= stats.maxCapacity);
   }
 
   showToast(text: string): void {

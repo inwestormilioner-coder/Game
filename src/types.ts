@@ -91,7 +91,21 @@ export function actionsToAdvanceSkill(skillLevel: number, rate: SkillRate): numb
   return Math.ceil(6 * SKILL_RATE_MULTIPLIER[rate] * Math.pow(skillLevel, 1.7));
 }
 
-export type EquipSlot = 'weapon' | 'armor';
+// GDD Section 26: ten real slots, no shared "accessory" catch-all.
+export type EquipSlot =
+  | 'helmet'
+  | 'armor'
+  | 'legs'
+  | 'boots'
+  | 'gloves'
+  | 'weapon'
+  | 'shield'
+  | 'ammo'
+  | 'amulet'
+  | 'cape';
+
+/** The cape slot itself doesn't appear on the sheet before this — not just its items. */
+export const CAPE_UNLOCK_LEVEL = 10;
 
 export interface Stats {
   classId: ClassId;

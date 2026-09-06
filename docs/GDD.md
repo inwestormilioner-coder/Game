@@ -753,7 +753,28 @@ Player-driven economy built on: Glints/Slivers currency, NPC shops (fixed-price 
 
 ## 26. Item System
 
-Equipment slots: weapon, shield/off-hand, helmet, armor (chest), legs, boots, ring, amulet, and 1–2 general accessory slots. Weapons interact directly with the character's trained weapon skill (Section 5) — a weapon has a *type* (Blade/Axe/Bludgeon/Bow-or-Crossbow/Talon/none-for-casters), and damage output scales with the matching skill, so gear and skill investment are always coupled, never independent axes. Items carry: level/skill requirements (gating access, not just recommending it), a fixed statline (avoiding excessive per-drop randomization — a "Barrow-forged Blade" always has the same base stats so players can learn and value items by name), a rarity tag (for visual/UI clarity, distinct from the loot-table rarity tiers of Section 12), a small number of possible **modifier slots** (limited, deliberate randomization on drop — e.g., 0–2 minor affixes rolled within a tight, known range, not open-ended stat soup), and durability where it serves a purpose (a slow-decaying stat on high-end gear that creates a repair/maintenance gold sink, not a punishing break-and-lose-forever mechanic).
+### Equipment slots
+
+Ten slots, every one of them a real, separately-equipped item — no shared "accessory" catch-all:
+
+| Slot | Notes |
+|---|---|
+| Helmet | |
+| Armor (chest) | |
+| Legs | |
+| Boots | |
+| Gloves | |
+| Weapon | Interacts directly with the trained weapon skill (Section 5) — a weapon has a *type* (Blade/Axe/Bludgeon/Bow-or-Crossbow/Talon/none-for-casters), and damage output scales with the matching skill, so gear and skill investment are always coupled, never independent axes. |
+| Shield | Off-hand; feeds Wardcraft (Section 5). |
+| **Ammunition / Reagent** | One shared slot type, filled differently by class: **arrows or crossbow bolts** for the Archer, **arcane essence** for the Mage and Druid. Knight and Assassin have no item that fits it and simply leave it empty — it's not hidden for them, there's just nothing to put there. This is the physical form of the Archer's Quiver and the casters' extra reagent cost (Section 6); real per-shot/per-cast depletion is a combat-resource feature to wire in alongside the ability system, not yet active in the current build. |
+| Amulet | The slot most likely to carry a resource bonus (max Mana/Fervor/Focus/Momentum) rather than armor. |
+| **Cape** | **Locked until level 10** ("Proven," Section 29) — the slot itself doesn't appear on the character sheet before then, not just the items for it. A deliberate small reward tied to that first milestone, the same way the account-wide third ability loadout (Section 10) is a later unlock rather than a day-one default. |
+
+Some gear is class-restricted where it makes sense (arrows and essence pouches only fit their intended classes) — this is the one place items *do* gate by class, unlike runes (Section 9), because a quiver is a physical container tied to a fighting style, not a magic-requirement-gated consumable.
+
+### Item properties
+
+Weapons interact directly with the character's trained weapon skill (Section 5) — a weapon has a *type* (Blade/Axe/Bludgeon/Bow-or-Crossbow/Talon/none-for-casters), and damage output scales with the matching skill, so gear and skill investment are always coupled, never independent axes. Items carry: level/skill requirements (gating access, not just recommending it), a fixed statline (avoiding excessive per-drop randomization — a "Barrow-forged Blade" always has the same base stats so players can learn and value items by name), a rarity tag (for visual/UI clarity, distinct from the loot-table rarity tiers of Section 12), a small number of possible **modifier slots** (limited, deliberate randomization on drop — e.g., 0–2 minor affixes rolled within a tight, known range, not open-ended stat soup), and durability where it serves a purpose (a slow-decaying stat on high-end gear that creates a repair/maintenance gold sink, not a punishing break-and-lose-forever mechanic).
 
 ---
 

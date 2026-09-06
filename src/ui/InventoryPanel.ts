@@ -1,7 +1,19 @@
 import { ITEMS } from '../data/items';
-import type { EquipSlot, Stats } from '../types';
+import { CAPE_UNLOCK_LEVEL, type EquipSlot, type Stats } from '../types';
 
-const SLOT_LABELS: Record<EquipSlot, string> = { weapon: 'Broń', armor: 'Zbroja' };
+// Display order top to bottom. Cape is last and only shown once unlocked.
+const SLOT_LABELS: Array<[EquipSlot, string]> = [
+  ['helmet', 'Hełm'],
+  ['amulet', 'Amulet'],
+  ['armor', 'Pancerz'],
+  ['gloves', 'Rękawice'],
+  ['legs', 'Spodnie'],
+  ['boots', 'Buty'],
+  ['weapon', 'Broń'],
+  ['shield', 'Tarcza'],
+  ['ammo', 'Kołczan / Esencja'],
+  ['cape', 'Peleryna'],
+];
 
 /** The backpack + equipped-gear screen (GDD Section 26). */
 export class InventoryPanel {
@@ -37,19 +49,21 @@ export class InventoryPanel {
 
   render(stats: Stats): void {
     this.equippedEl.innerHTML = '';
-    (Object.keys(SLOT_LABELS) as EquipSlot[]).forEach((slot) => {
+    for (const [slot, label] of SLOT_LABELS) {
+      if (slot === 'cape' && stats.level < CAPE_UNLOCK_LEVEL) continue; // slot itself isn't unlocked yet
+
       const itemId = stats.equipment[slot];
       const row = document.createElement('div');
       row.className = 'equip-slot';
 
-      const label = document.createElement('span');
-      label.className = 'equip-slot-label';
-      label.textContent = SLOT_LABELS[slot];
+      const labelEl = document.createElement('span');
+      labelEl.className = 'equip-slot-label';
+      labelEl.textContent = label;
 
       const name = document.createElement('span');
       name.className = 'equip-slot-name';
       name.textContent = itemId ? ITEMS[itemId].name : '— puste —';
-      row.append(label, name);
+      row.append(labelEl, name);
 
       if (itemId) {
         const btn = document.createElement('button');
@@ -59,7 +73,7 @@ export class InventoryPanel {
         row.appendChild(btn);
       }
       this.equippedEl.appendChild(row);
-    });
+    }
 
     this.itemsEl.innerHTML = '';
     const entries = Object.entries(stats.inventory);

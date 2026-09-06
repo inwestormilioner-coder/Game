@@ -8,7 +8,7 @@ import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
-import type { ClassId } from '../types';
+import { applyLevelStats, type ClassId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
 // should create different hunting strategies, not one best monster.
@@ -82,7 +82,10 @@ export class Game {
     this.hud = new HUD(root);
     this.lootPanel = new LootPanel(root);
     this.inventoryPanel = new InventoryPanel(root);
-    this.hud.update(this.player.stats, this.player.carriedWeight);
+    this.hud.update(this.player.stats, {
+      carriedWeight: this.player.carriedWeight,
+      maxResource: this.player.effectiveMaxResource,
+    });
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
 
@@ -93,7 +96,9 @@ export class Game {
     this.inventoryPanel.toggle(
       this.player.stats,
       (itemId) => {
-        this.player.equipItem(itemId);
+        if (!this.player.equipItem(itemId)) {
+          this.hud.showToast('Nie możesz teraz tego założyć');
+        }
         this.inventoryPanel.render(this.player.stats);
       },
       (slot) => {
@@ -114,6 +119,11 @@ export class Game {
 
   debugGiveItem(itemId: string, qty: number): boolean {
     return this.player.addItem(itemId, qty);
+  }
+
+  debugSetLevel(level: number): void {
+    this.player.stats.level = level;
+    applyLevelStats(this.player.stats);
   }
 
   get debugPlayerStats() {
@@ -137,7 +147,10 @@ export class Game {
     }
 
     this.updateCamera(dt);
-    this.hud.update(this.player.stats, this.player.carriedWeight);
+    this.hud.update(this.player.stats, {
+      carriedWeight: this.player.carriedWeight,
+      maxResource: this.player.effectiveMaxResource,
+    });
     this.renderer.render(this.scene, this.camera);
   };
 

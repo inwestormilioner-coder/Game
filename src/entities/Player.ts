@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   applyLevelStats,
+  CAPE_UNLOCK_LEVEL,
   createInitialStats,
   speedRatingForLevel,
   type ClassId,
@@ -95,11 +96,22 @@ export class Player {
     return this.stats.attack + bonus;
   }
 
-  /** Base armor (from level/class) plus the equipped armor's bonus, if any. */
+  /** Base armor (from level/class) plus every equipped piece's armor bonus (all ten slots can carry one). */
   get effectiveArmor(): number {
-    const armorId = this.stats.equipment.armor;
-    const bonus = armorId ? (ITEMS[armorId].equip?.armorBonus ?? 0) : 0;
+    let bonus = 0;
+    for (const itemId of Object.values(this.stats.equipment)) {
+      if (itemId) bonus += ITEMS[itemId].equip?.armorBonus ?? 0;
+    }
     return this.stats.armor + bonus;
+  }
+
+  /** Base resource pool plus bonuses from the amulet/reagent slots (Section 26). */
+  get effectiveMaxResource(): number {
+    let bonus = 0;
+    for (const itemId of Object.values(this.stats.equipment)) {
+      if (itemId) bonus += ITEMS[itemId].equip?.resourceBonus ?? 0;
+    }
+    return this.stats.maxResource + bonus;
   }
 
   /** GDD Section 3: Mitigation = Armor / (Armor + 50) — asymptotic, never reaches 100%. */
@@ -153,6 +165,8 @@ export class Player {
     const def = ITEMS[itemId];
     if (!def.equip) return false;
     if ((this.stats.inventory[itemId] ?? 0) <= 0) return false;
+    if (def.equip.slot === 'cape' && this.stats.level < CAPE_UNLOCK_LEVEL) return false;
+    if (def.equip.classes && !def.equip.classes.includes(this.stats.classId)) return false;
 
     this.stats.inventory[itemId] -= 1;
     if (this.stats.inventory[itemId] <= 0) delete this.stats.inventory[itemId];
