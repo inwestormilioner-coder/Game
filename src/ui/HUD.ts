@@ -2,6 +2,8 @@ import type { Stats } from '../types';
 
 export class HUD {
   private hpFill: HTMLElement;
+  private resourceFill: HTMLElement;
+  private resourceLabel: HTMLElement;
   private xpFill: HTMLElement;
   private levelLabel: HTMLElement;
   private goldLabel: HTMLElement;
@@ -11,6 +13,8 @@ export class HUD {
 
   constructor(root: HTMLElement) {
     this.hpFill = root.querySelector('#hp-fill')!;
+    this.resourceFill = root.querySelector('#resource-fill')!;
+    this.resourceLabel = root.querySelector('#resource-label')!;
     this.xpFill = root.querySelector('#xp-fill')!;
     this.levelLabel = root.querySelector('#level-label')!;
     this.goldLabel = root.querySelector('#gold-label')!;
@@ -20,6 +24,8 @@ export class HUD {
 
   update(stats: Stats): void {
     this.hpFill.style.width = `${(stats.hp / stats.maxHp) * 100}%`;
+    this.resourceFill.style.width = `${(stats.resource / stats.maxResource) * 100}%`;
+    this.resourceLabel.textContent = stats.resourceName;
     this.xpFill.style.width = `${(stats.exp / stats.expToNext) * 100}%`;
     this.levelLabel.textContent = `Lvl ${stats.level}`;
     this.goldLabel.textContent = String(stats.gold);

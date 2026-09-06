@@ -1,18 +1,26 @@
 import * as THREE from 'three';
-import { createInitialStats, expToNextLevel, type Stats } from '../types';
+import {
+  applyLevelStats,
+  createInitialStats,
+  speedRatingForLevel,
+  type ClassId,
+  type Stats,
+} from '../types';
 
-const MOVE_SPEED = 5.5;
+// World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
+const BASE_MOVE_SPEED = 5.5;
 const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
 
 export class Player {
   readonly mesh: THREE.Group;
-  readonly stats: Stats = createInitialStats();
+  readonly stats: Stats;
 
   private attackTimer = 0;
   facing = new THREE.Vector3(0, 0, 1);
 
-  constructor() {
+  constructor(classId: ClassId = 'knight') {
+    this.stats = createInitialStats(classId);
     this.mesh = new THREE.Group();
 
     const body = new THREE.Mesh(
@@ -47,6 +55,11 @@ export class Player {
     return this.attackTimer <= 0;
   }
 
+  /** Current move speed in world units/sec, from the GDD's movement-speed curve. */
+  get moveSpeed(): number {
+    return BASE_MOVE_SPEED * (speedRatingForLevel(this.stats.level) / 100);
+  }
+
   update(dt: number, moveX: number, moveY: number): void {
     if (this.attackTimer > 0) this.attackTimer -= dt;
 
@@ -54,8 +67,9 @@ export class Player {
     if (len > 0.05) {
       const dx = moveX / len;
       const dz = moveY / len;
-      this.mesh.position.x += dx * MOVE_SPEED * dt;
-      this.mesh.position.z += dz * MOVE_SPEED * dt;
+      const speed = this.moveSpeed;
+      this.mesh.position.x += dx * speed * dt;
+      this.mesh.position.z += dz * speed * dt;
       this.facing.set(dx, 0, dz);
       this.mesh.rotation.y = Math.atan2(dx, dz);
     }
@@ -82,10 +96,7 @@ export class Player {
     while (this.stats.exp >= this.stats.expToNext) {
       this.stats.exp -= this.stats.expToNext;
       this.stats.level += 1;
-      this.stats.maxHp += 20;
-      this.stats.hp = this.stats.maxHp;
-      this.stats.attack += 3;
-      this.stats.expToNext = expToNextLevel(this.stats.level);
+      applyLevelStats(this.stats);
       leveledUp = true;
     }
     return leveledUp;
