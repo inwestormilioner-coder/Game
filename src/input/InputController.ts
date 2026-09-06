@@ -8,6 +8,7 @@ export class InputController {
   moveY = 0;
   attackRequested = false;
   loadoutSwitchRequested = false;
+  interactRequested = false;
 
   private zone: HTMLElement;
   private base: HTMLElement;
@@ -15,6 +16,7 @@ export class InputController {
   private attackBtn: HTMLElement;
   private abilityButtons: HTMLElement[];
   private loadoutBtn: HTMLElement;
+  private interactBtn: HTMLElement;
   private abilityRequested = [false, false, false, false, false];
 
   private dragging = false;
@@ -30,6 +32,7 @@ export class InputController {
     this.attackBtn = root.querySelector('#attack-btn')!;
     this.abilityButtons = Array.from(root.querySelectorAll('.ability-btn'));
     this.loadoutBtn = root.querySelector('#loadout-switch')!;
+    this.interactBtn = root.querySelector('#interact-btn')!;
 
     this.zone.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
@@ -51,6 +54,11 @@ export class InputController {
     this.loadoutBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.loadoutSwitchRequested = true;
+    });
+
+    this.interactBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.interactRequested = true;
     });
 
     // keyboard fallback for quick iteration on desktop
@@ -138,6 +146,18 @@ export class InputController {
     const v = this.loadoutSwitchRequested;
     this.loadoutSwitchRequested = false;
     return v;
+  }
+
+  consumeInteract(): boolean {
+    const v = this.interactRequested;
+    this.interactRequested = false;
+    return v;
+  }
+
+  /** Shown only while standing near an NPC (GDD Section 17) — hidden the rest of the time. */
+  setInteractVisible(visible: boolean, label = 'Rozmawiaj'): void {
+    this.interactBtn.classList.toggle('hidden', !visible);
+    this.interactBtn.textContent = label;
   }
 
   /** Icon/cooldown text and disabled look for one ability slot; called every frame from Game.ts. */

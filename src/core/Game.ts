@@ -2,14 +2,19 @@ import * as THREE from 'three';
 import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { Corpse } from '../entities/Corpse';
+import { Npc } from '../entities/Npc';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
+import { DialoguePanel } from '../ui/DialoguePanel';
+import { DepotPanel } from '../ui/DepotPanel';
 import { MiniMap } from '../ui/MiniMap';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
+import { NPCS } from '../data/npcs';
+import { QUESTS } from '../data/quests';
 import { applyLevelStats, SKILL_NAMES, type ClassId, type SkillId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
@@ -31,6 +36,7 @@ const MONSTER_SPAWNS: Array<[keyof typeof MONSTER_DEFS, number, number]> = [
 const CAMERA_OFFSET = new THREE.Vector3(0, 6.5, -7);
 
 const TARGET_SELECT_RADIUS = 4;
+const NPC_INTERACT_RANGE = 3.5;
 
 export class Game {
   private readonly scene = new THREE.Scene();
@@ -40,18 +46,24 @@ export class Game {
   private readonly player: Player;
   private readonly monsters: Monster[] = [];
   private readonly corpses: Corpse[] = [];
+  private readonly npcs: Npc[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
   private readonly lootPanel: LootPanel;
   private readonly inventoryPanel: InventoryPanel;
+  private readonly dialoguePanel: DialoguePanel;
+  private readonly depotPanel: DepotPanel;
   private readonly miniMap: MiniMap;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
   private targetCorpse: Corpse | null = null;
+  private targetNpc: Npc | null = null;
   /** The corpse the loot panel is currently showing, if any (distinct from targetCorpse,
    * which recomputes every frame by proximity and would otherwise yank the panel around). */
   private openedCorpse: Corpse | null = null;
+  /** The NPC whose dialogue/depot screen is currently open, if any (same reasoning as openedCorpse). */
+  private openedNpc: Npc | null = null;
   /** Loadout B is a switchable but currently empty placeholder (GDD Section 10). */
   private currentLoadout: 'A' | 'B' = 'A';
 
@@ -83,10 +95,18 @@ export class Game {
       this.scene.add(monster.mesh);
     }
 
+    for (const def of Object.values(NPCS)) {
+      const npc = new Npc(def);
+      this.npcs.push(npc);
+      this.scene.add(npc.mesh);
+    }
+
     this.input = new InputController(root);
     this.hud = new HUD(root);
     this.lootPanel = new LootPanel(root);
     this.inventoryPanel = new InventoryPanel(root);
+    this.dialoguePanel = new DialoguePanel(root);
+    this.depotPanel = new DepotPanel(root);
     this.miniMap = new MiniMap(root);
     this.hud.update(this.player.stats, this.hudDerived());
 
@@ -190,6 +210,42 @@ export class Game {
     return this.targetMonster;
   }
 
+  get debugTargetNpc() {
+    return this.targetNpc;
+  }
+
+  get debugNpcs() {
+    return this.npcs;
+  }
+
+  get debugDialogueOpen(): boolean {
+    return this.dialoguePanel.isOpen;
+  }
+
+  get debugDepotOpen(): boolean {
+    return this.depotPanel.isOpen;
+  }
+
+  debugInteract(): void {
+    if (this.targetNpc) this.interactWithNpc(this.targetNpc);
+  }
+
+  debugQuestState(questId: string) {
+    return this.player.questState(questId);
+  }
+
+  /** Instantly kills up to `count` living monsters of the given def id (test-only shortcut
+   * for quest-progress scenarios that would otherwise need real combat). */
+  debugKillMonstersOfType(monsterId: string, count: number): void {
+    let killed = 0;
+    for (const monster of this.monsters) {
+      if (killed >= count) break;
+      if (!monster.alive || monster.def.id !== monsterId) continue;
+      this.applyDamageToMonster(monster, monster.def.hp);
+      killed++;
+    }
+  }
+
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
@@ -200,8 +256,10 @@ export class Game {
       clampToWorld(this.player.position);
       this.updateCorpses(dt);
       this.updateTargets();
+      this.updateNpcTargeting();
       this.handleMonsterUpdates(dt);
       this.handleActionInput();
+      this.handleInteractInput();
       this.handleAbilityInput();
       this.updateAbilityUI();
       this.miniMap.reveal(this.player.position);
@@ -276,6 +334,121 @@ export class Game {
       const mat = m.mesh.material as THREE.MeshStandardMaterial;
       mat.opacity = m === this.targetMonster ? 1 : 0.85;
       mat.emissive = m === this.targetMonster ? new THREE.Color(0x224422) : new THREE.Color(0x000000);
+    }
+  }
+
+  /** Separate from combat targeting (GDD Section 17) — NPCs get their own "Rozmawiaj" prompt
+   * so walking up to one never fights over the attack button with a nearby monster/corpse. */
+  private updateNpcTargeting(): void {
+    let nearest: Npc | null = null;
+    let nearestDist = Infinity;
+    for (const npc of this.npcs) {
+      const d = npc.distanceTo(this.player.position);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = npc;
+      }
+    }
+
+    this.targetNpc = nearest && nearestDist <= NPC_INTERACT_RANGE ? nearest : null;
+    this.input.setInteractVisible(this.targetNpc !== null, this.targetNpc?.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+
+    if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > NPC_INTERACT_RANGE) {
+      this.dialoguePanel.hide();
+      this.depotPanel.hide();
+      this.openedNpc = null;
+    }
+  }
+
+  private handleInteractInput(): void {
+    if (!this.input.consumeInteract()) return;
+    if (!this.targetNpc) return;
+    this.interactWithNpc(this.targetNpc);
+  }
+
+  private interactWithNpc(npc: Npc): void {
+    this.openedNpc = npc;
+    const { def } = npc;
+
+    if (def.role === 'depot') {
+      this.depotPanel.show(
+        this.player.stats,
+        (itemId) => {
+          this.player.depositItem(itemId);
+          this.depotPanel.render(this.player.stats);
+        },
+        (itemId) => {
+          if (!this.player.withdrawItem(itemId)) this.hud.showToast('Za ciężkie — plecak pełny');
+          this.depotPanel.render(this.player.stats);
+        },
+      );
+      return;
+    }
+
+    if (def.role === 'ferryman') {
+      const dest = def.destination!;
+      const fare = def.fare ?? 0;
+      this.dialoguePanel.show(def.name, `${def.idleText} The crossing to ${dest.name} costs ${fare} Glints.`, [
+        {
+          label: `Zapłać ${fare} i płyń`,
+          onClick: () => {
+            if (this.player.stats.gold < fare) {
+              this.hud.showToast('Za mało złota');
+              return;
+            }
+            this.player.stats.gold -= fare;
+            this.player.position.set(dest.x, 0, dest.z);
+            this.hud.showToast(`Przybijasz do brzegu: ${dest.name}`);
+            this.dialoguePanel.hide();
+            this.openedNpc = null;
+          },
+        },
+        { label: 'Nie teraz', onClick: () => this.dialoguePanel.hide() },
+      ]);
+      return;
+    }
+
+    // role === 'quest'
+    const quest = Object.values(QUESTS).find((q) => q.giverId === def.id);
+    if (!quest) {
+      this.dialoguePanel.show(def.name, def.idleText, [{ label: 'Zamknij', onClick: () => this.dialoguePanel.hide() }]);
+      return;
+    }
+
+    const state = this.player.questState(quest.id);
+    if (!state) {
+      this.dialoguePanel.show(def.name, quest.offerText, [
+        {
+          label: 'Przyjmij zadanie',
+          onClick: () => {
+            this.player.startQuest(quest.id);
+            this.hud.showToast(`Nowe zadanie: ${quest.name}`);
+            this.dialoguePanel.hide();
+          },
+        },
+        { label: 'Nie teraz', onClick: () => this.dialoguePanel.hide() },
+      ]);
+    } else if (state.status === 'active') {
+      this.dialoguePanel.show(def.name, quest.activeText, [{ label: 'Zamknij', onClick: () => this.dialoguePanel.hide() }]);
+    } else if (state.status === 'readyToTurnIn') {
+      this.dialoguePanel.show(def.name, quest.turnInText, [
+        {
+          label: 'Oddaj zadanie',
+          onClick: () => {
+            const result = this.player.turnInQuest(quest.id);
+            if (result.ok) {
+              this.hud.showToast(`Zadanie ukończone: +${quest.rewardXp} EXP, +${quest.rewardGold} złota`);
+              if (result.leveledUp) {
+                this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
+                this.hud.flashLevelUp();
+              }
+            }
+            this.dialoguePanel.hide();
+          },
+        },
+      ]);
+    } else {
+      this.dialoguePanel.show(def.name, def.idleText, [{ label: 'Zamknij', onClick: () => this.dialoguePanel.hide() }]);
     }
   }
 
@@ -394,6 +567,12 @@ export class Game {
       this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
       this.hud.flashLevelUp();
     }
+
+    const readyQuests = this.player.registerMonsterKill(monster.def.id);
+    for (const questId of readyQuests) {
+      this.hud.showToast(`Zadanie gotowe do oddania: ${QUESTS[questId].name}`);
+    }
+
     if (monster === this.targetMonster) this.targetMonster = null;
   }
 

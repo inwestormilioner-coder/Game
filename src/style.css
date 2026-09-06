@@ -515,6 +515,61 @@ canvas {
   transform: scale(0.92);
 }
 
+#interact-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 150px;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(255, 210, 77, 0.8);
+  color: #ffd24d;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  pointer-events: auto;
+}
+
+#interact-btn.hidden {
+  display: none;
+}
+
+#interact-btn:active {
+  transform: translateX(-50%) scale(0.94);
+}
+
+/* ---------- dialogue panel ---------- */
+
+.dialogue-text {
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.dialogue-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.dialogue-option {
+  all: unset;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 210, 77, 0.14);
+  border: 1px solid rgba(255, 210, 77, 0.45);
+  color: #ffd24d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dialogue-option:active {
+  background: rgba(255, 210, 77, 0.3);
+}
+
 /* ---------- ability bar ---------- */
 
 .ability-btn {

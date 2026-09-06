@@ -675,6 +675,8 @@ Undiscoverable-feeling quests frustrate modern mobile audiences used to hand-hol
 ### How it scales
 Quest state is per-character flags/counters (standard MMORPG quest-state modeling); limited-capacity quests need a lightweight instance/reservation service (a queue + per-attempt instance ID), which is a well-understood scaling pattern (same shape as a dungeon-finder reservation system) and isolated from the main open-world simulation.
 
+**Current build status:** the first solo quest is in and playable end-to-end — Elder Mara offers "Cull the Grubs" (kill 5 Mudclaw Grubs), tracks progress on each kill, and pays out EXP/gold/an item on turn-in. This validates the full per-character quest-state shape (accept → active/progress → readyToTurnIn → completed, never re-offered) that every future quest builds on; party, limited-capacity, multi-stage, hidden, repeatable, boss, and guild quest *types* (this section's list above) are still to come — one working solo quest first, before multiplying the type-count.
+
 ---
 
 ## 16. World Architecture & Travel
@@ -684,6 +686,8 @@ The world is a single persistent, seamless (per shard) open world composed of in
 - **Regions:** cities (Duskmere, Ravensport), wilderness (Hollow Wilds), dangerous frontier (Bloodmarsh Frontier), dungeons (Sunken Barrow), and later mountains/deserts/islands as content expands, all physically bordering one another.
 - **Travel:** overland is on-foot (+ mounts later); inter-island/continent travel uses **ships as physical world objects** — the player walks to a dock, talks to a Ferryman NPC, pays a Glint fare, and a travel sequence (a short, real transit — not an instant cut) carries them to the destination dock. Later game stages introduce faster options (teleportation circles, wizard-cast group teleport spells, rare artifact-based fast travel) but these are always *unlocked, costly, or limited*, never replacing the base experience of a new player's first sea crossing.
 - **Persistence:** world state (spawns, guild territory flags, player-placed structures if introduced later, market listings) lives server-side per shard; multiple shards may exist for population/latency reasons, with clear shard identity (no silent server-merges of PvP reputation, since Section 21 depends on it).
+
+**Current build status:** a working two-way Ferryman crossing is in — Brack at the Duskmere-side dock, Rill at the Ravensport-side dock, 10 Glints each way. The prototype's single shared 3D scene stands in for "two docks" (there's no separate loading zone/second map yet — the far dock is a stub point in the same world, per the MVP scope in Section 32), but the player-facing flow already matches the target: walk to the dock, talk to the Ferryman, pay the fare, arrive at the other side. Real inter-region loading/hand-off is a later pass once there's an actual second region to justify it.
 
 ### Map discovery (fog of war)
 No character starts with the map revealed. The minimap and full-screen map only show terrain the character has physically walked through (or seen from a discovered vantage point) — everywhere else stays blank/fogged, exactly like the "no waypoints, learn the world by exploring it" philosophy already governing quests (Section 15). Discovery is per-character and permanent (revisiting later doesn't re-fog it), stored as a coarse explored-tile grid per region rather than per exact coordinate, so the cost of tracking it stays small even at high player counts. This is also why the minimap's zoom (Section 10) only changes how much of the *already-discovered* map is shown on screen, never reveals undiscovered terrain, and is completely separate from the fixed 3D combat camera — the two solve different problems and neither should compensate for the other.
@@ -697,11 +701,15 @@ Fully seamless open worlds are the most server/tech-architecture-intensive optio
 
 NPCs support: dialogue trees, shops (buy/sell with individually stocked, sometimes limited/restocking inventories), quest-giving/tracking, travel services (Ferryman-type), and general "lore/information" dialogue that exists purely to convey world knowledge (including quest breadcrumbs per Section 15). Dialogue is interactive (player picks from response options, not a single "press to skip" wall of text) — this is the primary delivery mechanism replacing quest markers, so it must feel worth reading, not worth skipping.
 
+**Current build status:** a quest-giver (Elder Mara), a Depot keeper (Orin), and a two-way Ferryman pair are in and playable. NPCs are stationary and get their own context-sensitive **"Rozmawiaj"/"Depozyt" prompt**, deliberately separate from the ATAK/SZUKAJ button, so standing next to one never competes with nearby combat. The general-goods shop (buy/sell) from the MVP scope (Section 32) isn't built yet — dialogue trees today only branch on quest state (offer / in-progress / ready-to-turn-in / already done), not on prior free-form answers.
+
 ---
 
 ## 18. Depot / Storage
 
 Every city has a **Depot** — a persistent, personal storage vault accessible only inside that city (via a Depot NPC/chest), holding weapons, armor, resources, quest items, loot, and consumables. Storage is unlimited-slots-but-tiered by default capacity with paid/earned expansions (a natural, non-power-affecting monetization/gold-sink lever, Section 25). Depots are **per-city** at launch (each city's depot is a separate stash) with a later "linked depot" unlock (a mid/late-game guild or premium feature) letting players access one shared pool from any city — introduced deliberately late so early-game logistics (deciding what to carry vs. store, per city) remain a meaningful decision.
+
+**Current build status:** interacting with Orin the Keeper opens a two-column Depot screen — backpack contents with a "Wpłać" (deposit) button, and the Depot's own contents with a "Wypłać" (withdraw) button — one item at a time, mirroring how corpse looting already works (Section 12). Withdrawing is still gated on carry capacity like any other pickup; depositing never is, since it's leaving the character's person. Capacity tiers/expansion costs are a later economy pass, not in yet — the MVP Depot is simply unlimited.
 
 ---
 

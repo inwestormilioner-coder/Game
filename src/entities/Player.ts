@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { ITEMS } from '../data/items';
 import { ABILITIES, type AbilityDef } from '../data/abilities';
+import { QUESTS } from '../data/quests';
 
 // World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
 const BASE_MOVE_SPEED = 5.5;
@@ -382,6 +383,66 @@ export class Player {
     if (!itemId) return;
     delete this.stats.equipment[slot];
     this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + 1;
+  }
+
+  /** Moves an item from the backpack into this city's Depot (GDD Section 18) — no capacity check, it's storage. */
+  depositItem(itemId: string, qty = 1): boolean {
+    if ((this.stats.inventory[itemId] ?? 0) < qty) return false;
+    this.stats.inventory[itemId] -= qty;
+    if (this.stats.inventory[itemId] <= 0) delete this.stats.inventory[itemId];
+    this.stats.depot[itemId] = (this.stats.depot[itemId] ?? 0) + qty;
+    return true;
+  }
+
+  /** Moves an item from the Depot back into the backpack — gated on carry capacity like any pickup. */
+  withdrawItem(itemId: string, qty = 1): boolean {
+    if ((this.stats.depot[itemId] ?? 0) < qty) return false;
+    if (!this.canCarry(itemId, qty)) return false;
+    this.stats.depot[itemId] -= qty;
+    if (this.stats.depot[itemId] <= 0) delete this.stats.depot[itemId];
+    this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + qty;
+    return true;
+  }
+
+  questState(questId: string) {
+    return this.stats.quests[questId];
+  }
+
+  /** Accepts a quest from its giver — a no-op if already known (GDD Section 15: no re-offering). */
+  startQuest(questId: string): boolean {
+    if (this.stats.quests[questId]) return false;
+    this.stats.quests[questId] = { status: 'active', progress: 0 };
+    return true;
+  }
+
+  /** Call on every monster kill — advances any of the player's active quests targeting that
+   * monster type. Returns the ids of quests that just became ready to turn in. */
+  registerMonsterKill(monsterId: string): string[] {
+    const readyNow: string[] = [];
+    for (const [questId, def] of Object.entries(QUESTS)) {
+      if (def.targetMonsterId !== monsterId) continue;
+      const state = this.stats.quests[questId];
+      if (!state || state.status !== 'active') continue;
+      state.progress += 1;
+      if (state.progress >= def.targetCount) {
+        state.status = 'readyToTurnIn';
+        readyNow.push(questId);
+      }
+    }
+    return readyNow;
+  }
+
+  /** Applies rewards and marks the quest complete. False if it wasn't actually ready. */
+  turnInQuest(questId: string): { ok: boolean; leveledUp: boolean } {
+    const state = this.stats.quests[questId];
+    const def = QUESTS[questId];
+    if (!state || !def || state.status !== 'readyToTurnIn') return { ok: false, leveledUp: false };
+
+    state.status = 'completed';
+    const leveledUp = this.gainExp(def.rewardXp);
+    this.gainGold(def.rewardGold);
+    if (def.rewardItemId) this.addItem(def.rewardItemId, 1);
+    return { ok: true, leveledUp };
   }
 
   get isDead(): boolean {

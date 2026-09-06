@@ -94,12 +94,33 @@
         <div id="inventory-items" class="panel-list"></div>
       </div>
 
+      <div id="dialogue-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span id="dialogue-name">NPC</span>
+          <button id="dialogue-panel-close" class="panel-close">✕</button>
+        </div>
+        <div id="dialogue-text" class="dialogue-text"></div>
+        <div id="dialogue-options" class="dialogue-options"></div>
+      </div>
+
+      <div id="depot-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span>Depozyt</span>
+          <button id="depot-panel-close" class="panel-close">✕</button>
+        </div>
+        <div class="inventory-divider">Plecak</div>
+        <div id="depot-backpack-items" class="panel-list"></div>
+        <div class="inventory-divider">W depozycie</div>
+        <div id="depot-stored-items" class="panel-list"></div>
+      </div>
+
       <div id="joystick-zone">
         <div id="joystick-base">
           <div id="joystick-stick"></div>
         </div>
       </div>
       <button id="attack-btn">ATAK</button>
+      <button id="interact-btn" class="hidden">Rozmawiaj</button>
 
       <button id="loadout-switch">A</button>
       <div id="ability-bar">

@@ -175,6 +175,15 @@ export type EquipSlot =
 /** The cape slot itself doesn't appear on the sheet before this — not just its items. */
 export const CAPE_UNLOCK_LEVEL = 10;
 
+// GDD Section 15: quest state is per-character flags/counters, not a waypoint.
+export type QuestStatus = 'active' | 'readyToTurnIn' | 'completed';
+
+export interface QuestState {
+  status: QuestStatus;
+  /** Kills counted toward targetCount so far. */
+  progress: number;
+}
+
 export interface Stats {
   classId: ClassId;
   level: number;
@@ -198,6 +207,10 @@ export interface Stats {
   poisonTicksRemaining: number;
   poisonDamagePerTick: number;
   skills: Partial<Record<SkillId, SkillProgress>>;
+  /** questId -> state (GDD Section 15). */
+  quests: Record<string, QuestState>;
+  /** itemId -> quantity in this city's Depot (GDD Section 18) — separate from the backpack. */
+  depot: Record<string, number>;
 }
 
 export function createInitialStats(classId: ClassId = 'knight'): Stats {
@@ -224,6 +237,8 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     skills: {
       [PRIMARY_SKILL[classId]]: { level: initialSkillLevel(PRIMARY_SKILL[classId]), progress: 0 },
     },
+    quests: {},
+    depot: {},
   };
 }
 
