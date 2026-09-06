@@ -110,6 +110,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     lootTable: [
       { itemId: 'boarHide', rarity: 'common', chance: 0.5, qtyMin: 1, qtyMax: 1 },
       { itemId: 'boarTusk', rarity: 'uncommon', chance: 0.15, qtyMin: 1, qtyMax: 2 },
+      { itemId: 'boarhideVest', rarity: 'rare', chance: 0.05, qtyMin: 1, qtyMax: 1 },
     ],
   },
 };

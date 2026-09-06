@@ -91,6 +91,8 @@ export function actionsToAdvanceSkill(skillLevel: number, rate: SkillRate): numb
   return Math.ceil(6 * SKILL_RATE_MULTIPLIER[rate] * Math.pow(skillLevel, 1.7));
 }
 
+export type EquipSlot = 'weapon' | 'armor';
+
 export interface Stats {
   classId: ClassId;
   level: number;
@@ -101,12 +103,14 @@ export interface Stats {
   resourceName: string;
   exp: number;
   expToNext: number;
+  /** Base values from level/class only — see Player.effectiveAttack/effectiveArmor for the gear-adjusted ones. */
   attack: number;
   armor: number;
   gold: number;
   maxCapacity: number;
-  /** itemId -> quantity. No dedicated inventory UI/slots yet (that's next). */
+  /** itemId -> quantity carried in the backpack (not equipped). */
   inventory: Record<string, number>;
+  equipment: Partial<Record<EquipSlot, string>>;
 }
 
 export function createInitialStats(classId: ClassId = 'knight'): Stats {
@@ -126,6 +130,7 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     gold: 0,
     maxCapacity: def.baseCapacity,
     inventory: {},
+    equipment: {},
   };
 }
 

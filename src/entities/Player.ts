@@ -4,6 +4,7 @@ import {
   createInitialStats,
   speedRatingForLevel,
   type ClassId,
+  type EquipSlot,
   type Stats,
 } from '../types';
 import { ITEMS } from '../data/items';
@@ -87,8 +88,25 @@ export class Player {
     return this.position.distanceTo(target) <= ATTACK_RANGE;
   }
 
+  /** Base attack (from level/class) plus the equipped weapon's bonus, if any. */
+  get effectiveAttack(): number {
+    const weaponId = this.stats.equipment.weapon;
+    const bonus = weaponId ? (ITEMS[weaponId].equip?.attackBonus ?? 0) : 0;
+    return this.stats.attack + bonus;
+  }
+
+  /** Base armor (from level/class) plus the equipped armor's bonus, if any. */
+  get effectiveArmor(): number {
+    const armorId = this.stats.equipment.armor;
+    const bonus = armorId ? (ITEMS[armorId].equip?.armorBonus ?? 0) : 0;
+    return this.stats.armor + bonus;
+  }
+
+  /** GDD Section 3: Mitigation = Armor / (Armor + 50) — asymptotic, never reaches 100%. */
   takeDamage(amount: number): void {
-    this.stats.hp = Math.max(0, this.stats.hp - amount);
+    const mitigation = this.effectiveArmor / (this.effectiveArmor + 50);
+    const dealt = Math.round(amount * (1 - mitigation));
+    this.stats.hp = Math.max(0, this.stats.hp - dealt);
   }
 
   gainExp(amount: number): boolean {
@@ -107,11 +125,14 @@ export class Player {
     this.stats.gold += amount;
   }
 
-  /** Total weight of everything currently in the backpack (equipped gear will count too, once it exists). */
+  /** Total weight of backpack contents AND equipped gear — wearing something doesn't make it weightless. */
   get carriedWeight(): number {
     let total = 0;
     for (const [itemId, qty] of Object.entries(this.stats.inventory)) {
       total += ITEMS[itemId].weight * qty;
+    }
+    for (const itemId of Object.values(this.stats.equipment)) {
+      if (itemId) total += ITEMS[itemId].weight;
     }
     return total;
   }
@@ -125,6 +146,29 @@ export class Player {
     if (!this.canCarry(itemId, qty)) return false;
     this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + qty;
     return true;
+  }
+
+  /** Moving gear from backpack to equipped slot doesn't change total carried weight, so this never fails on capacity. */
+  equipItem(itemId: string): boolean {
+    const def = ITEMS[itemId];
+    if (!def.equip) return false;
+    if ((this.stats.inventory[itemId] ?? 0) <= 0) return false;
+
+    this.stats.inventory[itemId] -= 1;
+    if (this.stats.inventory[itemId] <= 0) delete this.stats.inventory[itemId];
+
+    const previous = this.stats.equipment[def.equip.slot];
+    if (previous) this.stats.inventory[previous] = (this.stats.inventory[previous] ?? 0) + 1;
+
+    this.stats.equipment[def.equip.slot] = itemId;
+    return true;
+  }
+
+  unequipItem(slot: EquipSlot): void {
+    const itemId = this.stats.equipment[slot];
+    if (!itemId) return;
+    delete this.stats.equipment[slot];
+    this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + 1;
   }
 
   get isDead(): boolean {

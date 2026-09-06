@@ -5,6 +5,7 @@ import { Corpse } from '../entities/Corpse';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { LootPanel } from '../ui/LootPanel';
+import { InventoryPanel } from '../ui/InventoryPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import type { ClassId } from '../types';
@@ -40,6 +41,7 @@ export class Game {
   private readonly input: InputController;
   private readonly hud: HUD;
   private readonly lootPanel: LootPanel;
+  private readonly inventoryPanel: InventoryPanel;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
@@ -79,18 +81,39 @@ export class Game {
     this.input = new InputController(root);
     this.hud = new HUD(root);
     this.lootPanel = new LootPanel(root);
+    this.inventoryPanel = new InventoryPanel(root);
     this.hud.update(this.player.stats, this.player.carriedWeight);
 
+    root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
+
     window.addEventListener('resize', this.onResize);
+  }
+
+  private toggleInventory(): void {
+    this.inventoryPanel.toggle(
+      this.player.stats,
+      (itemId) => {
+        this.player.equipItem(itemId);
+        this.inventoryPanel.render(this.player.stats);
+      },
+      (slot) => {
+        this.player.unequipItem(slot);
+        this.inventoryPanel.render(this.player.stats);
+      },
+    );
   }
 
   start(): void {
     this.renderer.setAnimationLoop(this.tick);
   }
 
-  /** Dev-only hook (see main.ts) for driving the game from automated smoke tests. */
+  /** Dev-only hooks (see main.ts) for driving the game from automated smoke tests. */
   debugTeleportPlayerTo(x: number, z: number): void {
     this.player.position.set(x, 0, z);
+  }
+
+  debugGiveItem(itemId: string, qty: number): boolean {
+    return this.player.addItem(itemId, qty);
   }
 
   get debugPlayerStats() {
@@ -206,7 +229,7 @@ export class Game {
     if (!this.player.tryAttack()) return;
     if (!this.targetMonster || !this.player.isInRange(this.targetMonster.mesh.position)) return;
 
-    this.targetMonster.takeDamage(this.player.stats.attack);
+    this.targetMonster.takeDamage(this.player.effectiveAttack);
     if (!this.targetMonster.alive) {
       // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
       // a corpse anyone can race to open, not straight to the killer.

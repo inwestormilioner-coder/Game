@@ -180,28 +180,33 @@ canvas {
 }
 
 .capacity {
+  all: unset;
+  cursor: pointer;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
   opacity: 0.85;
+  color: inherit;
+  text-shadow: inherit;
 }
 
 .capacity.over-limit {
   color: #ff6b6b;
 }
 
-/* ---------- loot panel ---------- */
+/* ---------- floating panels (loot, inventory) ---------- */
 
-#loot-panel {
+.floating-panel {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 400;
   width: min(320px, 84vw);
-  max-height: 60vh;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
   background: rgba(10, 10, 18, 0.94);
@@ -213,7 +218,7 @@ canvas {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-#loot-panel.hidden {
+.floating-panel.hidden {
   display: none;
 }
 
@@ -228,7 +233,7 @@ canvas {
   font-size: 14px;
 }
 
-#loot-panel-close {
+.panel-close {
   all: unset;
   cursor: pointer;
   font-size: 14px;
@@ -236,7 +241,7 @@ canvas {
   padding: 2px 6px;
 }
 
-#loot-panel-items {
+.panel-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -274,6 +279,77 @@ canvas {
   text-align: center;
   font-size: 13px;
   opacity: 0.6;
+}
+
+/* ---------- inventory panel ---------- */
+
+.equip-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 0;
+}
+
+.equip-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+}
+
+.equip-slot-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+  min-width: 46px;
+}
+
+.equip-slot-name {
+  flex: 1;
+  font-weight: 700;
+}
+
+.slot-action {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 210, 77, 0.18);
+  border: 1px solid rgba(255, 210, 77, 0.5);
+  color: #ffd24d;
+}
+
+.slot-action:active {
+  background: rgba(255, 210, 77, 0.35);
+}
+
+.inventory-divider {
+  margin: 6px 10px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+}
+
+.inventory-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 13px;
 }
 
 #toast {

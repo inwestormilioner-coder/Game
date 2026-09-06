@@ -3,6 +3,12 @@ export interface ItemDef {
   name: string;
   /** Kilograms — counts against the character's carry capacity (GDD Section 2.5). */
   weight: number;
+  /** Present only on equippable gear. */
+  equip?: {
+    slot: 'weapon' | 'armor';
+    attackBonus?: number;
+    armorBonus?: number;
+  };
 }
 
 export const ITEMS: Record<string, ItemDef> = {
@@ -11,7 +17,14 @@ export const ITEMS: Record<string, ItemDef> = {
   wolfFang: { id: 'wolfFang', name: 'Wolf Fang', weight: 0.3 },
   alphasFang: { id: 'alphasFang', name: "Alpha's Fang", weight: 0.5 },
   goblinEar: { id: 'goblinEar', name: 'Goblin Ear', weight: 0.1 },
-  rustyDagger: { id: 'rustyDagger', name: 'Rusty Dagger', weight: 1.2 },
+  rustyDagger: {
+    id: 'rustyDagger', name: 'Rusty Dagger', weight: 1.2,
+    equip: { slot: 'weapon', attackBonus: 3 },
+  },
   boarHide: { id: 'boarHide', name: 'Boar Hide', weight: 4.0 },
   boarTusk: { id: 'boarTusk', name: 'Boar Tusk', weight: 0.8 },
+  boarhideVest: {
+    id: 'boarhideVest', name: 'Boarhide Vest', weight: 5.5,
+    equip: { slot: 'armor', armorBonus: 4 },
+  },
 };
