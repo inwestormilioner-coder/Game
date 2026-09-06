@@ -173,7 +173,10 @@ export function applyLevelStats(stats: Stats): void {
   stats.maxResource = def.baseResource + (stats.level - 1) * def.resourcePerLevel;
   stats.hp = stats.maxHp;
   stats.resource = stats.maxResource;
-  stats.attack = def.baseAttack + Math.floor((stats.level - 1) * 1.5);
+  // No level term here, deliberately (GDD Section 3): real damage growth is
+  // WeaponSkillLevel/ArcaneLevel + gear, not free numbers from leveling up.
+  // `attack` stays at the class's unarmed baseline until the skill system lands.
+  stats.attack = def.baseAttack;
   stats.maxCapacity = def.baseCapacity + (stats.level - 1) * def.capacityPerLevel;
   stats.expToNext = expToNextLevel(stats.level);
 }

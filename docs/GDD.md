@@ -165,6 +165,8 @@ Derived combat stats per hit:
 - **Magic damage** = `SpellBaseDamage × (1 + ArcaneLevel / 60) × EquipmentModifiers`
 - **Mitigation** = `Armor / (Armor + 50)` (a diminishing-returns "armor formula" — 50 armor = 50% reduction, 150 armor = 75%, 450 armor = 90%; asymptotically approaches but never reaches 100%, so there is no such thing as unkillable).
 
+**Note the damage formulas have no Level term at all — this is deliberate, not an oversight.** Level's only job is growing HP/Resource/Capacity (Section 2.3); all real damage growth comes from WeaponSkillLevel/ArcaneLevel (slow by design, Section 5) and gear. This is what keeps time-to-kill in same-level PvP old-school-long instead of collapsing to a handful of hits as characters level: two same-level, similarly-skilled-and-geared characters hit each other for roughly the same numbers whether they're level 5 or level 150, because level itself never inflates damage — only the HP pool both of them are chipping through grows. A duel between two max-effort, similarly-equipped players should be a real fight, not a two-or-three-hit trade; if a future change to these formulas ever makes level a shortcut to bigger numbers, that's the bug to catch, not a balance knob to tune.
+
 ---
 
 ## 4. Experience & Leveling Formula
