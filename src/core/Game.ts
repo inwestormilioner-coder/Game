@@ -4,11 +4,14 @@ import { Monster } from '../entities/Monster';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { buildWorld, clampToWorld } from '../world/World';
-import { CameraRig } from './CameraRig';
 
 const MONSTER_SPAWN_POINTS: Array<[number, number]> = [
   [6, 4], [-8, 5], [10, -6], [-5, -9], [14, 8], [-14, -3], [3, 14], [-3, -14],
 ];
+
+// Fixed for every player — no rotation, no zoom (GDD Section 28). Seeing
+// further is the minimap's job (Section 10), never the combat camera's.
+const CAMERA_OFFSET = new THREE.Vector3(0, 6.5, -7);
 
 export class Game {
   private readonly scene = new THREE.Scene();
@@ -19,7 +22,6 @@ export class Game {
   private readonly monsters: Monster[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
-  private readonly cameraRig: CameraRig;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
@@ -54,7 +56,6 @@ export class Game {
     this.input = new InputController(root);
     this.hud = new HUD(root);
     this.hud.update(this.player.stats);
-    this.cameraRig = new CameraRig(this.renderer.domElement);
 
     window.addEventListener('resize', this.onResize);
   }
@@ -143,7 +144,7 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const desired = this.player.position.clone().add(this.cameraRig.getOffset());
+    const desired = this.player.position.clone().add(CAMERA_OFFSET);
     this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
     const lookAt = this.player.position.clone().add(new THREE.Vector3(0, 1, 0));
     this.camera.lookAt(lookAt);
