@@ -126,6 +126,34 @@ Every class gets a **base value at level 1** and a **per-level growth value** fo
 - **What can go wrong:** if Assassin burst is tuned too high relative to its fragility, it becomes a "delete button" in PvP with no counterplay window; if Knight damage is tuned too low, nobody solo-hunts as Knight and the class becomes party-only. Mitigate with the ability-cooldown and resource-cost levers in Section 6, not by inflating HP/armor.
 - **How it scales:** stat formulas are pure functions of level + gear + skills, evaluated server-side per combat tick — no per-class special-cased combat code paths needed at the engine level, which keeps server CPU cost per class identical for thousands of concurrent entities.
 
+### 2.5 Carry Capacity
+
+Every item has a **weight in kilograms**. Every character has a **maximum carry capacity**, also in kilograms, and cannot pick up an item that would push their total carried weight (backpack contents; equipped gear counts too once equipment exists) over that limit — a full backpack is a real, felt constraint, not a slot-count abstraction.
+
+Capacity is a base value at level 1 plus a flat amount gained **every level**, exactly like HP and the resource pool:
+
+```
+MaxCapacity(level) = BaseCapacity + (level - 1) × CapacityPerLevel
+```
+
+The per-class ordering follows the same physical-identity logic as the rest of the kit: **Knight carries the most** (it's the class built around raw physical strength), **Archer is a close second** (a real logistics reason, not flavor-only — arrows/bolts are a resource per Section 6 and need to be carried in bulk), **Assassin sits in the middle**, and **Mage and Druid tie for the least** (their strength is spent on Arcane Level, not muscle).
+
+| Class | Base Capacity (L1) | Capacity / level |
+|---|---|---|
+| Knight | 450 kg | +15 kg |
+| Archer | 380 kg | +12 kg |
+| Assassin | 320 kg | +9 kg |
+| Mage | 250 kg | +6 kg |
+| Druid | 250 kg | +6 kg |
+
+At level 50 this spreads to Knight 1,185 kg vs. Mage/Druid 544 kg — over double — which is deliberate: a high-level Knight functioning as the party's pack mule for a hunting trip is a real, mechanically-grounded role, not just a tank stereotype.
+
+### What problem it solves
+Without a capacity limit, "how much can I carry" isn't a decision — inventory becomes an unlimited pocket dimension and looting stops being a choice. With it, a good hunt forces real trade-offs (take the bulky common pelts for guaranteed coin, or hold space for the one rare drop that might appear) and reinforces class identity outside of combat.
+
+### What can go wrong
+A limit that's too tight makes hunting trips tedious (constant depot runs); too loose and it's meaningless. Tune per-item weight so that a normal hunting session's expected loot volume uses roughly half of an appropriately-leveled character's capacity, leaving headroom for a lucky rare-drop haul — this is a live-ops number to watch, not a one-time guess.
+
 ---
 
 ## 3. Core Attributes
@@ -495,6 +523,8 @@ Example — **Sunken Barrow Guardian (boss)**:
 
 ### Monster corpses & contested looting
 A kill does **not** hand loot straight to the killer. Experience is awarded immediately (that part is never contested — it's tied to landing the kill, not to what happens next), but gold and every rolled item stay sealed inside the monster's **corpse**, which drops at the death location and must be physically opened. There is deliberately **no ownership window**: whichever character reaches the corpse and opens it first gets everything inside, regardless of who dealt the damage — "kto pierwszy, ten lepszy." A corpse decays after a fixed time whether or not it was ever opened. This is a smaller, more frequent echo of the player-corpse looting tension in Section 20, and it's exactly the kind of old-school, world-feels-real friction the game is built around: racing a party member (or a stranger) to a kill is a normal, expected part of hunting, not an edge case to design away.
+
+Opening a corpse is not a single action that vacuums everything into the backpack — it reveals the corpse's contents (gold is collected automatically on open, since currency is weightless; items are not), and **each item must be individually selected** to move it into the backpack, checked against Carry Capacity (Section 2.5) at the moment it's taken. An item left behind stays in the corpse, visible and takeable by anyone, until the corpse decays — so a character that's full has to make a real choice about what's worth the trip back rather than being blocked outright, and a second player can still pick up whatever the first left behind.
 
 ### What problem it solves
 Thematic consistency makes the world feel authored rather than randomly generated, and the tiered-chance system gives designers one shared vocabulary/tooling to author hundreds of monsters quickly and consistently, while still allowing per-monster tuning of *which* tiers matter (e.g., a "loot monster" might have unusually generous Rare-tier odds despite modest XP).

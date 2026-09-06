@@ -6,6 +6,7 @@ import {
   type ClassId,
   type Stats,
 } from '../types';
+import { ITEMS } from '../data/items';
 
 // World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
 const BASE_MOVE_SPEED = 5.5;
@@ -106,8 +107,24 @@ export class Player {
     this.stats.gold += amount;
   }
 
-  addItem(itemId: string, qty: number): void {
+  /** Total weight of everything currently in the backpack (equipped gear will count too, once it exists). */
+  get carriedWeight(): number {
+    let total = 0;
+    for (const [itemId, qty] of Object.entries(this.stats.inventory)) {
+      total += ITEMS[itemId].weight * qty;
+    }
+    return total;
+  }
+
+  canCarry(itemId: string, qty: number): boolean {
+    return this.carriedWeight + ITEMS[itemId].weight * qty <= this.stats.maxCapacity;
+  }
+
+  /** Returns false (and adds nothing) if the extra weight would exceed carry capacity. */
+  addItem(itemId: string, qty: number): boolean {
+    if (!this.canCarry(itemId, qty)) return false;
     this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + qty;
+    return true;
   }
 
   get isDead(): boolean {

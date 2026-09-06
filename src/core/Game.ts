@@ -4,9 +4,9 @@ import { Monster } from '../entities/Monster';
 import { Corpse } from '../entities/Corpse';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
+import { LootPanel } from '../ui/LootPanel';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
-import { ITEMS } from '../data/items';
 import type { ClassId } from '../types';
 
 // No two spots share a monster type — GDD Section 13: different creatures
@@ -39,10 +39,14 @@ export class Game {
   private readonly corpses: Corpse[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
+  private readonly lootPanel: LootPanel;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
   private targetCorpse: Corpse | null = null;
+  /** The corpse the loot panel is currently showing, if any (distinct from targetCorpse,
+   * which recomputes every frame by proximity and would otherwise yank the panel around). */
+  private openedCorpse: Corpse | null = null;
 
   constructor(root: HTMLElement, canvasHost: HTMLElement, classId: ClassId) {
     this.player = new Player(classId);
@@ -74,7 +78,8 @@ export class Game {
 
     this.input = new InputController(root);
     this.hud = new HUD(root);
-    this.hud.update(this.player.stats);
+    this.lootPanel = new LootPanel(root);
+    this.hud.update(this.player.stats, this.player.carriedWeight);
 
     window.addEventListener('resize', this.onResize);
   }
@@ -109,7 +114,7 @@ export class Game {
     }
 
     this.updateCamera(dt);
-    this.hud.update(this.player.stats);
+    this.hud.update(this.player.stats, this.player.carriedWeight);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -120,7 +125,16 @@ export class Game {
       if (corpse.expired) {
         this.scene.remove(corpse.mesh);
         this.corpses.splice(i, 1);
+        if (corpse === this.openedCorpse) {
+          this.lootPanel.hide();
+          this.openedCorpse = null;
+        }
       }
+    }
+
+    if (this.openedCorpse && !this.player.isInRange(this.openedCorpse.mesh.position)) {
+      this.lootPanel.hide();
+      this.openedCorpse = null;
     }
   }
 
@@ -141,7 +155,7 @@ export class Game {
     let nearestCorpse: Corpse | null = null;
     let nearestCorpseDist = Infinity;
     for (const c of this.corpses) {
-      if (c.looted) continue;
+      if (!c.hasLoot) continue;
       const d = this.player.position.distanceTo(c.mesh.position);
       if (d < nearestCorpseDist) {
         nearestCorpseDist = d;
@@ -185,8 +199,7 @@ export class Game {
 
     if (this.targetCorpse) {
       if (!this.player.isInRange(this.targetCorpse.mesh.position)) return;
-      this.lootCorpse(this.targetCorpse);
-      this.targetCorpse = null;
+      this.openCorpse(this.targetCorpse);
       return;
     }
 
@@ -198,7 +211,12 @@ export class Game {
       // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
       // a corpse anyone can race to open, not straight to the killer.
       const { exp, gold, items } = this.targetMonster.rollResult();
-      const corpse = new Corpse(this.targetMonster.mesh.position, this.targetMonster.def.color, { gold, items });
+      const corpse = new Corpse(
+        this.targetMonster.def.name,
+        this.targetMonster.mesh.position,
+        this.targetMonster.def.color,
+        { gold, items },
+      );
       this.corpses.push(corpse);
       this.scene.add(corpse.mesh);
 
@@ -212,15 +230,34 @@ export class Game {
     }
   }
 
-  private lootCorpse(corpse: Corpse): void {
-    const { gold, items } = corpse.open();
-    this.player.gainGold(gold);
-    for (const drop of items) this.player.addItem(drop.itemId, drop.qty);
+  /** Opening reveals the contents (gold is auto-collected; items need an individual tap each). */
+  private openCorpse(corpse: Corpse): void {
+    const gold = corpse.collectGold();
+    if (gold > 0) {
+      this.player.gainGold(gold);
+      this.hud.showToast(`+${gold} złota`);
+    }
+    this.openedCorpse = corpse;
+    this.lootPanel.show(corpse.monsterName, corpse.loot.items, (itemId) => this.tryTakeItem(corpse, itemId));
+  }
 
-    const itemText = items
-      .map((drop) => (drop.qty > 1 ? `${ITEMS[drop.itemId].name} x${drop.qty}` : ITEMS[drop.itemId].name))
-      .join(', ');
-    this.hud.showToast(`+${gold} złota${itemText ? '  ' + itemText : ''}`);
+  private tryTakeItem(corpse: Corpse, itemId: string): void {
+    const drop = corpse.peekItem(itemId);
+    if (!drop) return; // someone else already took it
+
+    if (!this.player.canCarry(drop.itemId, drop.qty)) {
+      this.hud.showToast('Za ciężkie — plecak pełny');
+      return;
+    }
+
+    corpse.takeItem(itemId);
+    this.player.addItem(drop.itemId, drop.qty);
+    this.lootPanel.render(corpse.loot.items);
+
+    if (!corpse.hasLoot) {
+      this.lootPanel.hide();
+      this.openedCorpse = null;
+    }
   }
 
   private onPlayerDeath(): void {

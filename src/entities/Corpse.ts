@@ -8,15 +8,18 @@ export interface CorpseLoot {
 
 // GDD Section 12: a kill doesn't hand loot to the killer — it drops a
 // corpse that anyone can open, first-come-first-served, until it decays.
+// Opening only collects the (weightless) gold; each item still has to be
+// individually taken, checked against carry capacity (Section 2.5).
 const LIFETIME_SECONDS = 60;
 
 export class Corpse {
   readonly mesh: THREE.Mesh;
+  readonly monsterName: string;
   readonly loot: CorpseLoot;
-  looted = false;
   private lifeTimer = LIFETIME_SECONDS;
 
-  constructor(position: THREE.Vector3, color: number, loot: CorpseLoot) {
+  constructor(monsterName: string, position: THREE.Vector3, color: number, loot: CorpseLoot) {
+    this.monsterName = monsterName;
     this.loot = loot;
     this.mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.42, 10, 6),
@@ -31,15 +34,38 @@ export class Corpse {
     return this.lifeTimer <= 0;
   }
 
+  /** Nothing left to take — gold already collected and every item already claimed. */
+  get hasLoot(): boolean {
+    return this.loot.gold > 0 || this.loot.items.length > 0;
+  }
+
   update(dt: number): void {
     this.lifeTimer -= dt;
   }
 
-  /** First opener wins — call once and trust the caller not to call it again after. */
-  open(): CorpseLoot {
-    this.looted = true;
-    const mat = this.mesh.material as THREE.MeshStandardMaterial;
-    mat.opacity = 0.25;
-    return this.loot;
+  /** Collects the gold (idempotent — returns 0 if it was already taken). */
+  collectGold(): number {
+    const gold = this.loot.gold;
+    this.loot.gold = 0;
+    if (gold > 0) this.dimIfEmpty();
+    return gold;
+  }
+
+  peekItem(itemId: string): LootDrop | undefined {
+    return this.loot.items.find((i) => i.itemId === itemId);
+  }
+
+  /** Removes and returns the item stack, or null if it's already gone (someone beat you to it). */
+  takeItem(itemId: string): LootDrop | null {
+    const idx = this.loot.items.findIndex((i) => i.itemId === itemId);
+    if (idx < 0) return null;
+    const [drop] = this.loot.items.splice(idx, 1);
+    this.dimIfEmpty();
+    return drop;
+  }
+
+  private dimIfEmpty(): void {
+    if (this.hasLoot) return;
+    (this.mesh.material as THREE.MeshStandardMaterial).opacity = 0.25;
   }
 }

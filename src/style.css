@@ -179,6 +179,103 @@ canvas {
   color: #ffd24d;
 }
 
+.capacity {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.capacity.over-limit {
+  color: #ff6b6b;
+}
+
+/* ---------- loot panel ---------- */
+
+#loot-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 400;
+  width: min(320px, 84vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 18, 0.94);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  overflow: hidden;
+  pointer-events: auto;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+#loot-panel.hidden {
+  display: none;
+}
+
+.loot-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 800;
+  font-size: 14px;
+}
+
+#loot-panel-close {
+  all: unset;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.7;
+  padding: 2px 6px;
+}
+
+#loot-panel-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.loot-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.loot-item:active {
+  background: rgba(255, 210, 77, 0.25);
+  border-color: #ffd24d;
+}
+
+.loot-item-weight {
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.loot-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
 #toast {
   position: absolute;
   top: 90px;
