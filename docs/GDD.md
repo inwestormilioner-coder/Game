@@ -493,11 +493,14 @@ Example — **Sunken Barrow Guardian (boss)**:
 | Sunken Crown Fragment (quest item, guild quest) | Quest Item | 100% while quest active |
 | Large Glint Pouch | Guaranteed | 100% |
 
+### Monster corpses & contested looting
+A kill does **not** hand loot straight to the killer. Experience is awarded immediately (that part is never contested — it's tied to landing the kill, not to what happens next), but gold and every rolled item stay sealed inside the monster's **corpse**, which drops at the death location and must be physically opened. There is deliberately **no ownership window**: whichever character reaches the corpse and opens it first gets everything inside, regardless of who dealt the damage — "kto pierwszy, ten lepszy." A corpse decays after a fixed time whether or not it was ever opened. This is a smaller, more frequent echo of the player-corpse looting tension in Section 20, and it's exactly the kind of old-school, world-feels-real friction the game is built around: racing a party member (or a stranger) to a kill is a normal, expected part of hunting, not an edge case to design away.
+
 ### What problem it solves
 Thematic consistency makes the world feel authored rather than randomly generated, and the tiered-chance system gives designers one shared vocabulary/tooling to author hundreds of monsters quickly and consistently, while still allowing per-monster tuning of *which* tiers matter (e.g., a "loot monster" might have unusually generous Rare-tier odds despite modest XP).
 
 ### What can go wrong
-Ultra-rare, highly desirable drops from open-world (non-instanced) monsters create **kill-stealing and corpse-camping** social friction. Mitigation: damage-contribution/party-based loot ownership rules (whoever/whichever party did threshold damage gets a timed exclusive loot window before it opens to all) and a modest per-target respawn/leash system to prevent single players from permanently hogging a rare spawn.
+Open, no-priority looting on a rare/valuable spawn invites **corpse-sniping** — someone who did none of the work grabs the loot the instant it drops. This is an accepted, intentional cost of the design (Section 13 already treats rare-spawn camping as a legitimate but contested hunting strategy), not a bug to patch with an ownership window; players are expected to react by fighting in the open where they can defend the kill, partying up before attempting a contested spawn, or simply accepting the risk as part of that hunting ground's danger. The one thing that *is* mitigated is indefinite denial: a fixed corpse-decay timer means a spawn point is never permanently locked out of the loot pool just because nobody has opened a given corpse yet.
 
 ### How it scales
 Loot rolls are O(1) per kill (iterate a short static list, roll once per entry) — negligible CPU cost even at thousands of simultaneous kills per second server-wide.

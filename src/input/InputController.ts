@@ -104,4 +104,9 @@ export class InputController {
     this.attackRequested = false;
     return v;
   }
+
+  /** The button is context-sensitive: "ATAK" against a monster, "SZUKAJ" over a corpse. */
+  setActionLabel(text: string): void {
+    this.attackBtn.textContent = text;
+  }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
+import { Corpse } from '../entities/Corpse';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { buildWorld, clampToWorld } from '../world/World';
@@ -26,6 +27,8 @@ const MONSTER_SPAWNS: Array<[keyof typeof MONSTER_DEFS, number, number]> = [
 // further is the minimap's job (Section 10), never the combat camera's.
 const CAMERA_OFFSET = new THREE.Vector3(0, 6.5, -7);
 
+const TARGET_SELECT_RADIUS = 4;
+
 export class Game {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
@@ -33,11 +36,13 @@ export class Game {
 
   private readonly player: Player;
   private readonly monsters: Monster[] = [];
+  private readonly corpses: Corpse[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
+  private targetCorpse: Corpse | null = null;
 
   constructor(root: HTMLElement, canvasHost: HTMLElement, classId: ClassId) {
     this.player = new Player(classId);
@@ -87,15 +92,20 @@ export class Game {
     return this.player.stats;
   }
 
+  get debugTargetMonster() {
+    return this.targetMonster;
+  }
+
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
     if (!this.player.isDead) {
       this.player.update(dt, this.input.moveX, this.input.moveY);
       clampToWorld(this.player.position);
-      this.updateTargetMonster();
+      this.updateCorpses(dt);
+      this.updateTargets();
       this.handleMonsterUpdates(dt);
-      this.handleAttackInput();
+      this.handleActionInput();
     }
 
     this.updateCamera(dt);
@@ -103,18 +113,55 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   };
 
-  private updateTargetMonster(): void {
-    let nearest: Monster | null = null;
-    let nearestDist = Infinity;
+  private updateCorpses(dt: number): void {
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      const corpse = this.corpses[i];
+      corpse.update(dt);
+      if (corpse.expired) {
+        this.scene.remove(corpse.mesh);
+        this.corpses.splice(i, 1);
+      }
+    }
+  }
+
+  /** Picks the single nearest interactable — a live monster or an unlooted corpse — and
+   * flips the action button between "ATAK" and "SZUKAJ" to match (GDD Section 12). */
+  private updateTargets(): void {
+    let nearestMonster: Monster | null = null;
+    let nearestMonsterDist = Infinity;
     for (const m of this.monsters) {
       if (!m.alive) continue;
       const d = this.player.position.distanceTo(m.mesh.position);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = m;
+      if (d < nearestMonsterDist) {
+        nearestMonsterDist = d;
+        nearestMonster = m;
       }
     }
-    this.targetMonster = nearest && nearestDist <= 4 ? nearest : null;
+
+    let nearestCorpse: Corpse | null = null;
+    let nearestCorpseDist = Infinity;
+    for (const c of this.corpses) {
+      if (c.looted) continue;
+      const d = this.player.position.distanceTo(c.mesh.position);
+      if (d < nearestCorpseDist) {
+        nearestCorpseDist = d;
+        nearestCorpse = c;
+      }
+    }
+
+    if (nearestCorpse && nearestCorpseDist <= TARGET_SELECT_RADIUS && nearestCorpseDist <= nearestMonsterDist) {
+      this.targetMonster = null;
+      this.targetCorpse = nearestCorpse;
+      this.input.setActionLabel('SZUKAJ');
+    } else if (nearestMonster && nearestMonsterDist <= TARGET_SELECT_RADIUS) {
+      this.targetMonster = nearestMonster;
+      this.targetCorpse = null;
+      this.input.setActionLabel('ATAK');
+    } else {
+      this.targetMonster = null;
+      this.targetCorpse = null;
+      this.input.setActionLabel('ATAK');
+    }
 
     for (const m of this.monsters) {
       const mat = m.mesh.material as THREE.MeshStandardMaterial;
@@ -133,28 +180,47 @@ export class Game {
     }
   }
 
-  private handleAttackInput(): void {
+  private handleActionInput(): void {
     if (!this.input.consumeAttack()) return;
+
+    if (this.targetCorpse) {
+      if (!this.player.isInRange(this.targetCorpse.mesh.position)) return;
+      this.lootCorpse(this.targetCorpse);
+      this.targetCorpse = null;
+      return;
+    }
+
     if (!this.player.tryAttack()) return;
     if (!this.targetMonster || !this.player.isInRange(this.targetMonster.mesh.position)) return;
 
     this.targetMonster.takeDamage(this.player.stats.attack);
     if (!this.targetMonster.alive) {
+      // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
+      // a corpse anyone can race to open, not straight to the killer.
       const { exp, gold, items } = this.targetMonster.rollResult();
-      this.player.gainGold(gold);
-      for (const drop of items) this.player.addItem(drop.itemId, drop.qty);
-      const leveledUp = this.player.gainExp(exp);
+      const corpse = new Corpse(this.targetMonster.mesh.position, this.targetMonster.def.color, { gold, items });
+      this.corpses.push(corpse);
+      this.scene.add(corpse.mesh);
 
-      const itemText = items
-        .map((drop) => (drop.qty > 1 ? `${ITEMS[drop.itemId].name} x${drop.qty}` : ITEMS[drop.itemId].name))
-        .join(', ');
-      this.hud.showToast(`+${exp} EXP  +${gold} złota${itemText ? '  ' + itemText : ''}`);
+      const leveledUp = this.player.gainExp(exp);
+      this.hud.showToast(`+${exp} EXP — zwłoki ${this.targetMonster.def.name} czekają na złupienie`);
       if (leveledUp) {
         this.hud.showToast(`Awans! Poziom ${this.player.stats.level}`);
         this.hud.flashLevelUp();
       }
       this.targetMonster = null;
     }
+  }
+
+  private lootCorpse(corpse: Corpse): void {
+    const { gold, items } = corpse.open();
+    this.player.gainGold(gold);
+    for (const drop of items) this.player.addItem(drop.itemId, drop.qty);
+
+    const itemText = items
+      .map((drop) => (drop.qty > 1 ? `${ITEMS[drop.itemId].name} x${drop.qty}` : ITEMS[drop.itemId].name))
+      .join(', ');
+    this.hud.showToast(`+${gold} złota${itemText ? '  ' + itemText : ''}`);
   }
 
   private onPlayerDeath(): void {
