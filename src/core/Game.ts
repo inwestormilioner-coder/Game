@@ -76,7 +76,7 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
     if (!this.player.isDead) {
-      this.player.update(dt, this.input.moveX, this.input.moveY, this.cameraRig.yaw);
+      this.player.update(dt, this.input.moveX, this.input.moveY);
       clampToWorld(this.player.position);
       this.updateTargetMonster();
       this.handleMonsterUpdates(dt);

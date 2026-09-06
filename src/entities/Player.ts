@@ -60,18 +60,13 @@ export class Player {
     return BASE_MOVE_SPEED * (speedRatingForLevel(this.stats.level) / 100);
   }
 
-  /** cameraYaw rotates the joystick's input so "forward" always tracks the camera, not world axes. */
-  update(dt: number, moveX: number, moveY: number, cameraYaw = 0): void {
+  update(dt: number, moveX: number, moveY: number): void {
     if (this.attackTimer > 0) this.attackTimer -= dt;
 
     const len = Math.hypot(moveX, moveY);
     if (len > 0.05) {
-      const ix = moveX / len;
-      const iy = moveY / len;
-      const sin = Math.sin(cameraYaw);
-      const cos = Math.cos(cameraYaw);
-      const dx = ix * cos + iy * sin;
-      const dz = iy * cos - ix * sin;
+      const dx = moveX / len;
+      const dz = moveY / len;
       const speed = this.moveSpeed;
       this.mesh.position.x += dx * speed * dt;
       this.mesh.position.z += dz * speed * dt;

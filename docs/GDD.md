@@ -387,7 +387,7 @@ Screen layout (portrait or landscape, but landscape/tablet is the primary target
 - **Top-center strip:** rune tray (scrollable/expandable), drag-out-and-release targeting as described in Section 9.
 - **Top-left:** player HP/resource bars, level, active status icons.
 - **Top-right:** minimap, party frames appear left-of-center when in a party.
-- **Center-tap-and-hold empty ground:** free-look camera rotation (Section 28).
+- **Pinch anywhere on the empty scene:** camera zoom — the only player-adjustable camera axis (Section 28; the angle itself is fixed for every player).
 
 All primary combat actions must be reachable by a right-hand thumb without the hand shifting grip, given the joystick is left-thumb-anchored — a standard mobile-MOBA ergonomic constraint carried over deliberately (this is the one place we explicitly borrow *control philosophy*, not any asset or name, from modern mobile MOBAs, exactly as scoped by the brief).
 
@@ -732,7 +732,7 @@ Combat must reward **positioning** (melee range management, kiting, using terrai
 
 **Visual target:** stylized chibi-fantasy 3D — small, expressive proportions (larger head, compact body) on every class, painterly hand-painted-look textures, warm saturated lighting, and readable silhouettes per class archetype (Knight's bulk, Mage/Druid's robes, Assassin's hood, Archer's cloak) so a target is identifiable at a glance on a small phone screen. All five launch classes share one body proportion and skeleton, differing only in mesh, texture and silhouette — this is a deliberate production choice, not just an art style: it lets every class and future gear piece reuse the same animation set (walk, basic attack, cast, hit react, death) instead of hand-authoring animations per class. The look is original in every silhouette, palette and ornament (no visual resemblance to Tibia's 2D/2.5D retro aesthetic or to any existing MOBA's or mobile RPG's character designs). The chibi/low-poly-friendly style is also a deliberate mobile-performance choice: lighter geometry and simpler shading than a realistic-3D target, giving real headroom on mid-range phones alongside the higher-end devices used for development.
 
-**Camera:** third-person, player-centered, smooth-follow with adjustable pinch-zoom, optional manual rotation (drag on empty screen space), tuned for wide peripheral visibility around the player (critical for reading incoming melee/ranged threats and AoE telegraphs in combat) — a mobile-MOBA-style camera *behavior*, built entirely with original assets and framing choices.
+**Camera:** third-person, player-centered, smooth-follow, with adjustable pinch-zoom as the only player-controlled axis. **The camera angle itself is fixed and identical for every player — rotation is deliberately not exposed.** This is a fairness decision, not an oversight: a rotatable camera would let a player peek around obstacles or reorient the minimap relative to threats in a way other players at the same spot cannot, which matters a great deal in an open-world PvP game where two players can be looking at the same fight. A fixed angle also keeps "north on the minimap" and "up on screen" meaning the same thing for everyone, which matters for the Find-Player spell's directional callouts (Section 22) and for describing locations to guildmates in chat. Framing is tuned for wide peripheral visibility around the player (reading incoming melee/ranged threats and AoE telegraphs in combat) — a mobile-MOBA-style camera *behavior*, built entirely with original assets and framing choices.
 
 ---
 
