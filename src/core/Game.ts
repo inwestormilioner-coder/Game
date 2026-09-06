@@ -105,6 +105,12 @@ export class Game {
         this.player.unequipItem(slot);
         this.inventoryPanel.render(this.player.stats);
       },
+      (itemId) => {
+        if (this.player.eat(itemId)) {
+          this.hud.showToast(this.player.isPoisoned ? 'Coś tu było zepsute...' : 'Najedzony');
+        }
+        this.inventoryPanel.render(this.player.stats);
+      },
     );
   }
 
@@ -139,6 +145,7 @@ export class Game {
 
     if (!this.player.isDead) {
       this.player.update(dt, this.input.moveX, this.input.moveY);
+      this.player.updateSurvival(dt);
       clampToWorld(this.player.position);
       this.updateCorpses(dt);
       this.updateTargets();

@@ -23,6 +23,7 @@ export class InventoryPanel {
   private closeBtn: HTMLElement;
   private onEquip: ((itemId: string) => void) | null = null;
   private onUnequip: ((slot: EquipSlot) => void) | null = null;
+  private onEat: ((itemId: string) => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root.querySelector('#inventory-panel')!;
@@ -36,13 +37,19 @@ export class InventoryPanel {
     return !this.root.classList.contains('hidden');
   }
 
-  toggle(stats: Stats, onEquip: (itemId: string) => void, onUnequip: (slot: EquipSlot) => void): void {
+  toggle(
+    stats: Stats,
+    onEquip: (itemId: string) => void,
+    onUnequip: (slot: EquipSlot) => void,
+    onEat: (itemId: string) => void,
+  ): void {
     if (this.isOpen) {
       this.hide();
       return;
     }
     this.onEquip = onEquip;
     this.onUnequip = onUnequip;
+    this.onEat = onEat;
     this.render(stats);
     this.root.classList.remove('hidden');
   }
@@ -101,6 +108,12 @@ export class InventoryPanel {
         btn.textContent = 'Załóż';
         btn.addEventListener('click', () => this.onEquip?.(itemId));
         row.appendChild(btn);
+      } else if (def.food) {
+        const btn = document.createElement('button');
+        btn.className = 'slot-action';
+        btn.textContent = def.food.poisonTicks ? 'Zjedz ⚠️' : 'Zjedz';
+        btn.addEventListener('click', () => this.onEat?.(itemId));
+        row.appendChild(btn);
       } else {
         const weight = document.createElement('span');
         weight.className = 'loot-item-weight';
@@ -116,5 +129,6 @@ export class InventoryPanel {
     this.root.classList.add('hidden');
     this.onEquip = null;
     this.onUnequip = null;
+    this.onEat = null;
   }
 }

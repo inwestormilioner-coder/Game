@@ -295,11 +295,28 @@ Each class's resource reinforces its identity and creates a distinct moment-to-m
 | Assassin | Momentum | **Momentum** | Builds only from landing hits while unseen/flanking or from crits; decays fast out of combat | Rewards aggressive, correct opening — an Assassin who whiffs the opener has nothing to burst with |
 
 Formulas:
-- Mana/Focus passive regen: `RegenPerSecond = BaseRegen × (1 + ArcaneLevel/150)` for casters, flat `BaseRegen` for Archer Focus.
-- Fervor/Momentum generation: `+GainPerHit = 8 + (WeaponSkill/20)`, decaying at `-5/second` once out of combat for 4+ seconds.
+- Mana/Focus passive regen: `RegenPerSecond = BaseRegen × (1 + ArcaneLevel/150)` for casters, flat `BaseRegen` for Archer Focus — **only while Fed** (see Satiety below).
+- Fervor/Momentum generation: `+GainPerHit = 8 + (WeaponSkill/20)`, decaying at `-5/second` once out of combat for 4+ seconds. Unaffected by Satiety — they were never passive regen to begin with, so there's nothing for hunger to gate.
 
 ### What can go wrong
 Resource systems that are *too* generous erase the "resource management" skill-expression pillar (Section 27); too punishing and the class feels unplayable solo. Both Fervor and Momentum intentionally **cannot be potion-restored** (unlike Mana, which has potions) — they must be earned in the fight itself, preserving the "burst is a reward for good play" identity for Knight/Assassin.
+
+### Satiety, HP Regeneration & Poison
+
+**Why:** passive regeneration needed a cost, or "wait it out, you'll heal for free" trivializes both potions and the corpse/temple risk in Sections 12 and 20. Tying it to food gives the world something to forage for and makes "did you eat?" a real, slightly absurd, and very old-school question to ask before a hunting trip — realistic even for a level-300 legend, deliberately.
+
+**How it works:**
+- Every character has **Satiety**, a countdown timer (seconds of "Fed" remaining), capped at **60 minutes**. It only ever decreases in real time while playing; it does not regenerate on its own — only food refills it.
+- **HP regenerates passively, for every class, only while Fed:** `HpRegenPerTick = round(MaxHP × 0.0025)`, applied every **2 seconds** — a full heal from empty takes roughly 6–7 minutes of standing around fed, which is meant to matter (worth doing between fights, not fast enough to replace careful play or potions mid-fight).
+- **Mana/Focus regen (Archer, Mage, Druid only, per the formulas above) also requires being Fed** — going hungry doesn't just stop healing, it stops mana too. Fervor and Momentum don't care either way, per above.
+- **Food** is eaten from the backpack (one item at a time, from the inventory screen) and adds its own Satiety value, up to the 60-minute cap — extra food beyond the cap is simply wasted, so there's no benefit to hoarding and binge-eating before a trip. Sources: **raw meat** from beasts (an immediate, obvious drop off Bramble Wolves and Ironhide Boars) now; **foraged fruit and berries** from trees and bushes in the world are planned but depend on the gathering-node system (a future addition to Section 16 — trees are currently decorative only).
+- **Some food is poisonous**, and eating it is a real, foreseeable risk rather than a random chance on safe food — a Poison Berry always poisons whoever eats it, in exchange for filling them up a little. Poison deals `PoisonDamagePerTick` every **2 seconds** for a set number of ticks (baseline: **1 damage / tick for 10 ticks = 20 seconds** for a common poisonous berry); eating more poisonous food while already poisoned **extends the remaining duration** and raises the tick damage to the worst of the sources involved, rather than resetting or simply stacking unboundedly. **HP regen is suppressed entirely while poisoned** — you cannot out-heal poison by being fed at the same time.
+
+### What can go wrong
+A hunger mechanic that's too punishing (draining fast, hard-to-find food) reads as busywork, not depth; the 60-minute cap and easy meat supply off the starter monster roster are tuned so staying fed is a light, background task during normal hunting, not a second job. Poison needs to stay a **visible, opt-in** risk (never a hidden chance on food that looks safe) or it just feels like bad luck rather than a decision.
+
+### How it scales
+Satiety and poison are two numbers and a countdown per character, ticked locally client-side-predicted / server-authoritative same as HP — no per-monster or per-item server cost beyond the food item's own two or three static fields.
 
 ---
 

@@ -197,6 +197,33 @@ canvas {
   color: #ff6b6b;
 }
 
+.satiety {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.satiety.hungry {
+  color: #ff9d4d;
+}
+
+.poison {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7cff6b;
+  margin-left: 10px;
+}
+
+.poison.hidden {
+  display: none;
+}
+
 /* ---------- floating panels (loot, inventory) ---------- */
 
 .floating-panel {

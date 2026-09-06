@@ -14,6 +14,9 @@ export interface ClassDef {
   /** Carry capacity in kg (GDD Section 2.5). Knight > Archer > Assassin > Mage = Druid. */
   baseCapacity: number;
   capacityPerLevel: number;
+  /** Passive resource regen/sec while Fed (Section 6). Absent for Knight/Assassin — Fervor
+   * and Momentum are combat-driven only, so there's no passive regen for hunger to gate. */
+  baseRegen?: number;
 }
 
 // Base stat growth per level, from the GDD (Section 2.3). Pre-equipment/skill modifiers.
@@ -31,6 +34,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     baseResource: 60, resourcePerLevel: 6, resourceName: 'Focus',
     baseArmor: 8,
     baseCapacity: 380, capacityPerLevel: 12,
+    baseRegen: 1.5,
   },
   mage: {
     id: 'mage', name: 'Mage', baseAttack: 16,
@@ -38,6 +42,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     baseResource: 110, resourcePerLevel: 11, resourceName: 'Mana',
     baseArmor: 4,
     baseCapacity: 250, capacityPerLevel: 6,
+    baseRegen: 1.2,
   },
   druid: {
     id: 'druid', name: 'Druid', baseAttack: 9,
@@ -45,6 +50,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     baseResource: 100, resourcePerLevel: 10, resourceName: 'Mana',
     baseArmor: 5,
     baseCapacity: 250, capacityPerLevel: 6,
+    baseRegen: 1.2,
   },
   assassin: {
     id: 'assassin', name: 'Assassin', baseAttack: 18,
@@ -54,6 +60,11 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     baseCapacity: 320, capacityPerLevel: 9,
   },
 };
+
+// ---- Satiety, regen & poison (GDD Section 6) ----
+export const SATIETY_CAP_SECONDS = 60 * 60;
+export const REGEN_TICK_SECONDS = 2;
+export const HP_REGEN_RATE = 0.0025; // fraction of MaxHP healed per tick while Fed
 
 // ---- Experience curve (GDD Section 4) ----
 // TotalXP(L) = floor(5 * L^3.5); level 50 lands at ~4.4M, ~1 month of serious play.
@@ -125,6 +136,10 @@ export interface Stats {
   /** itemId -> quantity carried in the backpack (not equipped). */
   inventory: Record<string, number>;
   equipment: Partial<Record<EquipSlot, string>>;
+  /** Seconds of "Fed" remaining — HP/Mana/Focus only regen while this is above 0 (Section 6). */
+  satietySeconds: number;
+  poisonTicksRemaining: number;
+  poisonDamagePerTick: number;
 }
 
 export function createInitialStats(classId: ClassId = 'knight'): Stats {
@@ -145,6 +160,9 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     maxCapacity: def.baseCapacity,
     inventory: {},
     equipment: {},
+    satietySeconds: 0,
+    poisonTicksRemaining: 0,
+    poisonDamagePerTick: 0,
   };
 }
 

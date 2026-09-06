@@ -15,6 +15,13 @@ export interface ItemDef {
     /** If set, only these classes can equip it (arrows/essence are physical, class-tied — GDD Section 26). */
     classes?: ClassId[];
   };
+  /** Present only on food — eating it consumes one and applies these effects (GDD Section 6). */
+  food?: {
+    satietySeconds: number;
+    /** Both present together or not at all — a poisonous food always poisons, never a random chance. */
+    poisonDamagePerTick?: number;
+    poisonTicks?: number;
+  };
 }
 
 export const ITEMS: Record<string, ItemDef> = {
@@ -68,5 +75,16 @@ export const ITEMS: Record<string, ItemDef> = {
   wornBoots: {
     id: 'wornBoots', name: 'Worn Boots', weight: 1.4,
     equip: { slot: 'boots', armorBonus: 1 },
+  },
+  rawMeat: {
+    id: 'rawMeat', name: 'Raw Meat', weight: 1.5,
+    food: { satietySeconds: 900 }, // 15 min
+  },
+  // Foraged fruit/berries (safe and poisonous alike) are planned once the
+  // gathering-node system exists (GDD Section 16) — poisonBerries is defined
+  // now so the poison mechanic is testable, not because it drops yet.
+  poisonBerries: {
+    id: 'poisonBerries', name: 'Poison Berries', weight: 0.2,
+    food: { satietySeconds: 300, poisonDamagePerTick: 1, poisonTicks: 10 }, // 5 min fed, 20s poison
   },
 };

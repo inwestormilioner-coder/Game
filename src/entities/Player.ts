@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import {
   applyLevelStats,
   CAPE_UNLOCK_LEVEL,
+  CLASSES,
   createInitialStats,
+  HP_REGEN_RATE,
+  REGEN_TICK_SECONDS,
+  SATIETY_CAP_SECONDS,
   speedRatingForLevel,
   type ClassId,
   type EquipSlot,
@@ -20,6 +24,7 @@ export class Player {
   readonly stats: Stats;
 
   private attackTimer = 0;
+  private regenAccumulator = 0;
   facing = new THREE.Vector3(0, 0, 1);
 
   constructor(classId: ClassId = 'knight') {
@@ -121,6 +126,65 @@ export class Player {
     this.stats.hp = Math.max(0, this.stats.hp - dealt);
   }
 
+  get isFed(): boolean {
+    return this.stats.satietySeconds > 0;
+  }
+
+  get isPoisoned(): boolean {
+    return this.stats.poisonTicksRemaining > 0;
+  }
+
+  /** Satiety drains every frame; poison and regen tick every REGEN_TICK_SECONDS (GDD Section 6). */
+  updateSurvival(dt: number): void {
+    if (this.stats.satietySeconds > 0) {
+      this.stats.satietySeconds = Math.max(0, this.stats.satietySeconds - dt);
+    }
+
+    this.regenAccumulator += dt;
+    while (this.regenAccumulator >= REGEN_TICK_SECONDS) {
+      this.regenAccumulator -= REGEN_TICK_SECONDS;
+      this.tickSurvival();
+    }
+  }
+
+  private tickSurvival(): void {
+    if (this.stats.poisonTicksRemaining > 0) {
+      this.stats.hp = Math.max(0, this.stats.hp - this.stats.poisonDamagePerTick);
+      this.stats.poisonTicksRemaining -= 1;
+      if (this.stats.poisonTicksRemaining <= 0) this.stats.poisonDamagePerTick = 0;
+    }
+
+    if (!this.isFed) return;
+
+    if (!this.isPoisoned && this.stats.hp < this.stats.maxHp) {
+      const heal = Math.max(1, Math.round(this.stats.maxHp * HP_REGEN_RATE));
+      this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + heal);
+    }
+
+    const baseRegen = CLASSES[this.stats.classId].baseRegen;
+    if (baseRegen && this.stats.resource < this.effectiveMaxResource) {
+      this.stats.resource = Math.min(this.effectiveMaxResource, this.stats.resource + baseRegen * REGEN_TICK_SECONDS);
+    }
+  }
+
+  /** Returns false if there's none of that item to eat. Poisonous food always poisons — never a chance. */
+  eat(itemId: string): boolean {
+    const def = ITEMS[itemId];
+    if (!def.food) return false;
+    if ((this.stats.inventory[itemId] ?? 0) <= 0) return false;
+
+    this.stats.inventory[itemId] -= 1;
+    if (this.stats.inventory[itemId] <= 0) delete this.stats.inventory[itemId];
+
+    this.stats.satietySeconds = Math.min(SATIETY_CAP_SECONDS, this.stats.satietySeconds + def.food.satietySeconds);
+
+    if (def.food.poisonDamagePerTick && def.food.poisonTicks) {
+      this.stats.poisonDamagePerTick = Math.max(this.stats.poisonDamagePerTick, def.food.poisonDamagePerTick);
+      this.stats.poisonTicksRemaining += def.food.poisonTicks;
+    }
+    return true;
+  }
+
   gainExp(amount: number): boolean {
     let leveledUp = false;
     this.stats.exp += amount;
@@ -191,6 +255,8 @@ export class Player {
 
   respawn(): void {
     this.stats.hp = this.stats.maxHp;
+    this.stats.poisonTicksRemaining = 0;
+    this.stats.poisonDamagePerTick = 0;
     this.mesh.position.set(0, 0, 0);
   }
 }

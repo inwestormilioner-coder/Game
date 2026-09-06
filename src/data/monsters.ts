@@ -66,6 +66,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
       { itemId: 'wolfPelt', rarity: 'common', chance: 0.4, qtyMin: 1, qtyMax: 1 },
       { itemId: 'wolfFang', rarity: 'common', chance: 0.3, qtyMin: 1, qtyMax: 2 },
       { itemId: 'alphasFang', rarity: 'rare', chance: 0.02, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'rawMeat', rarity: 'common', chance: 0.5, qtyMin: 1, qtyMax: 1 },
     ],
   },
   ashfenGoblin: {
@@ -122,6 +123,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
       { itemId: 'boarhideVest', rarity: 'rare', chance: 0.05, qtyMin: 1, qtyMax: 1 },
       { itemId: 'leatherLegs', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
       { itemId: 'wornBoots', rarity: 'uncommon', chance: 0.12, qtyMin: 1, qtyMax: 1 },
+      { itemId: 'rawMeat', rarity: 'common', chance: 0.6, qtyMin: 1, qtyMax: 2 },
     ],
   },
 };
