@@ -166,6 +166,15 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
   };
 }
 
+// GDD Section 3: LevelBonus = floor((Level-1) * 0.3) — small and flat, never
+// multiplicative, so level alone can't collapse time-to-kill. Real damage
+// growth still has to come from WeaponSkillLevel/ArcaneLevel + gear.
+const LEVEL_ATTACK_BONUS_RATE = 0.3;
+
+export function levelAttackBonus(level: number): number {
+  return Math.floor((level - 1) * LEVEL_ATTACK_BONUS_RATE);
+}
+
 /** Recomputes level-derived stats (call after a level-up). Keeps current hp/resource topped up. */
 export function applyLevelStats(stats: Stats): void {
   const def = CLASSES[stats.classId];
@@ -173,10 +182,7 @@ export function applyLevelStats(stats: Stats): void {
   stats.maxResource = def.baseResource + (stats.level - 1) * def.resourcePerLevel;
   stats.hp = stats.maxHp;
   stats.resource = stats.maxResource;
-  // No level term here, deliberately (GDD Section 3): real damage growth is
-  // WeaponSkillLevel/ArcaneLevel + gear, not free numbers from leveling up.
-  // `attack` stays at the class's unarmed baseline until the skill system lands.
-  stats.attack = def.baseAttack;
+  stats.attack = def.baseAttack + levelAttackBonus(stats.level);
   stats.maxCapacity = def.baseCapacity + (stats.level - 1) * def.capacityPerLevel;
   stats.expToNext = expToNextLevel(stats.level);
 }
