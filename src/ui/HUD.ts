@@ -1,4 +1,4 @@
-import type { Stats } from '../types';
+import { CLASSES, type Stats } from '../types';
 
 export class HUD {
   private hpFill: HTMLElement;
@@ -6,6 +6,7 @@ export class HUD {
   private resourceLabel: HTMLElement;
   private xpFill: HTMLElement;
   private levelLabel: HTMLElement;
+  private classLabel: HTMLElement;
   private goldLabel: HTMLElement;
   private toast: HTMLElement;
   private flash: HTMLElement;
@@ -17,6 +18,7 @@ export class HUD {
     this.resourceLabel = root.querySelector('#resource-label')!;
     this.xpFill = root.querySelector('#xp-fill')!;
     this.levelLabel = root.querySelector('#level-label')!;
+    this.classLabel = root.querySelector('#class-label')!;
     this.goldLabel = root.querySelector('#gold-label')!;
     this.toast = root.querySelector('#toast')!;
     this.flash = root.querySelector('#level-up-flash')!;
@@ -28,6 +30,7 @@ export class HUD {
     this.resourceLabel.textContent = stats.resourceName;
     this.xpFill.style.width = `${(stats.exp / stats.expToNext) * 100}%`;
     this.levelLabel.textContent = `Lvl ${stats.level}`;
+    this.classLabel.textContent = CLASSES[stats.classId].name;
     this.goldLabel.textContent = String(stats.gold);
   }
 

@@ -4,6 +4,7 @@ import { Monster } from '../entities/Monster';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { buildWorld, clampToWorld } from '../world/World';
+import type { ClassId } from '../types';
 
 const MONSTER_SPAWN_POINTS: Array<[number, number]> = [
   [6, 4], [-8, 5], [10, -6], [-5, -9], [14, 8], [-14, -3], [3, 14], [-3, -14],
@@ -18,7 +19,7 @@ export class Game {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
 
-  private readonly player = new Player();
+  private readonly player: Player;
   private readonly monsters: Monster[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
@@ -26,7 +27,8 @@ export class Game {
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
 
-  constructor(root: HTMLElement, canvasHost: HTMLElement) {
+  constructor(root: HTMLElement, canvasHost: HTMLElement, classId: ClassId) {
+    this.player = new Player(classId);
     this.scene.background = new THREE.Color(0x8fd0ff);
     this.scene.fog = new THREE.Fog(0x8fd0ff, 20, 55);
 
