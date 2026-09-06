@@ -4,6 +4,7 @@ import { Monster } from '../entities/Monster';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { buildWorld, clampToWorld } from '../world/World';
+import { CameraRig } from './CameraRig';
 
 const MONSTER_SPAWN_POINTS: Array<[number, number]> = [
   [6, 4], [-8, 5], [10, -6], [-5, -9], [14, 8], [-14, -3], [3, 14], [-3, -14],
@@ -18,8 +19,8 @@ export class Game {
   private readonly monsters: Monster[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
+  private readonly cameraRig: CameraRig;
 
-  private cameraOffset = new THREE.Vector3(0, 6.5, -7);
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
 
@@ -53,6 +54,7 @@ export class Game {
     this.input = new InputController(root);
     this.hud = new HUD(root);
     this.hud.update(this.player.stats);
+    this.cameraRig = new CameraRig(this.renderer.domElement);
 
     window.addEventListener('resize', this.onResize);
   }
@@ -74,7 +76,7 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
     if (!this.player.isDead) {
-      this.player.update(dt, this.input.moveX, this.input.moveY);
+      this.player.update(dt, this.input.moveX, this.input.moveY, this.cameraRig.yaw);
       clampToWorld(this.player.position);
       this.updateTargetMonster();
       this.handleMonsterUpdates(dt);
@@ -141,7 +143,7 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const desired = this.player.position.clone().add(this.cameraOffset);
+    const desired = this.player.position.clone().add(this.cameraRig.getOffset());
     this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
     const lookAt = this.player.position.clone().add(new THREE.Vector3(0, 1, 0));
     this.camera.lookAt(lookAt);
