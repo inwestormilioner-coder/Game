@@ -108,17 +108,17 @@ All classes can train **Arcane Level** (governs spell/rune power and requirement
 
 ### 2.3 Base Stat Growth Per Level
 
-Every class gets a **base value at level 1** and a **per-level growth value** for HP and the primary resource. Growth is linear per level but the *effective* power curve is non-linear because higher levels also grant better equipment access and skill levels — deliberately so; we do not want level alone to trivialize content.
+Every class gets a **base value at level 1** and a **per-level growth value** for HP, the primary resource, Attack (LevelBonus, Section 3), and Armor. Growth is linear per level but the *effective* power curve is non-linear because higher levels also grant better equipment access and skill levels — deliberately so; we do not want level alone to trivialize content.
 
-| Class | HP @ L1 | HP / level | Resource @ L1 | Resource / level | Base Armor @ L1 | Physical mitigation growth |
-|---|---|---|---|---|---|---|
-| Knight | 180 | +19 | 40 (Rage) | +3 | 12 | High (scales with Wardcraft + heavy armor) |
-| Archer | 140 | +13 | 60 (Focus) | +6 | 8 | Medium |
-| Mage | 90 | +7 | 110 (Mana) | +11 | 4 | Very Low |
-| Druid | 100 | +8 | 100 (Mana) | +10 | 5 | Low |
-| Assassin | 100 | +8 | 70 (Momentum) | +6 | 5 | Low |
+| Class | HP @ L1 | HP / level | Resource @ L1 | Resource / level | Attack @ L1 | Attack / level | Armor @ L1 | Armor / level |
+|---|---|---|---|---|---|---|---|---|
+| Knight | 180 | +19 | 40 (Rage) | +3 | 14 | +0.2 | 12 | +0.6 |
+| Archer | 140 | +13 | 60 (Focus) | +6 | 12 | +0.4 | 8 | +0.3 |
+| Mage | 90 | +7 | 110 (Mana) | +11 | 16 | +0.5 | 4 | +0.05 |
+| Druid | 100 | +8 | 100 (Mana) | +10 | 9 | +0.25 | 5 | +0.15 |
+| Assassin | 100 | +8 | 70 (Momentum) | +6 | 18 | +0.6 | 5 | +0.15 |
 
-`HP(level) = HP@L1 + (level-1) × HP-per-level` (before equipment/buffs). Same linear form for the resource pool. These numbers are first-pass balance constants — expect tuning during playtesting, but the **shape** (Knight ≫ others in HP, Mage ≪ others) must be preserved.
+`HP(level) = HP@L1 + (level-1) × HP-per-level` (before equipment/buffs). Same linear form for the resource pool, Attack, and Armor. These numbers are first-pass balance constants — expect tuning during playtesting, but the **shape** must be preserved: Knight ≫ others in HP and in Armor/level (its per-level growth is spent on becoming harder to kill, not harder-hitting); Assassin > Mage ≈ Archer > Druid > Knight in Attack/level (raw damage growth belongs to the offensive classes, not the tank); Mage ≪ everyone in Armor/level (a caster in robes barely gets tougher no matter the level).
 
 ### 2.4 Design Rationale
 
@@ -163,10 +163,10 @@ Rather than a free attribute-point system (which invites min-maxing degenerate b
 Derived combat stats per hit:
 - **Melee/Ranged physical damage** = `(WeaponBaseDamage + LevelBonus) × (1 + WeaponSkillLevel / 100) × EquipmentModifiers`
 - **Magic damage** = `(SpellBaseDamage + LevelBonus) × (1 + ArcaneLevel / 60) × EquipmentModifiers`
-- **LevelBonus** = `floor((Level − 1) × 0.3)` — deliberately small and flat, never multiplicative. At level 50 that's +14 damage; at level 1 it's +0.
-- **Mitigation** = `Armor / (Armor + 50)` (a diminishing-returns "armor formula" — 50 armor = 50% reduction, 150 armor = 75%, 450 armor = 90%; asymptotically approaches but never reaches 100%, so there is no such thing as unkillable).
+- **LevelBonus** = `floor((Level − 1) × AttackPerLevel)`, where `AttackPerLevel` is per-class (Section 2.3) — deliberately small and flat, never multiplicative, and deliberately *uneven* across classes: Assassin's melee burst and Mage's magic damage climb fastest with level (0.6 and 0.5/level), Archer's ranged damage close behind (0.4), Druid modest (0.25, its identity is support, not damage), and **Knight slowest of all (0.2)** — the Knight's per-level "budget" goes into Armor/level instead (Section 2.3), so it gets steadily harder to kill rather than steadily harder-hitting, matching its tank identity.
+- **Mitigation** = `Armor / (Armor + 50)` (a diminishing-returns "armor formula" — 50 armor = 50% reduction, 150 armor = 75%, 450 armor = 90%; asymptotically approaches but never reaches 100%, so there is no such thing as unkillable). Armor also grows per level now (Section 2.3), same `floor((Level-1) × ArmorPerLevel)` shape, again uneven by class: Knight's grows fastest (0.6/level), Mage's is nearly flat (0.05/level) — a caster in robes doesn't get meaningfully tougher just by leveling.
 
-**Level is allowed to add a small, flat amount of damage — never to be the main driver.** The bulk of real damage growth still has to come from WeaponSkillLevel/ArcaneLevel (slow by design, Section 5) and gear; LevelBonus exists so a level-up still feels a little stronger in a fight, without letting level alone collapse time-to-kill. Since HP/Resource (Section 2.3) grow noticeably faster with level than LevelBonus does, two same-level, similarly-skilled-and-geared characters should still take a long, real fight to kill each other whether they're level 5 or level 150 — a duel between two max-effort, similarly-equipped players is meant to be a feat, not a two-or-three-hit trade. If a future tuning pass ever makes LevelBonus large enough to rival WeaponSkillLevel's contribution, that has broken this goal and needs to come back down, not be treated as a balance knob to push further.
+**Level is allowed to add a small, flat amount of damage and armor — never to be the main driver.** The bulk of real damage growth still has to come from WeaponSkillLevel/ArcaneLevel (slow by design, Section 5) and gear; LevelBonus exists so a level-up still feels a little stronger in a fight, without letting level alone collapse time-to-kill. Since HP (Section 2.3) grows noticeably faster with level than LevelBonus does for any class, two same-level, similarly-skilled-and-geared characters should still take a long, real fight to kill each other whether they're level 5 or level 150 — a duel between two max-effort, similarly-equipped players is meant to be a feat, not a two-or-three-hit trade. If a future tuning pass ever makes LevelBonus large enough to rival WeaponSkillLevel's contribution, that has broken this goal and needs to come back down, not be treated as a balance knob to push further.
 
 ---
 

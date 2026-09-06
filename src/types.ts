@@ -5,12 +5,19 @@ export interface ClassDef {
   name: string;
   /** Base weapon damage multiplier at skill 0; melee/ranged flavor only, not balanced yet. */
   baseAttack: number;
+  /** GDD Section 3 LevelBonus rate — how much this class's own attack (physical
+   * or magical) grows per level, flat, never multiplicative. Assassin > Mage/
+   * Archer > Druid > Knight, since Knight's per-level growth goes into Armor instead. */
+  attackPerLevel: number;
   baseHp: number;
   hpPerLevel: number;
   baseResource: number;
   resourcePerLevel: number;
   resourceName: string;
   baseArmor: number;
+  /** Mirrors the qualitative "Physical mitigation growth" column in Section 2.3:
+   * Knight (High) > Archer (Medium) > Druid = Assassin (Low) > Mage (Very Low). */
+  armorPerLevel: number;
   /** Carry capacity in kg (GDD Section 2.5). Knight > Archer > Assassin > Mage = Druid. */
   baseCapacity: number;
   capacityPerLevel: number;
@@ -22,41 +29,41 @@ export interface ClassDef {
 // Base stat growth per level, from the GDD (Section 2.3). Pre-equipment/skill modifiers.
 export const CLASSES: Record<ClassId, ClassDef> = {
   knight: {
-    id: 'knight', name: 'Knight', baseAttack: 14,
+    id: 'knight', name: 'Knight', baseAttack: 14, attackPerLevel: 0.2,
     baseHp: 180, hpPerLevel: 19,
     baseResource: 40, resourcePerLevel: 3, resourceName: 'Fervor',
-    baseArmor: 12,
+    baseArmor: 12, armorPerLevel: 0.6,
     baseCapacity: 450, capacityPerLevel: 15,
   },
   archer: {
-    id: 'archer', name: 'Archer', baseAttack: 12,
+    id: 'archer', name: 'Archer', baseAttack: 12, attackPerLevel: 0.4,
     baseHp: 140, hpPerLevel: 13,
     baseResource: 60, resourcePerLevel: 6, resourceName: 'Focus',
-    baseArmor: 8,
+    baseArmor: 8, armorPerLevel: 0.3,
     baseCapacity: 380, capacityPerLevel: 12,
     baseRegen: 1.5,
   },
   mage: {
-    id: 'mage', name: 'Mage', baseAttack: 16,
+    id: 'mage', name: 'Mage', baseAttack: 16, attackPerLevel: 0.5,
     baseHp: 90, hpPerLevel: 7,
     baseResource: 110, resourcePerLevel: 11, resourceName: 'Mana',
-    baseArmor: 4,
+    baseArmor: 4, armorPerLevel: 0.05,
     baseCapacity: 250, capacityPerLevel: 6,
     baseRegen: 1.2,
   },
   druid: {
-    id: 'druid', name: 'Druid', baseAttack: 9,
+    id: 'druid', name: 'Druid', baseAttack: 9, attackPerLevel: 0.25,
     baseHp: 100, hpPerLevel: 8,
     baseResource: 100, resourcePerLevel: 10, resourceName: 'Mana',
-    baseArmor: 5,
+    baseArmor: 5, armorPerLevel: 0.15,
     baseCapacity: 250, capacityPerLevel: 6,
     baseRegen: 1.2,
   },
   assassin: {
-    id: 'assassin', name: 'Assassin', baseAttack: 18,
+    id: 'assassin', name: 'Assassin', baseAttack: 18, attackPerLevel: 0.6,
     baseHp: 100, hpPerLevel: 8,
     baseResource: 70, resourcePerLevel: 6, resourceName: 'Momentum',
-    baseArmor: 5,
+    baseArmor: 5, armorPerLevel: 0.15,
     baseCapacity: 320, capacityPerLevel: 9,
   },
 };
@@ -166,13 +173,15 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
   };
 }
 
-// GDD Section 3: LevelBonus = floor((Level-1) * 0.3) — small and flat, never
-// multiplicative, so level alone can't collapse time-to-kill. Real damage
-// growth still has to come from WeaponSkillLevel/ArcaneLevel + gear.
-const LEVEL_ATTACK_BONUS_RATE = 0.3;
+// GDD Section 3: LevelBonus = floor((Level-1) * ClassDef.attackPerLevel) — small
+// and flat, never multiplicative, so level alone can't collapse time-to-kill.
+// Real damage growth still has to come from WeaponSkillLevel/ArcaneLevel + gear.
+export function levelAttackBonus(level: number, classId: ClassId): number {
+  return Math.floor((level - 1) * CLASSES[classId].attackPerLevel);
+}
 
-export function levelAttackBonus(level: number): number {
-  return Math.floor((level - 1) * LEVEL_ATTACK_BONUS_RATE);
+export function levelArmorBonus(level: number, classId: ClassId): number {
+  return Math.floor((level - 1) * CLASSES[classId].armorPerLevel);
 }
 
 /** Recomputes level-derived stats (call after a level-up). Keeps current hp/resource topped up. */
@@ -182,7 +191,8 @@ export function applyLevelStats(stats: Stats): void {
   stats.maxResource = def.baseResource + (stats.level - 1) * def.resourcePerLevel;
   stats.hp = stats.maxHp;
   stats.resource = stats.maxResource;
-  stats.attack = def.baseAttack + levelAttackBonus(stats.level);
+  stats.attack = def.baseAttack + levelAttackBonus(stats.level, stats.classId);
+  stats.armor = def.baseArmor + levelArmorBonus(stats.level, stats.classId);
   stats.maxCapacity = def.baseCapacity + (stats.level - 1) * def.capacityPerLevel;
   stats.expToNext = expToNextLevel(stats.level);
 }
