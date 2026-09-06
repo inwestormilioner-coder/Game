@@ -6,6 +6,7 @@ import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { LootPanel } from '../ui/LootPanel';
 import { InventoryPanel } from '../ui/InventoryPanel';
+import { MiniMap } from '../ui/MiniMap';
 import { buildWorld, clampToWorld } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
@@ -43,6 +44,7 @@ export class Game {
   private readonly hud: HUD;
   private readonly lootPanel: LootPanel;
   private readonly inventoryPanel: InventoryPanel;
+  private readonly miniMap: MiniMap;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
@@ -85,6 +87,7 @@ export class Game {
     this.hud = new HUD(root);
     this.lootPanel = new LootPanel(root);
     this.inventoryPanel = new InventoryPanel(root);
+    this.miniMap = new MiniMap(root);
     this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
@@ -167,6 +170,14 @@ export class Game {
     return this.monsters;
   }
 
+  get debugDiscoveredCount(): number {
+    return this.miniMap.discoveredCount;
+  }
+
+  get debugMiniMapViewRadius(): number {
+    return this.miniMap.currentViewRadius;
+  }
+
   get debugPlayerStats() {
     return this.player.stats;
   }
@@ -193,10 +204,12 @@ export class Game {
       this.handleActionInput();
       this.handleAbilityInput();
       this.updateAbilityUI();
+      this.miniMap.reveal(this.player.position);
     }
 
     this.updateCamera(dt);
     this.hud.update(this.player.stats, this.hudDerived());
+    this.miniMap.draw(this.player.position, this.player.facing, this.monsters);
     this.renderer.render(this.scene, this.camera);
   };
 
