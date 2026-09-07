@@ -418,14 +418,26 @@ export class Game {
     if (npcInRange && (!nodeInRange || nearestNpcDist <= nearestNodeDist)) {
       this.targetNpc = nearestNpc;
       this.targetNode = null;
-      this.input.setInteractVisible(true, nearestNpc!.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
     } else if (nodeInRange) {
       this.targetNpc = null;
       this.targetNode = nearestNode;
-      this.input.setInteractVisible(true, GATHER_ACTION_LABEL[nearestNode!.def.kind]);
     } else {
       this.targetNpc = null;
       this.targetNode = null;
+    }
+
+    // Any open floating panel (dialogue/depot/inventory/loot) sits centered over the same
+    // area as this button — hide it underneath rather than let it bleed through visually.
+    const anyPanelOpen =
+      this.dialoguePanel.isOpen || this.depotPanel.isOpen || this.inventoryPanel.isOpen || this.lootPanel.isOpen;
+
+    if (anyPanelOpen) {
+      this.input.setInteractVisible(false);
+    } else if (this.targetNpc) {
+      this.input.setInteractVisible(true, this.targetNpc.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+    } else if (this.targetNode) {
+      this.input.setInteractVisible(true, GATHER_ACTION_LABEL[this.targetNode.def.kind]);
+    } else {
       this.input.setInteractVisible(false);
     }
 
