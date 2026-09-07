@@ -43,7 +43,6 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 18, -10);
 const CAMERA_FOV = 45;
 
 const TARGET_SELECT_RADIUS = 4;
-const NPC_INTERACT_RANGE = 3.5;
 
 const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
   mining: 'Kop',
@@ -306,10 +305,8 @@ export class Game {
       this.updateCorpses(dt);
       this.updateGatherNodes(dt);
       this.updateTargets();
-      this.updateInteractTargeting();
       this.handleMonsterUpdates(dt);
       this.handleActionInput();
-      this.handleInteractInput();
       this.handleAbilityInput();
       this.updateAbilityUI();
       this.miniMap.reveal(this.player.position);
@@ -345,12 +342,11 @@ export class Game {
     for (const node of this.gatherNodes) node.update(dt);
   }
 
-  /** Picks the single nearest interactable — a live monster or an unlooted corpse — and
-   * flips the action button between "ATAK" and "SZUKAJ" to match (GDD Section 12). */
-  /** Monsters, lootable corpses, and gathering nodes all compete for the single ATAK button —
-   * whichever is nearest within range wins (corpse breaks ties in its favor, then monster, then
-   * node), same button the player already uses for combat (GDD: no separate gathering prompt —
-   * equip the matching tool as your weapon and tap the target, exactly like attacking). */
+  /** Monsters, lootable corpses, gathering nodes, and NPCs all compete for the single ATAK
+   * button — whichever is nearest within range wins (ties broken corpse > monster > node > NPC,
+   * the order they're pushed below). One button for everything, on purpose: no separate
+   * gathering prompt (equip the matching tool and tap the target) and no separate "talk" button
+   * either (target the NPC the same way and tap ATAK — simplicity over adding more buttons). */
   private updateTargets(): void {
     let nearestMonster: Monster | null = null;
     let nearestMonsterDist = Infinity;
@@ -385,37 +381,6 @@ export class Game {
       }
     }
 
-    const corpseOk = nearestCorpse !== null && nearestCorpseDist <= TARGET_SELECT_RADIUS;
-    const monsterOk = nearestMonster !== null && nearestMonsterDist <= TARGET_SELECT_RADIUS;
-    const nodeOk = nearestNode !== null && nearestNodeDist <= TARGET_SELECT_RADIUS;
-
-    this.targetMonster = null;
-    this.targetCorpse = null;
-    this.targetNode = null;
-
-    if (corpseOk && (!monsterOk || nearestCorpseDist <= nearestMonsterDist) && (!nodeOk || nearestCorpseDist <= nearestNodeDist)) {
-      this.targetCorpse = nearestCorpse;
-      this.input.setActionLabel('SZUKAJ');
-    } else if (monsterOk && (!nodeOk || nearestMonsterDist <= nearestNodeDist)) {
-      this.targetMonster = nearestMonster;
-      this.input.setActionLabel('ATAK');
-    } else if (nodeOk) {
-      this.targetNode = nearestNode;
-      this.input.setActionLabel(GATHER_ACTION_LABEL[nearestNode!.def.kind]);
-    } else {
-      this.input.setActionLabel('ATAK');
-    }
-
-    for (const m of this.monsters) {
-      const mat = m.mesh.material as THREE.MeshStandardMaterial;
-      mat.opacity = m === this.targetMonster ? 1 : 0.85;
-      mat.emissive = m === this.targetMonster ? new THREE.Color(0x224422) : new THREE.Color(0x000000);
-    }
-  }
-
-  /** NPCs alone — dialogue/depot/ferryman are a conversation, not something you "attack",
-   * so they keep their own dedicated "Rozmawiaj"/"Depozyt" prompt (GDD Section 17). */
-  private updateInteractTargeting(): void {
     let nearestNpc: Npc | null = null;
     let nearestNpcDist = Infinity;
     for (const npc of this.npcs) {
@@ -426,29 +391,72 @@ export class Game {
       }
     }
 
-    this.targetNpc = nearestNpc && nearestNpcDist <= NPC_INTERACT_RANGE ? nearestNpc : null;
-
-    // Any open floating panel (dialogue/depot/inventory/loot) sits centered over the same
-    // area as this button — hide it underneath rather than let it bleed through visually.
-    const anyPanelOpen =
-      this.dialoguePanel.isOpen || this.depotPanel.isOpen || this.inventoryPanel.isOpen || this.lootPanel.isOpen;
-
-    if (anyPanelOpen || !this.targetNpc) {
-      this.input.setInteractVisible(false);
-    } else {
-      this.input.setInteractVisible(true, this.targetNpc.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+    type Candidate = { dist: number; apply: () => void };
+    const candidates: Candidate[] = [];
+    if (nearestCorpse && nearestCorpseDist <= TARGET_SELECT_RADIUS) {
+      candidates.push({
+        dist: nearestCorpseDist,
+        apply: () => {
+          this.targetCorpse = nearestCorpse;
+          this.input.setActionLabel('SZUKAJ');
+        },
+      });
+    }
+    if (nearestMonster && nearestMonsterDist <= TARGET_SELECT_RADIUS) {
+      candidates.push({
+        dist: nearestMonsterDist,
+        apply: () => {
+          this.targetMonster = nearestMonster;
+          this.input.setActionLabel('ATAK');
+        },
+      });
+    }
+    if (nearestNode && nearestNodeDist <= TARGET_SELECT_RADIUS) {
+      candidates.push({
+        dist: nearestNodeDist,
+        apply: () => {
+          this.targetNode = nearestNode;
+          this.input.setActionLabel(GATHER_ACTION_LABEL[nearestNode!.def.kind]);
+        },
+      });
+    }
+    if (nearestNpc && nearestNpcDist <= TARGET_SELECT_RADIUS) {
+      candidates.push({
+        dist: nearestNpcDist,
+        apply: () => {
+          this.targetNpc = nearestNpc;
+          this.input.setActionLabel(nearestNpc!.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+        },
+      });
     }
 
-    if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > NPC_INTERACT_RANGE) {
+    this.targetMonster = null;
+    this.targetCorpse = null;
+    this.targetNode = null;
+    this.targetNpc = null;
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => a.dist - b.dist);
+      candidates[0].apply();
+    } else {
+      this.input.setActionLabel('ATAK');
+    }
+
+    for (const m of this.monsters) {
+      const mat = m.mesh.material as THREE.MeshStandardMaterial;
+      mat.opacity = m === this.targetMonster ? 1 : 0.85;
+      mat.emissive = m === this.targetMonster ? new THREE.Color(0x224422) : new THREE.Color(0x000000);
+    }
+
+    if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > TARGET_SELECT_RADIUS) {
       this.dialoguePanel.hide();
       this.depotPanel.hide();
       this.openedNpc = null;
     }
   }
 
-  private handleInteractInput(): void {
-    if (!this.input.consumeInteract()) return;
-    if (this.targetNpc) this.interactWithNpc(this.targetNpc);
+  private isAnyPanelOpen(): boolean {
+    return this.dialoguePanel.isOpen || this.depotPanel.isOpen || this.inventoryPanel.isOpen || this.lootPanel.isOpen;
   }
 
   /** Mining/Woodcutting/Fishing (gathering professions) — deterministic yield, gated by skill
@@ -590,6 +598,7 @@ export class Game {
 
   private handleActionInput(): void {
     if (!this.input.consumeAttack()) return;
+    if (this.isAnyPanelOpen()) return;
 
     if (this.targetCorpse) {
       if (!this.player.isInRange(this.targetCorpse.mesh.position)) return;
@@ -600,6 +609,12 @@ export class Game {
     if (this.targetNode) {
       if (!this.player.isInRange(this.targetNode.mesh.position)) return;
       this.tryGatherAt(this.targetNode);
+      return;
+    }
+
+    if (this.targetNpc) {
+      if (!this.player.isInRange(this.targetNpc.mesh.position)) return;
+      this.interactWithNpc(this.targetNpc);
       return;
     }
 
