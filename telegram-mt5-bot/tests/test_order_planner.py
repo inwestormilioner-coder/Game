@@ -21,7 +21,6 @@ def test_plan_orders_buy_zone_tp_ladder_from_lowest_entry():
     plans = plan_orders(zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10)
 
     assert len(plans) == 11
-    assert all(p.lot == 0.01 for p in plans)
 
     # lowest entry gets the tightest TP (60 pips), each order above it +10
     assert plans[0].entry_price == 4420.0
@@ -36,6 +35,21 @@ def test_plan_orders_buy_zone_tp_ladder_from_lowest_entry():
     for p in plans:
         assert round(p.tp_price - p.entry_price, 2) == round(p.tp_pips * 0.1, 2)
 
+    # Lot grows the closer an entry is to SL: the lowest entries (4420.0,
+    # 4420.5 - closest to the 4414.0 SL) get the biggest size, the highest
+    # entries (furthest from SL) stay at the base lot, three orders per tier.
+    assert [p.lot for p in plans] == [0.04, 0.04, 0.03, 0.03, 0.03, 0.02, 0.02, 0.02, 0.01, 0.01, 0.01]
+
+
+def test_plan_orders_lot_tier_orders_is_configurable():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10, lot_tier_orders=1,
+    )
+    # 3 orders, each its own tier since lot_tier_orders=1: closest to SL
+    # (4420.0) gets the biggest lot, furthest (4421.0) stays at base lot.
+    assert [p.lot for p in plans] == [0.03, 0.02, 0.01]
+
 
 def test_plan_orders_sell_zone_mirrors_direction():
     zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
@@ -46,3 +60,11 @@ def test_plan_orders_sell_zone_mirrors_direction():
     for p in plans:
         assert p.sl_price > p.entry_price
         assert p.tp_price < p.entry_price
+
+    # For a SELL zone the highest entry (4430.0) is closest to SL (4436.0)
+    # and gets the biggest lot; the lowest entry (4425.0) is furthest and
+    # stays at the base lot.
+    assert plans[0].entry_price == 4425.0
+    assert plans[0].lot == 0.01
+    assert plans[-1].entry_price == 4430.0
+    assert plans[-1].lot == 0.04

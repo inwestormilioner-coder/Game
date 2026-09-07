@@ -40,6 +40,7 @@ class Config:
 
     symbol: str
     lot_size: float
+    lot_tier_orders: int
     zone_step: float
     pip_size: float
     start_tp_pips: float
@@ -73,6 +74,7 @@ def load_config() -> Config:
         mt5_server=os.getenv("MT5_SERVER", ""),
         symbol=os.getenv("SYMBOL", "XAUUSD"),
         lot_size=_float("LOT_SIZE", 0.01),
+        lot_tier_orders=_int("LOT_TIER_ORDERS", 3),
         zone_step=_float("ZONE_STEP", 0.5),
         pip_size=_float("PIP_SIZE", 0.1),
         start_tp_pips=_float("START_TP_PIPS", 60),

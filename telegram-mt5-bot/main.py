@@ -69,6 +69,7 @@ class Bot:
             pip_size=self.config.pip_size,
             start_tp_pips=self.config.start_tp_pips,
             tp_increment_pips=self.config.tp_increment_pips,
+            lot_tier_orders=self.config.lot_tier_orders,
         )
 
         campaign = Campaign(
