@@ -17,6 +17,15 @@ export function buildWorld(scene: THREE.Scene): void {
   (grid.material as THREE.Material).transparent = true;
   scene.add(grid);
 
+  // A small pond so the fishing spots (gathering professions) have water to sit on.
+  const pond = new THREE.Mesh(
+    new THREE.CircleGeometry(6, 32),
+    new THREE.MeshStandardMaterial({ color: 0x2c6f96, roughness: 0.3, metalness: 0.1 }),
+  );
+  pond.rotation.x = -Math.PI / 2;
+  pond.position.set(19.5, 0.01, 19);
+  scene.add(pond);
+
   const treeMat = new THREE.MeshStandardMaterial({ color: 0x2d5a2d });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d20 });
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.9 });

@@ -293,6 +293,19 @@ Use-based, exponentially-slowing advancement means skill mastery is a genuine lo
 ### How it scales
 Same as XP — computed on demand from stored current skill level + accumulated progress counter (two integers per skill per character); trivial DB footprint even at millions of characters.
 
+### Gathering professions (Mining, Fishing, Woodcutting)
+
+Three non-combat skills that any class can train — unlike weapon skills they aren't tied to a class identity, so there's a single flat MEDIUM rate for all three rather than a per-class table, and (like Arcane Level) they start at skill 0: nobody begins already good at swinging a pickaxe. They advance through the same use-based formula above, one successful gather = one action.
+
+Each profession needs a **tool** carried in the backpack (a pickaxe for Mining, a hatchet for Woodcutting, a rod for Fishing — Fishing additionally consumes one unit of **bait** per cast, tiered the same way) — tools are carried, not equipped; there's no dedicated tool slot yet alongside the 10 gear slots in Section 26. Gathering nodes (ore veins, trees, fishing spots) come in **tiers**, and two independent things gate a successful gather:
+
+- **Skill level gates whether a node can be attempted at all.** A tier-2 node ("a harder mine") refuses a too-low skill level outright — this is the "better mining level → harder mine" half of the design.
+- **Tool tier (and bait tier, for Fishing) gates whether the attempt then succeeds.** A tier-1 pickaxe simply cannot break a tier-2 vein, regardless of skill level — this is the "better pickaxe → better stone" half. For Fishing, the *lower* of rod tier and bait tier caps which fish tier can be landed, so both matter.
+
+Gathering itself is **deterministic** once both gates pass — no roll, no chance to fail or come up empty — RNG stays reserved for monster loot (Section 12), not for professions. What a higher skill level actually buys is speed: each gather sets a short per-profession cooldown (`BaseSeconds / (1 + SkillLevel / 100)`, floored at 0.6s) before the next attempt, so "higher Fishing level → faster fishing" is real without needing a random catch-fail mechanic. A depleted node respawns after a fixed delay, same shape as a monster corpse expiring (Section 12) or a monster's own respawn timer (Section 11).
+
+**Current build status:** two tiers per profession are in and playable — a tier-1 node anyone can start on (Copper vein, Birch tree, a shallow fishing spot) and a tier-2 node needing both level 15 and the better tool (Iron vein, Oak tree, a deep spot). Every class starts with a basic tier-1 toolkit (rusty pickaxe/hatchet, a simple rod, 5 earthworms) so gathering is reachable from minute one — there's no general-goods shop yet (Section 32) to buy tiered tools/bait from, so tier-2 gear is debug/loot-only for now. Fish also double as food (Section 6) — a nice free synergy, since they were always going to be edible. What to actually *do* with ore/logs (smithing, carpentry — a full crafting system) is intentionally still undecided, per the original ask: gather first, decide the crafting sinks later.
+
 ---
 
 ## 6. Combat Resource Systems

@@ -115,7 +115,17 @@ export function actionsToAdvanceSkill(skillLevel: number, rate: SkillRate): numb
 // Off-class weapon skills (a Knight's Distance, etc.) are a later pass once
 // there's more than one attack action to train them with; Wardcraft (below)
 // is in now since blocking already happens on every incoming hit.
-export type SkillId = 'bladeFighting' | 'marksmanship' | 'talonFighting' | 'arcaneLevel' | 'wardcraft';
+// Gathering professions (Mining/Fishing/Woodcutting): unlike weapon skills, these
+// aren't class-tied — any class can pick up a pickaxe/hatchet/rod and train them.
+export type GatherKind = 'mining' | 'fishing' | 'woodcutting';
+
+export type SkillId =
+  | 'bladeFighting'
+  | 'marksmanship'
+  | 'talonFighting'
+  | 'arcaneLevel'
+  | 'wardcraft'
+  | GatherKind;
 
 export const SKILL_NAMES: Record<SkillId, string> = {
   bladeFighting: 'Blade Fighting',
@@ -123,6 +133,16 @@ export const SKILL_NAMES: Record<SkillId, string> = {
   talonFighting: 'Talon Fighting',
   arcaneLevel: 'Arcane Level',
   wardcraft: 'Wardcraft',
+  mining: 'Mining',
+  fishing: 'Fishing',
+  woodcutting: 'Woodcutting',
+};
+
+/** Same training-action rate for every class — gathering has no class-differentiated growth. */
+export const GATHER_RATE: Record<GatherKind, SkillRate> = {
+  mining: 'medium',
+  fishing: 'medium',
+  woodcutting: 'medium',
 };
 
 export const PRIMARY_SKILL: Record<ClassId, SkillId> = {
@@ -148,9 +168,11 @@ export function blockChance(wardcraftLevel: number): number {
   return wardcraftLevel / (wardcraftLevel + 200);
 }
 
-/** Weapon skills start at 10, Arcane Level starts at 0 (GDD Section 5). */
+/** Weapon skills start at 10; Arcane Level and every gathering profession start at 0 (GDD Section 5) —
+ * unlike an innate weapon proficiency, nobody starts out already good at mining/fishing/woodcutting. */
 export function initialSkillLevel(skillId: SkillId): number {
-  return skillId === 'arcaneLevel' ? 0 : 10;
+  const startsAtZero: SkillId[] = ['arcaneLevel', 'mining', 'fishing', 'woodcutting'];
+  return startsAtZero.includes(skillId) ? 0 : 10;
 }
 
 export interface SkillProgress {
@@ -229,7 +251,10 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     armor: def.baseArmor,
     gold: 0,
     maxCapacity: def.baseCapacity,
-    inventory: {},
+    // MVP starter kit (GDD gathering professions): every class begins with the basic
+    // tier-1 toolkit so gathering is reachable from minute one, with no general-goods
+    // shop yet (Section 32) to buy them from. A real shop replaces this later.
+    inventory: { rustyPickaxe: 1, rustyHatchet: 1, simpleFishingRod: 1, earthworms: 5 },
     equipment: {},
     satietySeconds: 0,
     poisonTicksRemaining: 0,

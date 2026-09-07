@@ -6,6 +6,7 @@ import {
   CAPE_UNLOCK_LEVEL,
   CLASSES,
   createInitialStats,
+  GATHER_RATE,
   HP_REGEN_RATE,
   initialSkillLevel,
   PRIMARY_SKILL,
@@ -15,6 +16,7 @@ import {
   WARDCRAFT_RATE,
   type ClassId,
   type EquipSlot,
+  type GatherKind,
   type SkillId,
   type SkillRate,
   type Stats,
@@ -22,6 +24,7 @@ import {
 import { ITEMS } from '../data/items';
 import { ABILITIES, type AbilityDef } from '../data/abilities';
 import { QUESTS } from '../data/quests';
+import type { GatherNodeDef } from '../data/gathering';
 
 // World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
 const BASE_MOVE_SPEED = 5.5;
@@ -35,6 +38,16 @@ export interface AbilityCastResult {
   reason?: AbilityCastReason;
   /** effectiveAttack x damageMultiplier — only meaningful when the ability deals damage. */
   power: number;
+}
+
+export type GatherFailReason = 'cooldown' | 'skillTooLow' | 'noTool' | 'toolTooWeak' | 'noBait' | 'baitTooWeak' | 'full';
+
+export interface GatherResult {
+  ok: boolean;
+  reason?: GatherFailReason;
+  qty?: number;
+  leveledUp?: boolean;
+  newLevel?: number;
 }
 
 export class Player {
@@ -443,6 +456,82 @@ export class Player {
     this.gainGold(def.rewardGold);
     if (def.rewardItemId) this.addItem(def.rewardItemId, 1);
     return { ok: true, leveledUp };
+  }
+
+  skillLevel(skillId: SkillId): number {
+    return this.stats.skills[skillId]?.level ?? initialSkillLevel(skillId);
+  }
+
+  /** Highest tier of an owned gathering tool of this kind (0 = none carried at all). Tools are
+   * carried, not equipped — no dedicated tool slot exists yet (gathering professions). */
+  bestToolTier(kind: GatherKind): number {
+    let best = 0;
+    for (const [itemId, qty] of Object.entries(this.stats.inventory)) {
+      if (qty <= 0) continue;
+      const tool = ITEMS[itemId].tool;
+      if (tool && tool.kind === kind) best = Math.max(best, tool.tier);
+    }
+    return best;
+  }
+
+  private bestBait(): { itemId: string; tier: number } | null {
+    let best: { itemId: string; tier: number } | null = null;
+    for (const [itemId, qty] of Object.entries(this.stats.inventory)) {
+      if (qty <= 0) continue;
+      const bait = ITEMS[itemId].bait;
+      if (bait && (!best || bait.tier > best.tier)) best = { itemId, tier: bait.tier };
+    }
+    return best;
+  }
+
+  bestBaitTier(): number {
+    return this.bestBait()?.tier ?? 0;
+  }
+
+  getGatherCooldownRemaining(kind: GatherKind): number {
+    return this.getCooldownRemaining(`gather:${kind}`);
+  }
+
+  trainGatherSkill(skillId: GatherKind): { leveledUp: boolean; newLevel: number } {
+    return this.trainSkill(skillId, GATHER_RATE[skillId]);
+  }
+
+  /**
+   * Attempts to gather from a node. Skill level gates whether the node can be attempted at all
+   * (a "harder mine" needs a higher Mining level); tool tier (and bait tier, fishing only) gates
+   * whether the attempt succeeds once allowed — never the yield's randomness, gathering itself is
+   * deterministic (RNG stays reserved for monster loot, Section 12). A higher skill level shortens
+   * the post-gather cooldown, which is what makes leveling up "faster gathering" in practice.
+   */
+  tryGather(node: GatherNodeDef): GatherResult {
+    if (this.getGatherCooldownRemaining(node.kind) > 0) return { ok: false, reason: 'cooldown' };
+    if (this.skillLevel(node.kind) < node.requiredSkillLevel) return { ok: false, reason: 'skillTooLow' };
+
+    const toolTier = this.bestToolTier(node.kind);
+    if (toolTier <= 0) return { ok: false, reason: 'noTool' };
+    if (toolTier < node.tier) return { ok: false, reason: 'toolTooWeak' };
+
+    if (node.kind === 'fishing') {
+      const baitTier = this.bestBaitTier();
+      if (baitTier <= 0) return { ok: false, reason: 'noBait' };
+      if (baitTier < node.tier) return { ok: false, reason: 'baitTooWeak' };
+    }
+
+    const qty = node.yieldQtyMin + Math.floor(Math.random() * (node.yieldQtyMax - node.yieldQtyMin + 1));
+    if (!this.canCarry(node.yieldItemId, qty)) return { ok: false, reason: 'full' };
+
+    if (node.kind === 'fishing') {
+      const bait = this.bestBait()!;
+      this.stats.inventory[bait.itemId] -= 1;
+      if (this.stats.inventory[bait.itemId] <= 0) delete this.stats.inventory[bait.itemId];
+    }
+    this.addItem(node.yieldItemId, qty);
+
+    const level = this.skillLevel(node.kind);
+    this.cooldowns[`gather:${node.kind}`] = Math.max(0.6, node.baseGatherSeconds / (1 + level / 100));
+
+    const skillResult = this.trainGatherSkill(node.kind);
+    return { ok: true, qty, leveledUp: skillResult.leveledUp, newLevel: skillResult.newLevel };
   }
 
   get isDead(): boolean {

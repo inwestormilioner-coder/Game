@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { Corpse } from '../entities/Corpse';
 import { Npc } from '../entities/Npc';
+import { GatherNode } from '../entities/GatherNode';
 import { InputController } from '../input/InputController';
 import { HUD } from '../ui/HUD';
 import { LootPanel } from '../ui/LootPanel';
@@ -15,7 +16,10 @@ import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
 import { NPCS } from '../data/npcs';
 import { QUESTS } from '../data/quests';
-import { applyLevelStats, SKILL_NAMES, type ClassId, type SkillId } from '../types';
+import { GATHER_NODES } from '../data/gathering';
+import { ITEMS } from '../data/items';
+import { applyLevelStats, SKILL_NAMES, type ClassId, type GatherKind, type SkillId } from '../types';
+import type { GatherFailReason } from '../entities/Player';
 
 // No two spots share a monster type — GDD Section 13: different creatures
 // should create different hunting strategies, not one best monster.
@@ -37,6 +41,19 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 6.5, -7);
 
 const TARGET_SELECT_RADIUS = 4;
 const NPC_INTERACT_RANGE = 3.5;
+const GATHER_NODE_RANGE = 3.2;
+
+const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
+  mining: 'Kop',
+  woodcutting: 'Rąb',
+  fishing: 'Łów',
+};
+
+const GATHER_TOOL_NAME: Record<GatherKind, string> = {
+  mining: 'kilofa',
+  woodcutting: 'siekiery',
+  fishing: 'wędki',
+};
 
 export class Game {
   private readonly scene = new THREE.Scene();
@@ -47,6 +64,7 @@ export class Game {
   private readonly monsters: Monster[] = [];
   private readonly corpses: Corpse[] = [];
   private readonly npcs: Npc[] = [];
+  private readonly gatherNodes: GatherNode[] = [];
   private readonly input: InputController;
   private readonly hud: HUD;
   private readonly lootPanel: LootPanel;
@@ -59,6 +77,7 @@ export class Game {
   private targetMonster: Monster | null = null;
   private targetCorpse: Corpse | null = null;
   private targetNpc: Npc | null = null;
+  private targetNode: GatherNode | null = null;
   /** The corpse the loot panel is currently showing, if any (distinct from targetCorpse,
    * which recomputes every frame by proximity and would otherwise yank the panel around). */
   private openedCorpse: Corpse | null = null;
@@ -99,6 +118,12 @@ export class Game {
       const npc = new Npc(def);
       this.npcs.push(npc);
       this.scene.add(npc.mesh);
+    }
+
+    for (const def of Object.values(GATHER_NODES)) {
+      const node = new GatherNode(def);
+      this.gatherNodes.push(node);
+      this.scene.add(node.mesh);
     }
 
     this.input = new InputController(root);
@@ -246,6 +271,26 @@ export class Game {
     }
   }
 
+  get debugGatherNodes() {
+    return this.gatherNodes;
+  }
+
+  get debugTargetNode() {
+    return this.targetNode;
+  }
+
+  debugGather() {
+    return this.targetNode ? this.tryGatherAt(this.targetNode) : undefined;
+  }
+
+  /** Gathers a specific node by id regardless of current proximity/targeting — a direct,
+   * frame-timing-independent shortcut for tests (debugGather depends on the per-frame
+   * targeting system having already run, which real gameplay doesn't need to race). */
+  debugGatherAt(nodeId: string) {
+    const node = this.gatherNodes.find((n) => n.def.id === nodeId);
+    return node ? this.tryGatherAt(node) : undefined;
+  }
+
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.1);
 
@@ -255,8 +300,9 @@ export class Game {
       this.player.updateAbilities(dt);
       clampToWorld(this.player.position);
       this.updateCorpses(dt);
+      this.updateGatherNodes(dt);
       this.updateTargets();
-      this.updateNpcTargeting();
+      this.updateInteractTargeting();
       this.handleMonsterUpdates(dt);
       this.handleActionInput();
       this.handleInteractInput();
@@ -289,6 +335,10 @@ export class Game {
       this.lootPanel.hide();
       this.openedCorpse = null;
     }
+  }
+
+  private updateGatherNodes(dt: number): void {
+    for (const node of this.gatherNodes) node.update(dt);
   }
 
   /** Picks the single nearest interactable — a live monster or an unlooted corpse — and
@@ -337,21 +387,47 @@ export class Game {
     }
   }
 
-  /** Separate from combat targeting (GDD Section 17) — NPCs get their own "Rozmawiaj" prompt
-   * so walking up to one never fights over the attack button with a nearby monster/corpse. */
-  private updateNpcTargeting(): void {
-    let nearest: Npc | null = null;
-    let nearestDist = Infinity;
+  /** Separate from combat targeting (GDD Section 17) — NPCs and gathering nodes get their own
+   * "Rozmawiaj"/"Depozyt"/"Kop"/"Rąb"/"Łów" prompt so standing near one never fights over the
+   * attack button with a nearby monster/corpse. Whichever of the two is closer wins the button. */
+  private updateInteractTargeting(): void {
+    let nearestNpc: Npc | null = null;
+    let nearestNpcDist = Infinity;
     for (const npc of this.npcs) {
       const d = npc.distanceTo(this.player.position);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = npc;
+      if (d < nearestNpcDist) {
+        nearestNpcDist = d;
+        nearestNpc = npc;
       }
     }
 
-    this.targetNpc = nearest && nearestDist <= NPC_INTERACT_RANGE ? nearest : null;
-    this.input.setInteractVisible(this.targetNpc !== null, this.targetNpc?.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+    let nearestNode: GatherNode | null = null;
+    let nearestNodeDist = Infinity;
+    for (const node of this.gatherNodes) {
+      if (node.depleted) continue;
+      const d = node.distanceTo(this.player.position);
+      if (d < nearestNodeDist) {
+        nearestNodeDist = d;
+        nearestNode = node;
+      }
+    }
+
+    const npcInRange = nearestNpc && nearestNpcDist <= NPC_INTERACT_RANGE;
+    const nodeInRange = nearestNode && nearestNodeDist <= GATHER_NODE_RANGE;
+
+    if (npcInRange && (!nodeInRange || nearestNpcDist <= nearestNodeDist)) {
+      this.targetNpc = nearestNpc;
+      this.targetNode = null;
+      this.input.setInteractVisible(true, nearestNpc!.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
+    } else if (nodeInRange) {
+      this.targetNpc = null;
+      this.targetNode = nearestNode;
+      this.input.setInteractVisible(true, GATHER_ACTION_LABEL[nearestNode!.def.kind]);
+    } else {
+      this.targetNpc = null;
+      this.targetNode = null;
+      this.input.setInteractVisible(false);
+    }
 
     if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > NPC_INTERACT_RANGE) {
       this.dialoguePanel.hide();
@@ -362,8 +438,49 @@ export class Game {
 
   private handleInteractInput(): void {
     if (!this.input.consumeInteract()) return;
-    if (!this.targetNpc) return;
-    this.interactWithNpc(this.targetNpc);
+    if (this.targetNpc) {
+      this.interactWithNpc(this.targetNpc);
+    } else if (this.targetNode) {
+      this.tryGatherAt(this.targetNode);
+    }
+  }
+
+  /** Mining/Woodcutting/Fishing (gathering professions) — deterministic yield, gated by skill
+   * level (node access) and tool/bait tier (whether the attempt succeeds at all). */
+  private tryGatherAt(node: GatherNode) {
+    const result = this.player.tryGather(node.def);
+    if (!result.ok) {
+      const message = this.gatherFailMessage(node.def.kind, result.reason!);
+      if (message) this.hud.showToast(message);
+      return result;
+    }
+
+    node.deplete();
+    const itemName = ITEMS[node.def.yieldItemId].name;
+    this.hud.showToast(`+${result.qty} ${itemName}`);
+    if (result.leveledUp) {
+      this.hud.showToast(`${SKILL_NAMES[node.def.kind]} → ${result.newLevel}!`);
+    }
+    return result;
+  }
+
+  private gatherFailMessage(kind: GatherKind, reason: GatherFailReason): string | null {
+    switch (reason) {
+      case 'cooldown':
+        return null; // silent, same as an attack still on cooldown
+      case 'skillTooLow':
+        return `Potrzebujesz wyższego poziomu ${SKILL_NAMES[kind]}`;
+      case 'noTool':
+        return `Potrzebujesz ${GATHER_TOOL_NAME[kind]}`;
+      case 'toolTooWeak':
+        return 'Twoje narzędzie jest za słabe';
+      case 'noBait':
+        return 'Potrzebujesz przynęty';
+      case 'baitTooWeak':
+        return 'Twoja przynęta jest za słaba';
+      case 'full':
+        return 'Za ciężkie — plecak pełny';
+    }
   }
 
   private interactWithNpc(npc: Npc): void {

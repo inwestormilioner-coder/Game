@@ -1,4 +1,4 @@
-import type { ClassId, EquipSlot } from '../types';
+import type { ClassId, EquipSlot, GatherKind } from '../types';
 
 export interface ItemDef {
   id: string;
@@ -22,6 +22,12 @@ export interface ItemDef {
     poisonDamagePerTick?: number;
     poisonTicks?: number;
   };
+  /** Present only on gathering tools (pickaxe/hatchet/rod) — carried, not equipped. The highest
+   * tier owned gates which gathering-node tier can be attempted at all (gathering professions). */
+  tool?: { kind: GatherKind; tier: number };
+  /** Present only on fishing bait — consumed one per successful cast; its tier, together with
+   * the rod's, caps which fish tier a cast can land. */
+  bait?: { tier: number };
 }
 
 export const ITEMS: Record<string, ItemDef> = {
@@ -80,11 +86,34 @@ export const ITEMS: Record<string, ItemDef> = {
     id: 'rawMeat', name: 'Raw Meat', weight: 1.5,
     food: { satietySeconds: 900 }, // 15 min
   },
-  // Foraged fruit/berries (safe and poisonous alike) are planned once the
-  // gathering-node system exists (GDD Section 16) — poisonBerries is defined
-  // now so the poison mechanic is testable, not because it drops yet.
+  // Foraged fruit/berries (safe and poisonous alike) as their own forageable
+  // node type are still a later pass — poisonBerries exists so the poison
+  // mechanic is testable via monster loot, not because it's gathered yet.
   poisonBerries: {
     id: 'poisonBerries', name: 'Poison Berries', weight: 0.2,
     food: { satietySeconds: 300, poisonDamagePerTick: 1, poisonTicks: 10 }, // 5 min fed, 20s poison
+  },
+
+  // ---- Gathering professions: tools, bait, and their yields ----
+  rustyPickaxe: { id: 'rustyPickaxe', name: 'Rusty Pickaxe', weight: 2.5, tool: { kind: 'mining', tier: 1 } },
+  sturdyPickaxe: { id: 'sturdyPickaxe', name: 'Sturdy Pickaxe', weight: 3.2, tool: { kind: 'mining', tier: 2 } },
+  rustyHatchet: { id: 'rustyHatchet', name: 'Rusty Hatchet', weight: 2.0, tool: { kind: 'woodcutting', tier: 1 } },
+  sturdyHatchet: { id: 'sturdyHatchet', name: 'Sturdy Hatchet', weight: 2.6, tool: { kind: 'woodcutting', tier: 2 } },
+  simpleFishingRod: { id: 'simpleFishingRod', name: 'Simple Fishing Rod', weight: 1.2, tool: { kind: 'fishing', tier: 1 } },
+  sturdyFishingRod: { id: 'sturdyFishingRod', name: 'Sturdy Fishing Rod', weight: 1.6, tool: { kind: 'fishing', tier: 2 } },
+  earthworms: { id: 'earthworms', name: 'Earthworms', weight: 0.05, bait: { tier: 1 } },
+  fatWorms: { id: 'fatWorms', name: 'Fat Worms', weight: 0.05, bait: { tier: 2 } },
+
+  copperOre: { id: 'copperOre', name: 'Copper Ore', weight: 2.0 },
+  ironOre: { id: 'ironOre', name: 'Iron Ore', weight: 2.8 },
+  rawLog: { id: 'rawLog', name: 'Raw Log', weight: 3.0 },
+  oakLog: { id: 'oakLog', name: 'Oak Log', weight: 3.6 },
+  minnow: {
+    id: 'minnow', name: 'Minnow', weight: 0.4,
+    food: { satietySeconds: 400 },
+  },
+  trout: {
+    id: 'trout', name: 'Trout', weight: 0.9,
+    food: { satietySeconds: 700 },
   },
 };
