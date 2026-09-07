@@ -462,16 +462,15 @@ export class Player {
     return this.stats.skills[skillId]?.level ?? initialSkillLevel(skillId);
   }
 
-  /** Highest tier of an owned gathering tool of this kind (0 = none carried at all). Tools are
-   * carried, not equipped — no dedicated tool slot exists yet (gathering professions). */
+  /** Tier of the gathering tool currently equipped in the weapon slot for this kind, or 0 if
+   * none/wrong kind is equipped. Tools share the weapon slot with combat weapons — equipping a
+   * pickaxe to mine means unequipping whatever sword/bow was there, exactly like swapping gear
+   * (gathering professions: no separate proximity prompt, just equip the tool and tap ATAK). */
   bestToolTier(kind: GatherKind): number {
-    let best = 0;
-    for (const [itemId, qty] of Object.entries(this.stats.inventory)) {
-      if (qty <= 0) continue;
-      const tool = ITEMS[itemId].tool;
-      if (tool && tool.kind === kind) best = Math.max(best, tool.tier);
-    }
-    return best;
+    const weaponId = this.stats.equipment.weapon;
+    if (!weaponId) return 0;
+    const tool = ITEMS[weaponId].tool;
+    return tool && tool.kind === kind ? tool.tier : 0;
   }
 
   private bestBait(): { itemId: string; tier: number } | null {

@@ -35,13 +35,15 @@ const MONSTER_SPAWNS: Array<[keyof typeof MONSTER_DEFS, number, number]> = [
   ['ironhideBoar', 3, 14],
 ];
 
-// Fixed for every player — no rotation, no zoom (GDD Section 28). Seeing
-// further is the minimap's job (Section 10), never the combat camera's.
-const CAMERA_OFFSET = new THREE.Vector3(0, 6.5, -7);
+// Fixed for every player — no rotation, no zoom (GDD Section 28). A tall, steep,
+// wide-angle isometric-style view (reference: a mobile isometric ARPG town square)
+// rather than the earlier close third-person chase camera — still one fixed offset
+// for everyone, just recalibrated to show much more of the surrounding area.
+const CAMERA_OFFSET = new THREE.Vector3(0, 18, -10);
+const CAMERA_FOV = 45;
 
 const TARGET_SELECT_RADIUS = 4;
 const NPC_INTERACT_RANGE = 3.5;
-const GATHER_NODE_RANGE = 3.2;
 
 const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
   mining: 'Kop',
@@ -49,10 +51,12 @@ const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
   fishing: 'Łów',
 };
 
+// Accusative form, for "Załóż ___" (equip ___) — gathering tools are equipped into
+// the weapon slot, same as a combat weapon, not carried loose in the backpack.
 const GATHER_TOOL_NAME: Record<GatherKind, string> = {
-  mining: 'kilofa',
-  woodcutting: 'siekiery',
-  fishing: 'wędki',
+  mining: 'kilof',
+  woodcutting: 'siekierę',
+  fishing: 'wędkę',
 };
 
 export class Game {
@@ -89,10 +93,10 @@ export class Game {
   constructor(root: HTMLElement, canvasHost: HTMLElement, classId: ClassId) {
     this.player = new Player(classId);
     this.scene.background = new THREE.Color(0x8fd0ff);
-    this.scene.fog = new THREE.Fog(0x8fd0ff, 20, 55);
+    this.scene.fog = new THREE.Fog(0x8fd0ff, 30, 75);
 
     this.camera = new THREE.PerspectiveCamera(
-      60,
+      CAMERA_FOV,
       window.innerWidth / window.innerHeight,
       0.1,
       200,
@@ -343,6 +347,10 @@ export class Game {
 
   /** Picks the single nearest interactable — a live monster or an unlooted corpse — and
    * flips the action button between "ATAK" and "SZUKAJ" to match (GDD Section 12). */
+  /** Monsters, lootable corpses, and gathering nodes all compete for the single ATAK button —
+   * whichever is nearest within range wins (corpse breaks ties in its favor, then monster, then
+   * node), same button the player already uses for combat (GDD: no separate gathering prompt —
+   * equip the matching tool as your weapon and tap the target, exactly like attacking). */
   private updateTargets(): void {
     let nearestMonster: Monster | null = null;
     let nearestMonsterDist = Infinity;
@@ -366,17 +374,35 @@ export class Game {
       }
     }
 
-    if (nearestCorpse && nearestCorpseDist <= TARGET_SELECT_RADIUS && nearestCorpseDist <= nearestMonsterDist) {
-      this.targetMonster = null;
+    let nearestNode: GatherNode | null = null;
+    let nearestNodeDist = Infinity;
+    for (const node of this.gatherNodes) {
+      if (node.depleted) continue;
+      const d = this.player.position.distanceTo(node.mesh.position);
+      if (d < nearestNodeDist) {
+        nearestNodeDist = d;
+        nearestNode = node;
+      }
+    }
+
+    const corpseOk = nearestCorpse !== null && nearestCorpseDist <= TARGET_SELECT_RADIUS;
+    const monsterOk = nearestMonster !== null && nearestMonsterDist <= TARGET_SELECT_RADIUS;
+    const nodeOk = nearestNode !== null && nearestNodeDist <= TARGET_SELECT_RADIUS;
+
+    this.targetMonster = null;
+    this.targetCorpse = null;
+    this.targetNode = null;
+
+    if (corpseOk && (!monsterOk || nearestCorpseDist <= nearestMonsterDist) && (!nodeOk || nearestCorpseDist <= nearestNodeDist)) {
       this.targetCorpse = nearestCorpse;
       this.input.setActionLabel('SZUKAJ');
-    } else if (nearestMonster && nearestMonsterDist <= TARGET_SELECT_RADIUS) {
+    } else if (monsterOk && (!nodeOk || nearestMonsterDist <= nearestNodeDist)) {
       this.targetMonster = nearestMonster;
-      this.targetCorpse = null;
       this.input.setActionLabel('ATAK');
+    } else if (nodeOk) {
+      this.targetNode = nearestNode;
+      this.input.setActionLabel(GATHER_ACTION_LABEL[nearestNode!.def.kind]);
     } else {
-      this.targetMonster = null;
-      this.targetCorpse = null;
       this.input.setActionLabel('ATAK');
     }
 
@@ -387,9 +413,8 @@ export class Game {
     }
   }
 
-  /** Separate from combat targeting (GDD Section 17) — NPCs and gathering nodes get their own
-   * "Rozmawiaj"/"Depozyt"/"Kop"/"Rąb"/"Łów" prompt so standing near one never fights over the
-   * attack button with a nearby monster/corpse. Whichever of the two is closer wins the button. */
+  /** NPCs alone — dialogue/depot/ferryman are a conversation, not something you "attack",
+   * so they keep their own dedicated "Rozmawiaj"/"Depozyt" prompt (GDD Section 17). */
   private updateInteractTargeting(): void {
     let nearestNpc: Npc | null = null;
     let nearestNpcDist = Infinity;
@@ -401,44 +426,17 @@ export class Game {
       }
     }
 
-    let nearestNode: GatherNode | null = null;
-    let nearestNodeDist = Infinity;
-    for (const node of this.gatherNodes) {
-      if (node.depleted) continue;
-      const d = node.distanceTo(this.player.position);
-      if (d < nearestNodeDist) {
-        nearestNodeDist = d;
-        nearestNode = node;
-      }
-    }
-
-    const npcInRange = nearestNpc && nearestNpcDist <= NPC_INTERACT_RANGE;
-    const nodeInRange = nearestNode && nearestNodeDist <= GATHER_NODE_RANGE;
-
-    if (npcInRange && (!nodeInRange || nearestNpcDist <= nearestNodeDist)) {
-      this.targetNpc = nearestNpc;
-      this.targetNode = null;
-    } else if (nodeInRange) {
-      this.targetNpc = null;
-      this.targetNode = nearestNode;
-    } else {
-      this.targetNpc = null;
-      this.targetNode = null;
-    }
+    this.targetNpc = nearestNpc && nearestNpcDist <= NPC_INTERACT_RANGE ? nearestNpc : null;
 
     // Any open floating panel (dialogue/depot/inventory/loot) sits centered over the same
     // area as this button — hide it underneath rather than let it bleed through visually.
     const anyPanelOpen =
       this.dialoguePanel.isOpen || this.depotPanel.isOpen || this.inventoryPanel.isOpen || this.lootPanel.isOpen;
 
-    if (anyPanelOpen) {
+    if (anyPanelOpen || !this.targetNpc) {
       this.input.setInteractVisible(false);
-    } else if (this.targetNpc) {
-      this.input.setInteractVisible(true, this.targetNpc.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
-    } else if (this.targetNode) {
-      this.input.setInteractVisible(true, GATHER_ACTION_LABEL[this.targetNode.def.kind]);
     } else {
-      this.input.setInteractVisible(false);
+      this.input.setInteractVisible(true, this.targetNpc.def.role === 'depot' ? 'Depozyt' : 'Rozmawiaj');
     }
 
     if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > NPC_INTERACT_RANGE) {
@@ -450,11 +448,7 @@ export class Game {
 
   private handleInteractInput(): void {
     if (!this.input.consumeInteract()) return;
-    if (this.targetNpc) {
-      this.interactWithNpc(this.targetNpc);
-    } else if (this.targetNode) {
-      this.tryGatherAt(this.targetNode);
-    }
+    if (this.targetNpc) this.interactWithNpc(this.targetNpc);
   }
 
   /** Mining/Woodcutting/Fishing (gathering professions) — deterministic yield, gated by skill
@@ -483,7 +477,7 @@ export class Game {
       case 'skillTooLow':
         return `Potrzebujesz wyższego poziomu ${SKILL_NAMES[kind]}`;
       case 'noTool':
-        return `Potrzebujesz ${GATHER_TOOL_NAME[kind]}`;
+        return `Załóż ${GATHER_TOOL_NAME[kind]}`;
       case 'toolTooWeak':
         return 'Twoje narzędzie jest za słabe';
       case 'noBait':
@@ -600,6 +594,12 @@ export class Game {
     if (this.targetCorpse) {
       if (!this.player.isInRange(this.targetCorpse.mesh.position)) return;
       this.openCorpse(this.targetCorpse);
+      return;
+    }
+
+    if (this.targetNode) {
+      if (!this.player.isInRange(this.targetNode.mesh.position)) return;
+      this.tryGatherAt(this.targetNode);
       return;
     }
 

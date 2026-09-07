@@ -22,8 +22,9 @@ export interface ItemDef {
     poisonDamagePerTick?: number;
     poisonTicks?: number;
   };
-  /** Present only on gathering tools (pickaxe/hatchet/rod) — carried, not equipped. The highest
-   * tier owned gates which gathering-node tier can be attempted at all (gathering professions). */
+  /** Present only on gathering tools (pickaxe/hatchet/rod) — always paired with
+   * `equip: { slot: 'weapon' }`, since a tool must be equipped (replacing any combat
+   * weapon) to gather with it. Its tier gates which gathering-node tier can be attempted. */
   tool?: { kind: GatherKind; tier: number };
   /** Present only on fishing bait — consumed one per successful cast; its tier, together with
    * the rod's, caps which fish tier a cast can land. */
@@ -94,13 +95,32 @@ export const ITEMS: Record<string, ItemDef> = {
     food: { satietySeconds: 300, poisonDamagePerTick: 1, poisonTicks: 10 }, // 5 min fed, 20s poison
   },
 
-  // ---- Gathering professions: tools, bait, and their yields ----
-  rustyPickaxe: { id: 'rustyPickaxe', name: 'Rusty Pickaxe', weight: 2.5, tool: { kind: 'mining', tier: 1 } },
-  sturdyPickaxe: { id: 'sturdyPickaxe', name: 'Sturdy Pickaxe', weight: 3.2, tool: { kind: 'mining', tier: 2 } },
-  rustyHatchet: { id: 'rustyHatchet', name: 'Rusty Hatchet', weight: 2.0, tool: { kind: 'woodcutting', tier: 1 } },
-  sturdyHatchet: { id: 'sturdyHatchet', name: 'Sturdy Hatchet', weight: 2.6, tool: { kind: 'woodcutting', tier: 2 } },
-  simpleFishingRod: { id: 'simpleFishingRod', name: 'Simple Fishing Rod', weight: 1.2, tool: { kind: 'fishing', tier: 1 } },
-  sturdyFishingRod: { id: 'sturdyFishingRod', name: 'Sturdy Fishing Rod', weight: 1.6, tool: { kind: 'fishing', tier: 2 } },
+  // ---- Gathering professions: tools (equipped in the weapon slot, same as a combat
+  // weapon — equipping one means unequipping whatever weapon was there), bait, and yields ----
+  rustyPickaxe: {
+    id: 'rustyPickaxe', name: 'Rusty Pickaxe', weight: 2.5,
+    equip: { slot: 'weapon' }, tool: { kind: 'mining', tier: 1 },
+  },
+  sturdyPickaxe: {
+    id: 'sturdyPickaxe', name: 'Sturdy Pickaxe', weight: 3.2,
+    equip: { slot: 'weapon' }, tool: { kind: 'mining', tier: 2 },
+  },
+  rustyHatchet: {
+    id: 'rustyHatchet', name: 'Rusty Hatchet', weight: 2.0,
+    equip: { slot: 'weapon' }, tool: { kind: 'woodcutting', tier: 1 },
+  },
+  sturdyHatchet: {
+    id: 'sturdyHatchet', name: 'Sturdy Hatchet', weight: 2.6,
+    equip: { slot: 'weapon' }, tool: { kind: 'woodcutting', tier: 2 },
+  },
+  simpleFishingRod: {
+    id: 'simpleFishingRod', name: 'Simple Fishing Rod', weight: 1.2,
+    equip: { slot: 'weapon' }, tool: { kind: 'fishing', tier: 1 },
+  },
+  sturdyFishingRod: {
+    id: 'sturdyFishingRod', name: 'Sturdy Fishing Rod', weight: 1.6,
+    equip: { slot: 'weapon' }, tool: { kind: 'fishing', tier: 2 },
+  },
   earthworms: { id: 'earthworms', name: 'Earthworms', weight: 0.05, bait: { tier: 1 } },
   fatWorms: { id: 'fatWorms', name: 'Fat Worms', weight: 0.05, bait: { tier: 2 } },
 
