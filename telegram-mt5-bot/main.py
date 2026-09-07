@@ -49,6 +49,19 @@ class Bot:
 
     def _handle_zone(self, msg: ParsedMessage) -> None:
         zone = msg.zone
+
+        zone_width = zone.zone_high - zone.zone_low
+        if zone_width > self.config.max_zone_width:
+            log.error("=" * 70)
+            log.error(
+                "REFUSING zone signal: %.2f-%.2f is %.2f wide, over MAX_ZONE_WIDTH=%.2f - "
+                "this looks like a parsing error, not a real signal. No orders placed.",
+                zone.zone_low, zone.zone_high, zone_width, self.config.max_zone_width,
+            )
+            log.error("raw message: %s", msg.raw_text.replace("\n", " | "))
+            log.error("=" * 70)
+            return
+
         plans = plan_orders(
             zone,
             lot=self.config.lot_size,

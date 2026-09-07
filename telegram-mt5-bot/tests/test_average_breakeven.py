@@ -73,7 +73,7 @@ def _config(**overrides) -> Config:
         mt5_path="", mt5_login=0, mt5_password="", mt5_server="",
         symbol="XAUUSD", lot_size=0.01, zone_step=0.5, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, deviation_points=20, magic_base=990000,
-        risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=False,
+        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=False,
     )
     base.update(overrides)
     return Config(**base)

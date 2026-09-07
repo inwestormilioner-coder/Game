@@ -20,7 +20,7 @@ def _dry_run_config(**overrides) -> Config:
         mt5_path="", mt5_login=0, mt5_password="", mt5_server="",
         symbol="XAUUSD", lot_size=0.01, zone_step=0.5, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, deviation_points=20, magic_base=990000,
-        risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=True,
+        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=True,
     )
     base.update(overrides)
     return Config(**base)
@@ -57,3 +57,26 @@ def test_close_all_message_leaves_campaign_untouched(tmp_path):
     campaigns = store.most_recent_active("XAUUSD")
     assert len(campaigns) == 1
     assert campaigns[0].active is True
+
+
+def test_refuses_a_zone_wider_than_max_zone_width(tmp_path):
+    # Regression-style guard for a live incident: a parser bug once misread
+    # "Strefa: 4397-02" as a $100-wide zone (4302-4402) instead of $5
+    # (4397-4402), which would have fired ~200 orders instead of ~11. This
+    # test exercises the width guard directly with a full 4-digit second
+    # number (so it's a $150 zone regardless of the tail-matching math).
+    store = CampaignStore(path=tmp_path / "campaigns.json")
+    bot = Bot(_dry_run_config(max_zone_width=20.0), store=store)
+
+    asyncio.run(bot.handle_text("Kierunek: Sell Gold\nStrefa: 4450-4300\nSL: 60 pips"))
+
+    assert store.most_recent_active("XAUUSD") == []
+
+
+def test_accepts_a_normal_width_zone_at_the_limit(tmp_path):
+    store = CampaignStore(path=tmp_path / "campaigns.json")
+    bot = Bot(_dry_run_config(max_zone_width=20.0), store=store)
+
+    asyncio.run(bot.handle_text("Kierunek: Buy Gold\nStrefa: 4425-20\nSL: 60 pips"))
+
+    assert len(store.most_recent_active("XAUUSD")) == 1

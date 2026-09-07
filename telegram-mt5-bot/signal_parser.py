@@ -57,16 +57,30 @@ def _strip_diacritics(text: str) -> str:
 
 
 def _combine_zone_prices(a: str, b: str) -> tuple[float, float]:
-    """'4425-20' -> (4420.0, 4425.0); '4430-35' -> (4430.0, 4435.0).
+    """'4425-20' -> (4420.0, 4425.0); '4430-35' -> (4430.0, 4435.0);
+    '4397-02' -> (4397.0, 4402.0).
 
-    The second number is the last N digits of the real price; it replaces
+    The second number is the last N digits of the real price - it replaces
     the tail of the first number rather than being read as its own price.
+    Picks whichever hundred (b's block, one below, or one above) makes the
+    combined price closest to `a`, so a zone that crosses a round hundred
+    (...97 -> ...02) resolves the right way instead of just concatenating
+    a's leading digits with b - a live signal ("Strefa: 4397-02") once got
+    misread as 4302 that way, turning a $5 zone into a $100 one and firing
+    ~200 orders instead of ~11.
     """
-    if len(b) < len(a):
-        b_full = a[: len(a) - len(b)] + b
-    else:
-        b_full = b
-    p1, p2 = float(a), float(b_full)
+    if len(b) >= len(a):
+        p1, p2 = float(a), float(b)
+        return (p1, p2) if p1 <= p2 else (p2, p1)
+
+    a_val = float(a)
+    scale = 10 ** len(b)
+    base = (int(a_val) // scale) * scale
+    b_val = float(b)
+    candidates = [base + b_val - scale, base + b_val, base + b_val + scale]
+    b_full = min(candidates, key=lambda c: abs(c - a_val))
+
+    p1, p2 = a_val, b_full
     return (p1, p2) if p1 <= p2 else (p2, p1)
 
 

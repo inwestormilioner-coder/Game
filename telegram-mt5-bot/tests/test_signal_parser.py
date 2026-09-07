@@ -36,6 +36,25 @@ def test_sell_direction():
     assert msg.zone.direction == "SELL"
 
 
+def test_zone_signal_wraps_forward_across_a_hundred():
+    # Real signal that broke the old prefix-concat logic: "4397-02" means
+    # the zone crosses upward into the 4400s (4397 -> 4402, $5 wide), not
+    # 4397 -> 4302 ($95 wide) which the naive "43" + "02" concat produced.
+    msg = parse("TAKE PROFIT: Kierunek: Sell Gold\nStrefa: 4397-02\nSL: 60 pips")
+    assert msg.type == SignalType.ZONE
+    assert msg.zone.zone_low == 4397.0
+    assert msg.zone.zone_high == 4402.0
+
+
+def test_zone_signal_wraps_backward_across_a_hundred():
+    # Mirror case: tail is close to a's own last two digits but through the
+    # hundred below (e.g. 4402-97 should mean 4397 -> 4402, not 4402 -> 4297).
+    msg = parse("TAKE PROFIT: Kierunek: Sell Gold\nStrefa: 4402-97\nSL: 60 pips")
+    assert msg.type == SignalType.ZONE
+    assert msg.zone.zone_low == 4397.0
+    assert msg.zone.zone_high == 4402.0
+
+
 def test_breakeven_update():
     msg = parse(
         "TAKE PROFIT: +70 pips ⚖️ SL na BE już możliwy, choć rynek potrafi cofnąć. "

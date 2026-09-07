@@ -46,6 +46,11 @@ class Config:
     tp_increment_pips: float
     deviation_points: int
     magic_base: int
+    # Safety net against a misparsed/malformed zone turning into a huge
+    # order count (e.g. a parser bug once misread "4397-02" as a $100-wide
+    # zone instead of $5, firing ~200 orders instead of ~11) - a zone wider
+    # than this is refused rather than acted on.
+    max_zone_width: float
 
     # Own SL management: the bot ignores the channel's "SL na BE" messages
     # and instead moves SL to the basket's average entry price once floating
@@ -74,6 +79,7 @@ def load_config() -> Config:
         tp_increment_pips=_float("TP_INCREMENT_PIPS", 10),
         deviation_points=_int("DEVIATION_POINTS", 20),
         magic_base=_int("MAGIC_BASE", 990000),
+        max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),
         risk_reward_trigger=_float("RISK_REWARD_TRIGGER", 1.0),
         monitor_interval_seconds=_float("MONITOR_INTERVAL_SECONDS", 5),
         dry_run=_bool("DRY_RUN", True),
