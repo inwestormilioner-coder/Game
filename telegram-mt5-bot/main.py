@@ -70,6 +70,8 @@ class Bot:
             start_tp_pips=self.config.start_tp_pips,
             tp_increment_pips=self.config.tp_increment_pips,
             lot_tier_orders=self.config.lot_tier_orders,
+            tp_mode=self.config.tp_mode,
+            tp_risk_reward_ratio=self.config.tp_risk_reward_ratio,
         )
 
         campaign = Campaign(

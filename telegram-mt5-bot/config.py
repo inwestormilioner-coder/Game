@@ -45,6 +45,12 @@ class Config:
     pip_size: float
     start_tp_pips: float
     tp_increment_pips: float
+    # "ladder" (start_tp_pips/tp_increment_pips above) or "risk_reward" -
+    # each order's TP set to tp_risk_reward_ratio times ITS OWN distance to
+    # the shared SL (1.0 = 1:1), which varies per order since SL is one
+    # fixed price but entries sit at different distances from it.
+    tp_mode: str
+    tp_risk_reward_ratio: float
     deviation_points: int
     magic_base: int
     # Safety net against a misparsed/malformed zone turning into a huge
@@ -79,6 +85,8 @@ def load_config() -> Config:
         pip_size=_float("PIP_SIZE", 0.1),
         start_tp_pips=_float("START_TP_PIPS", 60),
         tp_increment_pips=_float("TP_INCREMENT_PIPS", 10),
+        tp_mode=os.getenv("TP_MODE", "risk_reward"),
+        tp_risk_reward_ratio=_float("TP_RISK_REWARD_RATIO", 1.0),
         deviation_points=_int("DEVIATION_POINTS", 20),
         magic_base=_int("MAGIC_BASE", 990000),
         max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),

@@ -51,6 +51,42 @@ def test_plan_orders_lot_tier_orders_is_configurable():
     assert [p.lot for p in plans] == [0.03, 0.02, 0.01]
 
 
+def test_plan_orders_risk_reward_tp_mode_is_1to1_per_order():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10, tp_mode="risk_reward",
+    )
+
+    assert all(p.sl_price == 4414.0 for p in plans)
+    # every order's TP distance from entry equals its own SL distance -
+    # not a flat pip ladder unrelated to how far that specific entry is
+    # from the (shared) SL.
+    for p in plans:
+        assert round(p.tp_price - p.entry_price, 2) == round(p.entry_price - p.sl_price, 2)
+
+    # lowest entry (4420.0) is closest to SL -> smallest TP (60 pips);
+    # highest entry (4425.0) is furthest -> biggest TP (110 pips)
+    assert plans[0].entry_price == 4420.0
+    assert plans[0].tp_pips == 60
+    assert plans[0].tp_price == 4426.0
+    assert plans[-1].entry_price == 4425.0
+    assert plans[-1].tp_pips == 110
+    assert plans[-1].tp_price == 4436.0
+
+
+def test_plan_orders_risk_reward_ratio_is_configurable():
+    zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        tp_mode="risk_reward", tp_risk_reward_ratio=2.0,
+    )
+
+    assert all(p.sl_price == 4436.0 for p in plans)
+    for p in plans:
+        # SELL: TP sits below entry, at 2x that entry's own distance to SL
+        assert round(p.entry_price - p.tp_price, 2) == round(2 * (p.sl_price - p.entry_price), 2)
+
+
 def test_plan_orders_sell_zone_mirrors_direction():
     zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
     plans = plan_orders(zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10)

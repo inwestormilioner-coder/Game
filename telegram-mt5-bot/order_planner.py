@@ -1,10 +1,18 @@
 """Turns a parsed zone signal into a ladder of individual pending orders:
-one order every `step` dollars across the zone, with a TP ladder that
-starts at `start_tp_pips` for the lowest price in the zone and grows by
-`tp_increment_pips` for each order above it. SL is a single shared price
-for the whole grid - sl_pips away from the zone's worst entry (the lowest
-price for a BUY zone, the highest for a SELL zone) - not a separate SL
-measured from each order's own entry.
+one order every `step` dollars across the zone. SL is a single shared
+price for the whole grid - sl_pips away from the zone's worst entry (the
+lowest price for a BUY zone, the highest for a SELL zone) - not a separate
+SL measured from each order's own entry.
+
+TP is computed one of two ways (`tp_mode`):
+  "ladder" (default) - starts at `start_tp_pips` for the lowest price in
+    the zone and grows by `tp_increment_pips` for each order above it,
+    regardless of where SL is.
+  "risk_reward" - each order's TP is `tp_risk_reward_ratio` times THAT
+    order's own distance to the shared SL (1.0 = 1:1) - since SL is one
+    fixed price but every entry sits at a different distance from it, this
+    makes TP grow automatically the further an entry is from SL, without
+    picking pip numbers by hand.
 
 Lot size grows the closer an entry is to that shared SL: every
 `lot_tier_orders` orders, counted starting from the entry furthest from
@@ -77,6 +85,8 @@ def plan_orders(
     start_tp_pips: float,
     tp_increment_pips: float,
     lot_tier_orders: int = 3,
+    tp_mode: str = "ladder",
+    tp_risk_reward_ratio: float = 1.0,
 ) -> List[OrderPlan]:
     levels = generate_price_levels(zone.zone_low, zone.zone_high, step)
 
@@ -91,8 +101,14 @@ def plan_orders(
 
     plans: List[OrderPlan] = []
     for i, entry in enumerate(levels):
-        tp_pips = start_tp_pips + i * tp_increment_pips
-        tp_price = entry + tp_pips * pip_size if zone.direction == "BUY" else entry - tp_pips * pip_size
+        if tp_mode == "risk_reward":
+            tp_distance = abs(entry - shared_sl_price) * tp_risk_reward_ratio
+            tp_pips = round(tp_distance / pip_size, 1)
+        else:
+            tp_pips = start_tp_pips + i * tp_increment_pips
+            tp_distance = tp_pips * pip_size
+
+        tp_price = entry + tp_distance if zone.direction == "BUY" else entry - tp_distance
         order_lot = round(lot * (tier_of_index[i] + 1), 2)
 
         plans.append(
