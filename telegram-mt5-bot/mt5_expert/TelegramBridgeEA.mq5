@@ -35,6 +35,11 @@
 //| Each file is deleted once processed. Results are printed to the |
 //| Experts/Journal log - the Python side never reads a result file,|
 //| it just polls positions/orders by magic number afterwards.      |
+//|                                                                  |
+//| An ORDER whose entry price is within the broker's minimum       |
+//| stop/freeze distance of the current price fills at MARKET       |
+//| instead of being sent as a pending order (which would just get  |
+//| rejected for being too close) - same SL/TP either way.          |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
@@ -189,12 +194,35 @@ void ProcessCommandFile(string relativePath)
   }
 
 //+------------------------------------------------------------------+
-//| Places one pending order per ORDER= line.                        |
+//| Picks a filling mode the symbol actually supports for market     |
+//| (TRADE_ACTION_DEAL) execution - brokers vary in which of         |
+//| FOK/IOC/RETURN they accept for immediate fills.                  |
+//+------------------------------------------------------------------+
+ENUM_ORDER_TYPE_FILLING MarketFillingModeFor(string symbol)
+  {
+   long filling = SymbolInfoInteger(symbol, SYMBOL_FILLING_MODE);
+   if((filling & SYMBOL_FILLING_FOK) != 0)
+      return ORDER_FILLING_FOK;
+   if((filling & SYMBOL_FILLING_IOC) != 0)
+      return ORDER_FILLING_IOC;
+   return ORDER_FILLING_RETURN;
+  }
+
+//+------------------------------------------------------------------+
+//| Places one order per ORDER= line: a normal pending order, except |
+//| when the entry price is within the broker's minimum stop/freeze  |
+//| distance of the current price - a pending order that close would |
+//| just get rejected, so that one entry fills at MARKET instead     |
+//| (same SL/TP), rather than being silently skipped.                |
 //+------------------------------------------------------------------+
 void HandleOpenOrders(long magic, string symbol, string comment, int deviation, string &orderLines[], int orderCount)
   {
    double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   long stopsLevelPts = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   long freezeLevelPts = SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   double minDistance = MathMax(stopsLevelPts, freezeLevelPts) * point;
 
    for(int i = 0; i < orderCount; i++)
      {
@@ -212,37 +240,52 @@ void HandleOpenOrders(long magic, string symbol, string comment, int deviation, 
       double tp    = StringToDouble(parts[3]);
       double lot   = StringToDouble(parts[4]);
 
-      ENUM_ORDER_TYPE orderType;
-      if(direction == "BUY")
-         orderType = (entry < ask) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_BUY_STOP;
-      else
-         orderType = (entry > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
+      double refPrice = (direction == "BUY") ? ask : bid;
+      bool atMarket = (MathAbs(entry - refPrice) <= minDistance);
 
       MqlTradeRequest request;
       MqlTradeResult  result;
       ZeroMemory(request);
       ZeroMemory(result);
 
-      request.action       = TRADE_ACTION_PENDING;
-      request.symbol       = symbol;
-      request.volume       = lot;
-      request.type         = orderType;
-      request.price        = entry;
-      request.sl           = sl;
-      request.tp           = tp;
-      request.deviation    = deviation;
-      request.magic        = magic;
-      request.comment      = comment;
-      request.type_time    = ORDER_TIME_GTC;
-      request.type_filling = ORDER_FILLING_RETURN;
+      request.symbol    = symbol;
+      request.volume     = lot;
+      request.sl         = sl;
+      request.tp         = tp;
+      request.magic       = magic;
+      request.comment     = comment;
+
+      if(atMarket)
+        {
+         request.action       = TRADE_ACTION_DEAL;
+         request.type         = (direction == "BUY") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+         request.price        = refPrice;
+         request.deviation    = deviation;
+         request.type_filling = MarketFillingModeFor(symbol);
+        }
+      else
+        {
+         ENUM_ORDER_TYPE orderType;
+         if(direction == "BUY")
+            orderType = (entry < ask) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_BUY_STOP;
+         else
+            orderType = (entry > bid) ? ORDER_TYPE_SELL_LIMIT : ORDER_TYPE_SELL_STOP;
+
+         request.action       = TRADE_ACTION_PENDING;
+         request.type         = orderType;
+         request.price        = entry;
+         request.deviation    = deviation;
+         request.type_time    = ORDER_TIME_GTC;
+         request.type_filling = ORDER_FILLING_RETURN;
+        }
 
       bool ok = OrderSend(request, result);
       if(!ok || result.retcode != TRADE_RETCODE_DONE)
-         PrintFormat("Bridge: order FAILED %s @ %.2f retcode=%d comment='%s'",
-                     direction, entry, result.retcode, result.comment);
+         PrintFormat("Bridge: %s order FAILED %s @ %.2f retcode=%d comment='%s'",
+                     atMarket ? "MARKET" : "PENDING", direction, entry, result.retcode, result.comment);
       else
-         PrintFormat("Bridge: placed %s @ %.2f sl=%.2f tp=%.2f ticket=%d",
-                     direction, entry, sl, tp, (int)result.order);
+         PrintFormat("Bridge: placed %s %s @ %.2f (requested %.2f) sl=%.2f tp=%.2f ticket=%d",
+                     atMarket ? "MARKET" : "PENDING", direction, result.price, entry, sl, tp, (int)result.order);
      }
   }
 

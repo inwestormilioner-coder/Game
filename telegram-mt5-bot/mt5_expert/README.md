@@ -67,7 +67,11 @@ automatically), or remove and re-drag it onto the chart if it doesn't.
 ## How to tell it's working
 
 - MT5 **Eksperci** tab logs every order it places/fails and every SL move,
-  e.g. `Bridge: placed BUY @ 4469.00 sl=4463.00 tp=4475.00 ticket=123456`.
+  e.g. `Bridge: placed PENDING BUY @ 4469.00 (requested 4469.00) sl=4463.00
+  tp=4475.00 ticket=123456`. An entry that's within the broker's minimum
+  stop/freeze distance of the current price fills at MARKET instead (same
+  line, but `MARKET` and a fill price that may differ slightly from the
+  requested one) rather than being rejected/skipped for being too close.
 - The Python bot logs `queued N orders for EA bridge (campaign ...) -> ...`
   when it hands off a zone signal, then you'll see the resulting positions
   show up in MT5's **Handel (Trade)** tab a moment later.
