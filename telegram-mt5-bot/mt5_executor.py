@@ -16,6 +16,11 @@ executes with native OrderSend() calls - the same trading path a human
 clicking "New Order" uses, unaffected by that restriction. All read-only
 calls (prices, positions, orders, terminal state) still go straight through
 the Python API, which works fine either way - see mt5_expert/README.md.
+
+Three command types get written: OPEN_ORDERS and MODIFY_SL (one shared new
+SL for every position matching a magic number - EXIT_MODE=tp's basket
+breakeven) and MODIFY_POSITIONS (a distinct new SL per ticket -
+EXIT_MODE=trailing_stop's per-position trailing).
 """
 from __future__ import annotations
 
@@ -79,9 +84,13 @@ class Mt5Executor:
     def _bridge_dir(self) -> Path:
         """MT5's shared "Common\\Files" folder (same for every terminal
         install on this machine), where TelegramBridgeEA.mq5 - attached to
-        a chart with FILE_COMMON file access - looks for command files."""
+        a chart with FILE_COMMON file access - looks for command files.
+        The subfolder name is configurable (MT5_BRIDGE_SUBFOLDER) so a
+        second bot instance running against a second MT5 account doesn't
+        cross-talk with the first - each needs its own EA instance with a
+        matching BridgeSubfolder input."""
         info = self._mt5.terminal_info()
-        bridge_dir = Path(info.commondata_path) / "Files" / "tg_bridge"
+        bridge_dir = Path(info.commondata_path) / "Files" / self.config.bridge_subfolder
         bridge_dir.mkdir(parents=True, exist_ok=True)
         return bridge_dir
 
@@ -171,6 +180,51 @@ class Mt5Executor:
         path = self._write_command(f"modify_{campaign.id}", lines)
         log.info("queued SL update to basket average %.2f for campaign %s -> %s", avg_entry, campaign.id, path.name)
         return True
+
+    def check_trailing_stops(self, campaign: Campaign, trailing_pips: float, pip_size: float) -> None:
+        """EXIT_MODE=trailing_stop only: every open position in this
+        campaign trails its OWN SL trailing_pips behind the current price,
+        independently of every other position and of the basket-average
+        logic in check_average_breakeven (the two are mutually exclusive -
+        see main.py). Only ever tightens a position's SL, never loosens it,
+        so this is safe to call every poll tick unconditionally.
+
+        Since each position can need a different new SL, this queues one
+        MODIFY_POSITIONS command (targeting each position by ticket) rather
+        than the single-shared-SL MODIFY_SL command check_average_breakeven
+        uses.
+        """
+        mt5 = self._mt5
+        positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
+        if not positions:
+            return
+
+        bid, ask = self.current_price()
+        trailing_distance = trailing_pips * pip_size
+
+        updates = []
+        for pos in positions:
+            if campaign.direction == "BUY":
+                candidate_sl = round(bid - trailing_distance, 2)
+                improved = candidate_sl > pos.sl
+            else:
+                candidate_sl = round(ask + trailing_distance, 2)
+                improved = candidate_sl < pos.sl
+            if improved:
+                updates.append((pos.ticket, candidate_sl, pos.tp))
+
+        if not updates:
+            return
+
+        lines = ["TYPE=MODIFY_POSITIONS", f"SYMBOL={self.config.symbol}"]
+        for ticket, sl, tp in updates:
+            lines.append(f"POSITION={ticket},{sl},{tp}")
+
+        path = self._write_command(f"trail_{campaign.id}", lines)
+        log.info(
+            "queued trailing SL update for %d position(s) in campaign %s -> %s",
+            len(updates), campaign.id, path.name,
+        )
 
     def campaign_has_open_trades(self, campaign: Campaign) -> bool:
         """True while a campaign still has pending orders or open positions

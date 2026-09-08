@@ -4,7 +4,8 @@ price for the whole grid - sl_pips away from the zone's worst entry (the
 lowest price for a BUY zone, the highest for a SELL zone) - not a separate
 SL measured from each order's own entry.
 
-TP is computed one of two ways (`tp_mode`):
+When `exit_mode` is "tp" (default), each order gets a fixed TP computed one
+of two ways (`tp_mode`):
   "ladder" (default) - starts at `start_tp_pips` for the lowest price in
     the zone and grows by `tp_increment_pips` for each order above it,
     regardless of where SL is.
@@ -13,6 +14,11 @@ TP is computed one of two ways (`tp_mode`):
     fixed price but every entry sits at a different distance from it, this
     makes TP grow automatically the further an entry is from SL, without
     picking pip numbers by hand.
+
+When `exit_mode` is "trailing_stop", no TP is set at all (tp_price=0,
+meaning "none" in MT5) - the position is meant to be closed by a
+continuously trailing SL managed elsewhere (see Mt5Executor.check_trailing_stops),
+not a fixed profit target.
 
 Lot size grows the closer an entry is to that shared SL: every
 `lot_tier_orders` orders, counted starting from the entry furthest from
@@ -87,6 +93,7 @@ def plan_orders(
     lot_tier_orders: int = 3,
     tp_mode: str = "ladder",
     tp_risk_reward_ratio: float = 1.0,
+    exit_mode: str = "tp",
 ) -> List[OrderPlan]:
     levels = generate_price_levels(zone.zone_low, zone.zone_high, step)
 
@@ -101,14 +108,18 @@ def plan_orders(
 
     plans: List[OrderPlan] = []
     for i, entry in enumerate(levels):
-        if tp_mode == "risk_reward":
-            tp_distance = abs(entry - shared_sl_price) * tp_risk_reward_ratio
-            tp_pips = round(tp_distance / pip_size, 1)
+        if exit_mode == "trailing_stop":
+            tp_pips = 0.0
+            tp_price = 0.0
         else:
-            tp_pips = start_tp_pips + i * tp_increment_pips
-            tp_distance = tp_pips * pip_size
+            if tp_mode == "risk_reward":
+                tp_distance = abs(entry - shared_sl_price) * tp_risk_reward_ratio
+                tp_pips = round(tp_distance / pip_size, 1)
+            else:
+                tp_pips = start_tp_pips + i * tp_increment_pips
+                tp_distance = tp_pips * pip_size
+            tp_price = entry + tp_distance if zone.direction == "BUY" else entry - tp_distance
 
-        tp_price = entry + tp_distance if zone.direction == "BUY" else entry - tp_distance
         order_lot = round(lot * (tier_of_index[i] + 1), 2)
 
         plans.append(

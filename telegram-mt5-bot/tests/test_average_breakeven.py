@@ -70,9 +70,10 @@ class FakeMt5:
 def _config(**overrides) -> Config:
     base = dict(
         telegram_api_id=0, telegram_api_hash="", telegram_session_name="x", telegram_channel="",
-        mt5_path="", mt5_login=0, mt5_password="", mt5_server="",
+        mt5_path="", mt5_login=0, mt5_password="", mt5_server="", bridge_subfolder="tg_bridge",
         symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, zone_step=0.5, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
+        exit_mode="tp", trailing_stop_pips=36.0,
         deviation_points=20, magic_base=990000,
         max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=False,
     )
@@ -161,6 +162,74 @@ def test_sell_basket_uses_ask_and_mirrors_math(tmp_path):
     files = _bridge_files(fake, "modify_")
     assert len(files) == 1
     assert "NEW_SL=4427.5" in files[0].read_text()
+
+
+def test_trailing_stop_tightens_sl_when_price_moves_favorably(tmp_path):
+    # BUY position entry 4420, initial (shared-zone) SL 4414. Price has run
+    # up to bid=4460 - trailing 36 pips (=$3.6) behind gives candidate SL
+    # 4456.4, well past the current 4414, so it should update.
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    fake = FakeMt5(positions=positions, bid=4460.0, ask=4460.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "TYPE=MODIFY_POSITIONS" in content
+    assert "POSITION=111,4456.4,0.0" in content
+
+
+def test_trailing_stop_does_not_loosen_an_already_tighter_sl(tmp_path):
+    # Candidate SL from the current price (4460 - 3.6 = 4456.4) is WORSE
+    # than the position's current SL (4458.0, already trailed further by
+    # an earlier tick) - must not move it backwards.
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4458.0)]
+    fake = FakeMt5(positions=positions, bid=4460.0, ask=4460.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    assert _bridge_files(fake, "trail_") == []
+
+
+def test_trailing_stop_sell_direction_trails_above_ask(tmp_path):
+    positions = [FakePosition(ticket=222, magic=990000, price_open=4430.0, volume=0.01, tp=0.0, sl=4436.0)]
+    fake = FakeMt5(positions=positions, bid=4389.8, ask=4390.0, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="SELL", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    # SELL: candidate = ask + trailing distance = 4390.0 + 3.6 = 4393.6
+    assert "POSITION=222,4393.6,0.0" in files[0].read_text()
+
+
+def test_trailing_stop_handles_each_position_independently(tmp_path):
+    # Candidate SL from the current price is 4460.0 - 3.6 = 4456.4 for
+    # both positions (same symbol/price), but only ticket 1's current SL
+    # (4414.0) is behind that; ticket 2 (4457.0, already trailed tighter
+    # than the new candidate by an earlier tick) must be left alone.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4455.0, volume=0.01, tp=0.0, sl=4457.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4460.0, ask=4460.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "POSITION=1,4456.4,0.0" in content
+    assert "POSITION=2" not in content
 
 
 def test_place_zone_orders_writes_one_command_file(tmp_path):

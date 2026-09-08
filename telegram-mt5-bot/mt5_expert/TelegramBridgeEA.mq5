@@ -32,6 +32,13 @@
 //|   SYMBOL=XAUUSD                                                 |
 //|   NEW_SL=4422.50                                                |
 //|                                                                  |
+//|   TYPE=MODIFY_POSITIONS                                         |
+//|   SYMBOL=XAUUSD                                                 |
+//|   POSITION=123456,4422.50,4430.00                               |
+//|   POSITION=123457,4423.10,4431.00                                |
+//|   ...  (ticket,new_sl,tp - each position its own new SL, unlike  |
+//|         MODIFY_SL's one shared SL for every position of a magic) |
+//|                                                                  |
 //| Each file is deleted once processed. Results are printed to the |
 //| Experts/Journal log - the Python side never reads a result file,|
 //| it just polls positions/orders by magic number afterwards.      |
@@ -140,6 +147,8 @@ void ProcessCommandFile(string relativePath)
    double newSl = 0;
    string orderLines[];
    int    orderCount = 0;
+   string positionLines[];
+   int    positionCount = 0;
 
    for(int i = 0; i < n; i++)
      {
@@ -170,6 +179,12 @@ void ProcessCommandFile(string relativePath)
          orderLines[orderCount] = value;
          orderCount++;
         }
+      else if(key == "POSITION")
+        {
+         ArrayResize(positionLines, positionCount + 1);
+         positionLines[positionCount] = value;
+         positionCount++;
+        }
      }
 
    if(type == "OPEN_ORDERS")
@@ -186,6 +201,8 @@ void ProcessCommandFile(string relativePath)
      }
    else if(type == "MODIFY_SL")
       HandleModifySl(magic, symbol, newSl);
+   else if(type == "MODIFY_POSITIONS")
+      HandleModifyPositions(symbol, positionLines, positionCount);
    else
       PrintFormat("Bridge: unknown command TYPE in %s: '%s'", relativePath, type);
 
@@ -333,5 +350,53 @@ void HandleModifySl(long magic, string symbol, double newSl)
 
    if(moved == 0)
       PrintFormat("Bridge: MODIFY_SL for magic=%d found no matching open positions", (int)magic);
+  }
+
+//+------------------------------------------------------------------+
+//| Moves SL (and re-applies TP) on specific positions by ticket -   |
+//| unlike HandleModifySl, each POSITION= line carries its own new   |
+//| SL, used for per-position trailing stops (EXIT_MODE=trailing_stop|
+//| in the Python bot) where every position trails independently.    |
+//+------------------------------------------------------------------+
+void HandleModifyPositions(string symbol, string &positionLines[], int positionCount)
+  {
+   for(int i = 0; i < positionCount; i++)
+     {
+      string parts[];
+      int partCount = StringSplit(positionLines[i], ',', parts);
+      if(partCount < 3)
+        {
+         PrintFormat("Bridge: malformed POSITION line '%s'", positionLines[i]);
+         continue;
+        }
+
+      ulong ticket = (ulong)StringToInteger(parts[0]);
+      double newSl = StringToDouble(parts[1]);
+      double tp    = StringToDouble(parts[2]);
+
+      if(!PositionSelectByTicket(ticket))
+        {
+         PrintFormat("Bridge: MODIFY_POSITIONS ticket %d not found (already closed?)", (int)ticket);
+         continue;
+        }
+
+      MqlTradeRequest request;
+      MqlTradeResult  result;
+      ZeroMemory(request);
+      ZeroMemory(result);
+
+      request.action   = TRADE_ACTION_SLTP;
+      request.position = ticket;
+      request.symbol    = symbol;
+      request.sl       = newSl;
+      request.tp       = tp;
+
+      bool ok = OrderSend(request, result);
+      if(!ok || result.retcode != TRADE_RETCODE_DONE)
+         PrintFormat("Bridge: trailing SL FAILED for ticket %d retcode=%d comment='%s'",
+                     (int)ticket, result.retcode, result.comment);
+      else
+         PrintFormat("Bridge: trailing SL -> %.2f for ticket %d", newSl, (int)ticket);
+     }
   }
 //+------------------------------------------------------------------+

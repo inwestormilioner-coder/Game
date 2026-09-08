@@ -72,6 +72,7 @@ class Bot:
             lot_tier_orders=self.config.lot_tier_orders,
             tp_mode=self.config.tp_mode,
             tp_risk_reward_ratio=self.config.tp_risk_reward_ratio,
+            exit_mode=self.config.exit_mode,
         )
 
         campaign = Campaign(
@@ -90,10 +91,16 @@ class Bot:
 
         if self.config.dry_run:
             for p in plans:
-                log.info(
-                    "  [DRY RUN] would place %s %.2f lots @ %.2f sl=%.2f tp=%.2f (%.0f pips)",
-                    p.direction, p.lot, p.entry_price, p.sl_price, p.tp_price, p.tp_pips,
-                )
+                if self.config.exit_mode == "trailing_stop":
+                    log.info(
+                        "  [DRY RUN] would place %s %.2f lots @ %.2f sl=%.2f no TP (trailing stop %.0f pips)",
+                        p.direction, p.lot, p.entry_price, p.sl_price, self.config.trailing_stop_pips,
+                    )
+                else:
+                    log.info(
+                        "  [DRY RUN] would place %s %.2f lots @ %.2f sl=%.2f tp=%.2f (%.0f pips)",
+                        p.direction, p.lot, p.entry_price, p.sl_price, p.tp_price, p.tp_pips,
+                    )
             campaign.tickets = []
         else:
             campaign.tickets = self.executor.place_zone_orders(plans, campaign)
@@ -142,12 +149,18 @@ class Bot:
             self._last_trading_allowed = allowed
 
     async def monitor_campaigns(self) -> None:
-        """Own trade management, independent of the Telegram channel: polls
-        open campaigns, moves SL to the basket average once profit reaches
-        1:1 (configurable) risk:reward, and marks a campaign inactive once
-        MT5 shows no pending orders or open positions left for it (all
-        closed via TP/SL). No-op in DRY_RUN - there is no live MT5
-        position/price data to check without a real connection."""
+        """Own trade management, independent of the Telegram channel.
+
+        EXIT_MODE=tp (default): moves SL to the basket average once profit
+        reaches 1:1 (configurable) risk:reward.
+        EXIT_MODE=trailing_stop: every open position's own SL continuously
+        trails TRAILING_STOP_PIPS behind price instead - no basket-average
+        move, since the two would fight each other.
+
+        Either way, marks a campaign inactive once MT5 shows no pending
+        orders or open positions left for it (all closed via TP/SL). No-op
+        in DRY_RUN - there is no live MT5 position/price data to check
+        without a real connection."""
         if self.config.dry_run or self.executor is None:
             log.info("DRY_RUN is on - trade monitoring loop is disabled")
             return
@@ -157,9 +170,14 @@ class Bot:
             self.executor.check_bridge_backlog()
             for campaign in self.store.most_recent_active(self.config.symbol):
                 try:
-                    applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)
-                    if applied:
-                        self.store.mark_breakeven_applied(campaign.id)
+                    if self.config.exit_mode == "trailing_stop":
+                        self.executor.check_trailing_stops(
+                            campaign, self.config.trailing_stop_pips, self.config.pip_size
+                        )
+                    else:
+                        applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)
+                        if applied:
+                            self.store.mark_breakeven_applied(campaign.id)
                     if not self.executor.campaign_has_open_trades(campaign):
                         self.store.deactivate(campaign.id)
                 except Exception:

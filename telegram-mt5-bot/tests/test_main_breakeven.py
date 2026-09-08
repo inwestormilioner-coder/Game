@@ -17,9 +17,10 @@ from main import Bot  # noqa: E402
 def _dry_run_config(**overrides) -> Config:
     base = dict(
         telegram_api_id=0, telegram_api_hash="", telegram_session_name="x", telegram_channel="",
-        mt5_path="", mt5_login=0, mt5_password="", mt5_server="",
+        mt5_path="", mt5_login=0, mt5_password="", mt5_server="", bridge_subfolder="tg_bridge",
         symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, zone_step=0.5, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
+        exit_mode="tp", trailing_stop_pips=36.0,
         deviation_points=20, magic_base=990000,
         max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=True,
     )

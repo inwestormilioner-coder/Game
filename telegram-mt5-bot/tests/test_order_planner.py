@@ -87,6 +87,20 @@ def test_plan_orders_risk_reward_ratio_is_configurable():
         assert round(p.entry_price - p.tp_price, 2) == round(2 * (p.sl_price - p.entry_price), 2)
 
 
+def test_plan_orders_trailing_stop_exit_mode_sets_no_tp():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        tp_mode="risk_reward", exit_mode="trailing_stop",
+    )
+
+    # SL/lot tiering are unaffected - only TP is suppressed
+    assert all(p.sl_price == 4414.0 for p in plans)
+    assert [p.lot for p in plans] == [0.04, 0.04, 0.03, 0.03, 0.03, 0.02, 0.02, 0.02, 0.01, 0.01, 0.01]
+    assert all(p.tp_price == 0.0 for p in plans)
+    assert all(p.tp_pips == 0.0 for p in plans)
+
+
 def test_plan_orders_sell_zone_mirrors_direction():
     zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
     plans = plan_orders(zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10)
