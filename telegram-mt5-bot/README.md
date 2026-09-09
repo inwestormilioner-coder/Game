@@ -126,6 +126,35 @@ python main.py --replay tests/sample_signals.txt
 Odtwarza przykładowe wiadomości z ekranu (dokładnie te z zapytania) przez
 parser -> planer zleceń i loguje wynik w trybie DRY RUN.
 
+## Backtest na historii kanału i cenach z MT5
+
+```bash
+python backtest.py                       # wszystkie sygnały ZONE z historii kanału
+python backtest.py --since 2026-06-01     # tylko sygnały od tej daty (UTC)
+python backtest.py --csv wyniki.csv       # dodatkowo zapisz raport per-zlecenie do CSV
+```
+
+Ściąga CAŁĄ historię wiadomości kanału (Telethon), parsuje z niej sygnały
+ZONE, i dla każdego symuluje - tym samym `plan_orders()` co live bot i
+Twoimi aktualnymi ustawieniami z `.env` (loty, TP_MODE, EXIT_MODE,
+zone extend...) - na prawdziwych świecach M1 dla `SYMBOL` ściągniętych z
+Twojego terminala MT5 (`mt5.copy_rates_range`). Wymaga więc tego samego co
+`main.py` na żywo: uruchomienia na Windows przy zalogowanym MT5. Nic nie
+wystawia na MT5 i nic nie wysyła na Telegram - czysto analityczne, offline.
+
+Wypisuje log per-sygnał (ile zleceń się wypełniło, ile zamknęło, wynik w
+pipsach/$) i podsumowanie na końcu (win rate, suma pipsów/wyniku). Z
+`--csv` dodatkowo zapisuje jedną linię per zlecenie (czas wypełnienia,
+cena zamknięcia, powód: tp/sl/breakeven/trailing) do otwarcia w Excelu.
+
+To jest **przybliżenie**, nie 1:1 z tym co by się stało live - świece M1
+nie mówią co się działo w środku minuty, więc: zlecenie "wypełnia się" w
+pierwszej świecy, której zakres dotknie ceny entry (bez spreadu/slippage);
+jeśli SL i TP wypadają w tej samej świecy, SL wygrywa (bezpieczniejsze
+założenie, nie przecenia wyniku); moment przesunięcia SL na BE / kroku
+trailing liczony jest raz na świecę z jej ceny zamknięcia. Zobacz nagłówek
+`backtester.py` po szczegóły.
+
 ## Testy jednostkowe
 
 ```bash
@@ -148,6 +177,10 @@ mt5_executor.py        - czyta ceny/pozycje przez API, zlecenia/SL zleca
 telegram_listener.py   - nasłuch kanału (Telethon)
 notifier.py             - wysyłka powiadomień (screeny wypełnień, dzienne
                           podsumowanie) tą samą sesją Telethon
+backtester.py            - czysta logika symulacji sygnał+świece -> wynik
+                          (bez importów MT5/Telegram, testowalna tutaj)
+backtest.py              - CLI: ściąga historię kanału + świece z MT5,
+                          woła backtester.py, wypisuje raport/CSV
 main.py                - spina wszystko, tryb live i --replay
 list_chats.py           - jednorazowa pomoc: wypisuje Twoje czaty z ID
                           (do znalezienia ID prywatnego kanału bez usernamu)
