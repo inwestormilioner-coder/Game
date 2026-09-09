@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   actionsToAdvanceSkill,
   applyLevelStats,
@@ -30,6 +31,19 @@ import type { GatherNodeDef } from '../data/gathering';
 const BASE_MOVE_SPEED = 5.5;
 const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
+
+// Real character models (Meshy.ai exports, merged with Mixamo-style animation clips —
+// see docs/GDD.md Section 28). Only the Knight exists so far; other classes fall back to
+// the placeholder primitive mesh below until their own models arrive.
+const MODEL_PATHS: Partial<Record<ClassId, string>> = {
+  knight: '/models/knight/knight.glb',
+};
+
+// The source clips run much longer than our actual combat timings — sped up on playback
+// (via Action.timeScale) to land roughly within one attack cooldown / a quick damage flinch.
+const ATTACK_ANIM_SECONDS = 0.7;
+const HIT_ANIM_SECONDS = 0.35;
+const LOOP_CROSSFADE_SECONDS = 0.2;
 
 export type AbilityCastReason = 'cooldown' | 'resource';
 
@@ -63,9 +77,22 @@ export class Player {
   private armorBuffRemaining = 0;
   facing = new THREE.Vector3(0, 0, 1);
 
+  private readonly placeholder: THREE.Group;
+  private mixer: THREE.AnimationMixer | null = null;
+  private clips: Record<string, THREE.AnimationClip> = {};
+  private currentAction: THREE.AnimationAction | null = null;
+  private currentLoopName: string | null = null;
+  private attackAnimTimer = 0;
+  private hitAnimTimer = 0;
+  private deathAnimTriggered = false;
+
   constructor(classId: ClassId = 'knight') {
     this.stats = createInitialStats(classId);
     this.mesh = new THREE.Group();
+
+    // Placeholder primitive mesh — shown immediately, replaced once (if) the real model for
+    // this class finishes loading. Classes without a model yet just keep this permanently.
+    this.placeholder = new THREE.Group();
 
     const body = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.4, 0.9, 4, 8),
@@ -88,7 +115,97 @@ export class Player {
     weapon.position.set(0.5, 0.9, 0);
     weapon.rotation.z = 0.3;
 
-    this.mesh.add(body, head, weapon);
+    this.placeholder.add(body, head, weapon);
+    this.mesh.add(this.placeholder);
+
+    const modelPath = MODEL_PATHS[classId];
+    if (modelPath) this.loadModel(modelPath);
+  }
+
+  private loadModel(path: string): void {
+    new GLTFLoader().load(
+      path,
+      (gltf) => {
+        this.mesh.remove(this.placeholder);
+
+        const model = gltf.scene;
+        model.traverse((obj) => {
+          if ((obj as THREE.Mesh).isMesh) obj.castShadow = true;
+        });
+        this.mesh.add(model);
+
+        this.mixer = new THREE.AnimationMixer(model);
+        for (const clip of gltf.animations) this.clips[clip.name] = clip;
+        this.setLoop('Idle');
+      },
+      undefined,
+      (err) => {
+        console.error(`Failed to load player model "${path}" — keeping the placeholder mesh`, err);
+      },
+    );
+  }
+
+  /** Crossfades into a looping clip (Idle/Walk) — a no-op if it's already the active loop. */
+  private setLoop(name: string): void {
+    if (!this.mixer || this.currentLoopName === name) return;
+    const clip = this.clips[name];
+    if (!clip) return;
+
+    const action = this.mixer.clipAction(clip);
+    action.reset();
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.clampWhenFinished = false;
+    action.enabled = true;
+    action.fadeIn(LOOP_CROSSFADE_SECONDS).play();
+
+    if (this.currentAction && this.currentAction !== action) this.currentAction.fadeOut(LOOP_CROSSFADE_SECONDS);
+    this.currentAction = action;
+    this.currentLoopName = name;
+  }
+
+  /** Plays a clip once, sped up (or slowed) to land at targetSeconds, then holds its last frame. */
+  private playOneShot(name: string, targetSeconds: number): void {
+    if (!this.mixer) return;
+    const clip = this.clips[name];
+    if (!clip) return;
+
+    const action = this.mixer.clipAction(clip);
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.timeScale = clip.duration / targetSeconds;
+    action.enabled = true;
+    action.fadeIn(0.1).play();
+
+    if (this.currentAction && this.currentAction !== action) this.currentAction.fadeOut(0.1);
+    this.currentAction = action;
+    this.currentLoopName = null; // force setLoop to re-enter cleanly once the one-shot ends
+  }
+
+  /** Ticks the mixer and picks Idle/Walk/Attack/HitReaction/Death by priority — call once per frame. */
+  private updateAnimation(dt: number, moving: boolean): void {
+    if (!this.mixer) return;
+    this.mixer.update(dt);
+
+    if (this.isDead) {
+      if (!this.deathAnimTriggered) {
+        this.deathAnimTriggered = true;
+        this.playOneShot('Death', 1.0);
+      }
+      return;
+    }
+    this.deathAnimTriggered = false;
+
+    if (this.attackAnimTimer > 0) {
+      this.attackAnimTimer -= dt;
+      return;
+    }
+    if (this.hitAnimTimer > 0) {
+      this.hitAnimTimer -= dt;
+      return;
+    }
+
+    this.setLoop(moving ? 'Walk' : 'Idle');
   }
 
   get position(): THREE.Vector3 {
@@ -108,7 +225,8 @@ export class Player {
     if (this.attackTimer > 0) this.attackTimer -= dt;
 
     const len = Math.hypot(moveX, moveY);
-    if (len > 0.05) {
+    const moving = len > 0.05;
+    if (moving) {
       // The fixed camera (Game.ts CAMERA_OFFSET) faces world +Z with its on-screen "right"
       // pointing toward world -X — both joystick axes are negated here so pushing the stick
       // right/up actually moves the character right/away on screen, not the mirror of that.
@@ -120,12 +238,16 @@ export class Player {
       this.facing.set(dx, 0, dz);
       this.mesh.rotation.y = Math.atan2(dx, dz);
     }
+
+    this.updateAnimation(dt, moving);
   }
 
   /** Attempts an attack; returns true if it actually fired (i.e. off cooldown). */
   tryAttack(): boolean {
     if (!this.canAttack) return false;
     this.attackTimer = ATTACK_COOLDOWN;
+    this.attackAnimTimer = ATTACK_ANIM_SECONDS;
+    this.playOneShot('Attack', ATTACK_ANIM_SECONDS);
     return true;
   }
 
@@ -275,6 +397,12 @@ export class Player {
     const mitigation = this.effectiveArmor / (this.effectiveArmor + 50);
     const dealt = Math.round(incoming * (1 - mitigation));
     this.stats.hp = Math.max(0, this.stats.hp - dealt);
+
+    if (dealt > 0 && this.stats.hp > 0) {
+      this.hitAnimTimer = HIT_ANIM_SECONDS;
+      this.playOneShot('HitReaction', HIT_ANIM_SECONDS);
+    }
+
     return { dealt, blocked, wardcraftLeveledUp, wardcraftLevel: this.wardcraftLevel };
   }
 
@@ -545,5 +673,10 @@ export class Player {
     this.stats.poisonTicksRemaining = 0;
     this.stats.poisonDamagePerTick = 0;
     this.mesh.position.set(0, 0, 0);
+    this.deathAnimTriggered = false;
+    this.attackAnimTimer = 0;
+    this.hitAnimTimer = 0;
+    this.currentLoopName = null;
+    this.setLoop('Idle');
   }
 }
