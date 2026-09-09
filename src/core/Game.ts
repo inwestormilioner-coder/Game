@@ -11,7 +11,7 @@ import { InventoryPanel } from '../ui/InventoryPanel';
 import { DialoguePanel } from '../ui/DialoguePanel';
 import { DepotPanel } from '../ui/DepotPanel';
 import { MiniMap } from '../ui/MiniMap';
-import { buildWorld, clampToWorld } from '../world/World';
+import { buildWorld, clampToWorld, type Obstacle } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
 import { NPCS } from '../data/npcs';
@@ -35,14 +35,16 @@ const MONSTER_SPAWNS: Array<[keyof typeof MONSTER_DEFS, number, number]> = [
   ['ironhideBoar', 3, 14],
 ];
 
-// Fixed for every player — no rotation, no zoom (GDD Section 28). A tall, steep,
-// wide-angle isometric-style view (reference: a mobile isometric ARPG town square)
-// rather than the earlier close third-person chase camera — still one fixed offset
-// for everyone, just recalibrated to show much more of the surrounding area.
-const CAMERA_OFFSET = new THREE.Vector3(0, 18, -10);
+// Fixed for every player — no rotation, no zoom (GDD Section 28). A wide-angle isometric-style
+// view (reference: a mobile isometric ARPG town square) rather than the earlier close
+// third-person chase camera — still one fixed offset for everyone, tuned down from an initial,
+// too-steep-per-feedback pass toward a more comfortable ~50° downward angle.
+const CAMERA_OFFSET = new THREE.Vector3(0, 11, -9);
 const CAMERA_FOV = 45;
 
 const TARGET_SELECT_RADIUS = 4;
+// Player capsule radius (matches Player.ts's CapsuleGeometry) — used for obstacle/monster collision.
+const PLAYER_RADIUS = 0.4;
 
 const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
   mining: 'Kop',
@@ -68,6 +70,7 @@ export class Game {
   private readonly corpses: Corpse[] = [];
   private readonly npcs: Npc[] = [];
   private readonly gatherNodes: GatherNode[] = [];
+  private readonly obstacles: Obstacle[];
   private readonly input: InputController;
   private readonly hud: HUD;
   private readonly lootPanel: LootPanel;
@@ -108,7 +111,7 @@ export class Game {
     canvasHost.appendChild(this.renderer.domElement);
 
     this.setupLighting();
-    buildWorld(this.scene);
+    this.obstacles = buildWorld(this.scene);
     this.scene.add(this.player.mesh);
 
     for (const [type, x, z] of MONSTER_SPAWNS) {
@@ -230,6 +233,10 @@ export class Game {
     return this.player.stats;
   }
 
+  get debugPlayerPosition() {
+    return this.player.position;
+  }
+
   get debugEffectiveAttack(): number {
     return this.player.effectiveAttack;
   }
@@ -278,8 +285,21 @@ export class Game {
     return this.gatherNodes;
   }
 
+  get debugObstacles() {
+    return this.obstacles;
+  }
+
   get debugTargetNode() {
     return this.targetNode;
+  }
+
+  get debugCameraBasis() {
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    this.camera.matrixWorld.extractBasis(right, up, new THREE.Vector3());
+    return { forward: { x: forward.x, y: forward.y, z: forward.z }, right: { x: right.x, y: right.y, z: right.z } };
   }
 
   debugGather() {
@@ -299,9 +319,10 @@ export class Game {
 
     if (!this.player.isDead) {
       this.player.update(dt, this.input.moveX, this.input.moveY);
+      this.resolveCollisions();
+      clampToWorld(this.player.position);
       this.player.updateSurvival(dt);
       this.player.updateAbilities(dt);
-      clampToWorld(this.player.position);
       this.updateCorpses(dt);
       this.updateGatherNodes(dt);
       this.updateTargets();
@@ -317,6 +338,38 @@ export class Game {
     this.miniMap.draw(this.player.position, this.player.facing, this.monsters);
     this.renderer.render(this.scene, this.camera);
   };
+
+  /** Pushes the player back out of anything solid — trees/rocks (static Obstacles) and living
+   * monsters — instead of letting them walk straight through. Corpses and gathering nodes stay
+   * walkable on purpose (a defeated monster's body isn't a wall, and stepping onto a vein/tree
+   * is exactly how you'd target it under the unified action-button system). */
+  private resolveCollisions(): void {
+    const pos = this.player.position;
+
+    for (const obstacle of this.obstacles) {
+      this.pushOutOfCircle(pos, obstacle.x, obstacle.z, obstacle.radius);
+    }
+
+    for (const monster of this.monsters) {
+      if (!monster.alive) continue;
+      this.pushOutOfCircle(pos, monster.mesh.position.x, monster.mesh.position.z, monster.def.radius);
+    }
+  }
+
+  private pushOutOfCircle(pos: THREE.Vector3, cx: number, cz: number, radius: number): void {
+    const minDist = radius + PLAYER_RADIUS;
+    const dx = pos.x - cx;
+    const dz = pos.z - cz;
+    const dist = Math.hypot(dx, dz);
+    if (dist >= minDist) return;
+    if (dist < 1e-4) {
+      pos.x = cx + minDist;
+      return;
+    }
+    const push = minDist - dist;
+    pos.x += (dx / dist) * push;
+    pos.z += (dz / dist) * push;
+  }
 
   private updateCorpses(dt: number): void {
     for (let i = this.corpses.length - 1; i >= 0; i--) {

@@ -2,8 +2,16 @@ import * as THREE from 'three';
 
 export const WORLD_RADIUS = 40;
 
-/** Flat open-world ground with scattered rocks/trees so it reads as a world, not a void. */
-export function buildWorld(scene: THREE.Scene): void {
+/** A solid, roughly-circular thing in the world the player can't walk through. */
+export interface Obstacle {
+  x: number;
+  z: number;
+  radius: number;
+}
+
+/** Flat open-world ground with scattered rocks/trees so it reads as a world, not a void.
+ * Returns the solid obstacles (trees/rocks) so Game.ts can block movement through them. */
+export function buildWorld(scene: THREE.Scene): Obstacle[] {
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(WORLD_RADIUS, 64),
     new THREE.MeshStandardMaterial({ color: 0x3a5f3a, roughness: 1 }),
@@ -31,6 +39,7 @@ export function buildWorld(scene: THREE.Scene): void {
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.9 });
 
   const rand = mulberry32(1337);
+  const obstacles: Obstacle[] = [];
 
   for (let i = 0; i < 40; i++) {
     const angle = rand() * Math.PI * 2;
@@ -48,16 +57,18 @@ export function buildWorld(scene: THREE.Scene): void {
       tree.position.set(x, 0, z);
       tree.castShadow = true;
       scene.add(tree);
+      obstacles.push({ x, z, radius: 0.5 });
     } else {
-      const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.3 + rand() * 0.35, 0),
-        rockMat,
-      );
+      const radius = 0.3 + rand() * 0.35;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 0), rockMat);
       rock.position.set(x, 0.25, z);
       rock.castShadow = true;
       scene.add(rock);
+      obstacles.push({ x, z, radius });
     }
   }
+
+  return obstacles;
 }
 
 export function clampToWorld(v: THREE.Vector3): void {

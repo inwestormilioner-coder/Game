@@ -109,8 +109,11 @@ export class Player {
 
     const len = Math.hypot(moveX, moveY);
     if (len > 0.05) {
-      const dx = moveX / len;
-      const dz = moveY / len;
+      // The fixed camera (Game.ts CAMERA_OFFSET) faces world +Z with its on-screen "right"
+      // pointing toward world -X — both joystick axes are negated here so pushing the stick
+      // right/up actually moves the character right/away on screen, not the mirror of that.
+      const dx = -moveX / len;
+      const dz = -moveY / len;
       const speed = this.moveSpeed;
       this.mesh.position.x += dx * speed * dt;
       this.mesh.position.z += dz * speed * dt;
