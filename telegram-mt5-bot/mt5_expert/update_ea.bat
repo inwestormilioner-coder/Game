@@ -13,8 +13,8 @@ setlocal
 
 set "REPO_DIR=%~dp0"
 set "EA_SOURCE=%REPO_DIR%TelegramBridgeEA.mq5"
-set "MT5_DATA=C:\Users\User\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400"
-set "MT5_INSTALL=C:\Program Files\Vantage International MT5"
+set "MT5_DATA=C:\Users\User\AppData\Roaming\MetaQuotes\Terminal\5FFA568149E88FCD5B44D926DCFEAA79"
+set "MT5_INSTALL=C:\Program Files\RoboForex MT5 Terminal"
 set "EA_DEST=%MT5_DATA%\MQL5\Experts\TelegramBridgeEA.mq5"
 set "LOG_FILE=%REPO_DIR%compile.log"
 
