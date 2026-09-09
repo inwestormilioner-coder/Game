@@ -28,7 +28,9 @@ import { QUESTS } from '../data/quests';
 import type { GatherNodeDef } from '../data/gathering';
 
 // World units/sec at speed rating 100 (level 1, no gear/mount bonuses).
-const BASE_MOVE_SPEED = 5.5;
+// Halved from 5.5 — real-device testing found movement (and the monsters'
+// matching speeds in monsters.ts) way too fast relative to the new character art.
+const BASE_MOVE_SPEED = 2.75;
 const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
 
