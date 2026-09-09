@@ -54,6 +54,13 @@ class Config:
     lot_scaling_mode: str
     lot_multiplier: float
     zone_step: float
+    # Extra orders beyond the signal's own zone, SL unaffected (still
+    # anchored to the signal's zone_low/zone_high): zone_extend_front adds
+    # orders past the edge closest to current price (catches a fill missed
+    # by spread), zone_extend_back adds orders past the edge closest to SL.
+    # Both in dollars, 0 = no extension (exactly the signal's zone).
+    zone_extend_front: float
+    zone_extend_back: float
     pip_size: float
     start_tp_pips: float
     tp_increment_pips: float
@@ -105,6 +112,8 @@ def load_config() -> Config:
         lot_scaling_mode=os.getenv("LOT_SCALING_MODE", "additive"),
         lot_multiplier=_float("LOT_MULTIPLIER", 1.2),
         zone_step=_float("ZONE_STEP", 0.5),
+        zone_extend_front=_float("ZONE_EXTEND_FRONT", 0.0),
+        zone_extend_back=_float("ZONE_EXTEND_BACK", 0.0),
         pip_size=_float("PIP_SIZE", 0.1),
         start_tp_pips=_float("START_TP_PIPS", 60),
         tp_increment_pips=_float("TP_INCREMENT_PIPS", 10),

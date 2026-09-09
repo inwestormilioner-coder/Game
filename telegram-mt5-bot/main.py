@@ -75,6 +75,8 @@ class Bot:
             tp_mode=self.config.tp_mode,
             tp_risk_reward_ratio=self.config.tp_risk_reward_ratio,
             exit_mode=self.config.exit_mode,
+            zone_extend_front=self.config.zone_extend_front,
+            zone_extend_back=self.config.zone_extend_back,
         )
 
         campaign = Campaign(

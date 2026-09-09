@@ -20,6 +20,18 @@ meaning "none" in MT5) - the position is meant to be closed by a
 continuously trailing SL managed elsewhere (see Mt5Executor.check_trailing_stops),
 not a fixed profit target.
 
+The order grid can extend past the signal's own zone on both ends without
+moving SL (SL is anchored to the signal's zone_low/zone_high, computed
+before any extension is applied):
+  zone_extend_front (dollars) - extra orders just past the zone's edge
+    CLOSEST to where price currently sits (highest price of a BUY zone,
+    lowest of a SELL zone) - catches a fill that the raw signal price
+    narrowly misses due to spread.
+  zone_extend_back (dollars) - extra orders past the zone's edge FURTHEST
+    from price / closest to SL (lowest price of a BUY zone, highest of a
+    SELL zone) - widens the grid deeper into the zone.
+Both default to 0 (no extension, i.e. exactly the signal's own zone).
+
 Lot size grows the closer an entry is to that shared SL: every
 `lot_tier_orders` orders, counted starting from the entry furthest from
 SL, size increases one more tier (`lot_scaling_mode`):
@@ -100,15 +112,28 @@ def plan_orders(
     tp_mode: str = "ladder",
     tp_risk_reward_ratio: float = 1.0,
     exit_mode: str = "tp",
+    zone_extend_front: float = 0.0,
+    zone_extend_back: float = 0.0,
 ) -> List[OrderPlan]:
-    levels = generate_price_levels(zone.zone_low, zone.zone_high, step)
-
     if zone.direction == "BUY":
-        shared_sl_price = round(min(levels) - zone.sl_pips * pip_size, 2)
+        shared_sl_price = round(zone.zone_low - zone.sl_pips * pip_size, 2)
+        grid_low = zone.zone_low - zone_extend_back
+        grid_high = zone.zone_high + zone_extend_front
     elif zone.direction == "SELL":
-        shared_sl_price = round(max(levels) + zone.sl_pips * pip_size, 2)
+        shared_sl_price = round(zone.zone_high + zone.sl_pips * pip_size, 2)
+        grid_low = zone.zone_low - zone_extend_front
+        grid_high = zone.zone_high + zone_extend_back
     else:
         raise ValueError(f"unknown direction: {zone.direction}")
+
+    levels = generate_price_levels(grid_low, grid_high, step)
+    # A large enough extension could in principle push an entry to or past
+    # SL (which stays anchored to the signal's own zone) - drop any such
+    # entry rather than plan a nonsensical order.
+    if zone.direction == "BUY":
+        levels = [lv for lv in levels if lv > shared_sl_price]
+    else:
+        levels = [lv for lv in levels if lv < shared_sl_price]
 
     tier_of_index = _lot_tiers_by_distance_to_sl(levels, shared_sl_price, lot_tier_orders)
 

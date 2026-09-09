@@ -114,6 +114,53 @@ def test_plan_orders_trailing_stop_exit_mode_sets_no_tp():
     assert all(p.tp_pips == 0.0 for p in plans)
 
 
+def test_plan_orders_zone_extend_buy_adds_front_and_back_without_moving_sl():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        zone_extend_front=0.5, zone_extend_back=2.5,
+    )
+
+    # 11 signal orders + 1 extra "front" (closest to current price, past
+    # the high edge) + 5 extra "back" (closest to SL, past the low edge)
+    assert len(plans) == 17
+    entries = sorted(p.entry_price for p in plans)
+    assert entries[0] == 4417.5  # back: 5 extra steps below the signal's 4420.0
+    assert entries[-1] == 4425.5  # front: 1 extra step above the signal's 4425.0
+
+    # SL stays exactly where the unextended signal alone would put it
+    assert all(p.sl_price == 4414.0 for p in plans)
+
+
+def test_plan_orders_zone_extend_sell_mirrors_direction():
+    zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        zone_extend_front=0.5, zone_extend_back=2.5,
+    )
+
+    assert len(plans) == 17
+    entries = sorted(p.entry_price for p in plans)
+    # SELL: "front" (closest to price) is the LOW edge, "back" (closest to
+    # SL) is the HIGH edge - mirrored from BUY
+    assert entries[0] == 4424.5  # front: 1 extra step below the signal's 4425.0
+    assert entries[-1] == 4432.5  # back: 5 extra steps above the signal's 4430.0
+    assert all(p.sl_price == 4436.0 for p in plans)
+
+
+def test_plan_orders_zone_extend_never_places_an_entry_past_sl():
+    # An oversized back-extension would otherwise push entries to/past the
+    # (unmoved) SL - those must be dropped rather than planned.
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        zone_extend_back=10.0,
+    )
+
+    assert all(p.sl_price == 4414.0 for p in plans)
+    assert all(p.entry_price > 4414.0 for p in plans)
+
+
 def test_plan_orders_sell_zone_mirrors_direction():
     zone = ZoneSignal(direction="SELL", zone_low=4425.0, zone_high=4430.0, sl_pips=60)
     plans = plan_orders(zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10)
