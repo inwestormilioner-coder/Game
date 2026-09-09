@@ -12,6 +12,7 @@ export class LootPanel {
   private itemsEl: HTMLElement;
   private closeBtn: HTMLElement;
   private onPick: ((itemId: string) => void) | null = null;
+  private onPickGold: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root.querySelector('#loot-panel')!;
@@ -25,16 +26,29 @@ export class LootPanel {
     return !this.root.classList.contains('hidden');
   }
 
-  show(title: string, items: LootDrop[], onPick: (itemId: string) => void): void {
+  /** Gold sits in the loot list like any other pickup now (GDD Section 12) — opening a
+   * corpse no longer vacuums it straight into the wallet, tapping it does. */
+  show(title: string, items: LootDrop[], gold: number, onPick: (itemId: string) => void, onPickGold: () => void): void {
     this.title.textContent = title;
     this.onPick = onPick;
-    this.render(items);
+    this.onPickGold = onPickGold;
+    this.render(items, gold);
     this.root.classList.remove('hidden');
   }
 
-  render(items: LootDrop[]): void {
+  render(items: LootDrop[], gold: number): void {
     this.itemsEl.innerHTML = '';
-    if (items.length === 0) {
+    if (gold > 0) {
+      const btn = document.createElement('button');
+      btn.className = 'loot-item loot-item-gold';
+      const name = document.createElement('span');
+      name.textContent = `🪙 ${gold} złota`;
+      btn.append(name);
+      btn.addEventListener('click', () => this.onPickGold?.());
+      this.itemsEl.appendChild(btn);
+    }
+
+    if (items.length === 0 && gold <= 0) {
       const empty = document.createElement('div');
       empty.className = 'loot-empty';
       empty.textContent = 'Puste';

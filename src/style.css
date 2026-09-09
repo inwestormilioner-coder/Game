@@ -440,6 +440,13 @@ canvas {
   white-space: nowrap;
 }
 
+.loot-item-gold {
+  background: rgba(255, 210, 77, 0.16);
+  border: 1px solid rgba(255, 210, 77, 0.4);
+  font-weight: 700;
+  color: #ffd24d;
+}
+
 .loot-empty {
   padding: 16px;
   text-align: center;

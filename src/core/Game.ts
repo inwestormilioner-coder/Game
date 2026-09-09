@@ -992,15 +992,30 @@ export class Game {
     }
   }
 
-  /** Opening reveals the contents (gold is auto-collected; items need an individual tap each). */
+  /** Opening just reveals the contents — gold sits in the list like any other pickup now,
+   * nothing is collected automatically. */
   private openCorpse(corpse: Corpse): void {
-    const gold = corpse.collectGold();
-    if (gold > 0) {
-      this.player.gainGold(gold);
-      this.hud.showToast(`+${gold} złota`);
-    }
     this.openedCorpse = corpse;
-    this.lootPanel.show(corpse.monsterName, corpse.loot.items, (itemId) => this.tryTakeItem(corpse, itemId));
+    this.lootPanel.show(
+      corpse.monsterName,
+      corpse.loot.items,
+      corpse.loot.gold,
+      (itemId) => this.tryTakeItem(corpse, itemId),
+      () => this.tryTakeGold(corpse),
+    );
+  }
+
+  private tryTakeGold(corpse: Corpse): void {
+    const gold = corpse.collectGold();
+    if (gold <= 0) return; // someone else already took it
+    this.player.gainGold(gold);
+    this.hud.showToast(`+${gold} złota`);
+    this.lootPanel.render(corpse.loot.items, corpse.loot.gold);
+
+    if (!corpse.hasLoot) {
+      this.lootPanel.hide();
+      this.openedCorpse = null;
+    }
   }
 
   private tryTakeItem(corpse: Corpse, itemId: string): void {
@@ -1014,7 +1029,7 @@ export class Game {
 
     corpse.takeItem(itemId);
     this.player.addItem(drop.itemId, drop.qty);
-    this.lootPanel.render(corpse.loot.items);
+    this.lootPanel.render(corpse.loot.items, corpse.loot.gold);
 
     if (!corpse.hasLoot) {
       this.lootPanel.hide();
