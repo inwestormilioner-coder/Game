@@ -723,7 +723,8 @@ canvas {
 
 /* ---------- floating monster name/HP labels ---------- */
 
-#monster-labels {
+#monster-labels,
+#player-label {
   position: absolute;
   inset: 0;
   pointer-events: none;

@@ -12,6 +12,7 @@ import { DialoguePanel } from '../ui/DialoguePanel';
 import { DepotPanel } from '../ui/DepotPanel';
 import { MiniMap } from '../ui/MiniMap';
 import { MonsterLabels } from '../ui/MonsterLabels';
+import { PlayerLabel } from '../ui/PlayerLabel';
 import { MapEditor } from '../editor/MapEditor';
 import { buildWorld, clampToWorld, type Obstacle } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
@@ -87,6 +88,7 @@ export class Game {
   private readonly depotPanel: DepotPanel;
   private readonly miniMap: MiniMap;
   private readonly monsterLabels: MonsterLabels;
+  private readonly playerLabel: PlayerLabel;
   private readonly aimReticle: THREE.Group;
   /** Dev-only ('M' key) — never constructed outside import.meta.env.DEV. */
   private readonly mapEditor: MapEditor | null;
@@ -155,6 +157,7 @@ export class Game {
     this.depotPanel = new DepotPanel(root);
     this.miniMap = new MiniMap(root);
     this.monsterLabels = new MonsterLabels(root, this.monsters);
+    this.playerLabel = new PlayerLabel(root);
     this.aimReticle = this.buildAimReticle();
     this.scene.add(this.aimReticle);
     this.mapEditor = import.meta.env.DEV
@@ -163,9 +166,38 @@ export class Game {
     this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
+    this.renderer.domElement.addEventListener('pointerdown', this.onCanvasTap);
 
     window.addEventListener('resize', this.onResize);
   }
+
+  /** Corpses (only corpses) are opened by tapping directly on them in the 3D world, not through
+   * the unified action button — a deliberate exception, since "which body do I mean" is often
+   * ambiguous from proximity alone when several are lying around, but never ambiguous under a
+   * fingertip. Everything else (monsters/nodes/NPCs) stays on the single action button. */
+  private onCanvasTap = (e: PointerEvent): void => {
+    if (this.mapEditor?.active) return;
+    if (this.isAnyPanelOpen()) return;
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const corpseMeshes = this.corpses.map((c) => c.mesh);
+    const hit = raycaster.intersectObjects(corpseMeshes, false)[0];
+    if (!hit) return;
+
+    const corpse = this.corpses.find((c) => c.mesh === hit.object);
+    if (!corpse) return;
+    if (!this.player.isInRange(corpse.mesh.position)) {
+      this.hud.showToast('Podejdź bliżej');
+      return;
+    }
+    this.openCorpse(corpse);
+  };
 
   private toggleInventory(): void {
     this.inventoryPanel.toggle(
@@ -240,6 +272,10 @@ export class Game {
 
   get debugMonsters() {
     return this.monsters;
+  }
+
+  get debugCorpses() {
+    return this.corpses;
   }
 
   get debugDiscoveredCount(): number {
@@ -331,6 +367,16 @@ export class Game {
     return { forward: { x: forward.x, y: forward.y, z: forward.z }, right: { x: right.x, y: right.y, z: right.z } };
   }
 
+  /** Projects a world XZ position to screen pixel coordinates — test-only helper so a
+   * Playwright script can compute exactly where to click something in the 3D scene. */
+  debugWorldToScreen(x: number, z: number, y = 0): { x: number; y: number } {
+    const ndc = new THREE.Vector3(x, y, z).project(this.camera);
+    return {
+      x: (ndc.x * 0.5 + 0.5) * window.innerWidth,
+      y: (1 - (ndc.y * 0.5 + 0.5)) * window.innerHeight,
+    };
+  }
+
   debugGather() {
     return this.targetNode ? this.tryGatherAt(this.targetNode) : undefined;
   }
@@ -374,6 +420,7 @@ export class Game {
     this.hud.update(this.player.stats, this.hudDerived());
     this.miniMap.draw(this.player.position, this.player.facing, this.monsters);
     this.monsterLabels.update(this.camera, this.aimedMonster ?? this.targetMonster, window.innerWidth, window.innerHeight);
+    this.playerLabel.update(this.camera, this.player.position, this.player.stats, window.innerWidth, window.innerHeight);
     this.renderer.render(this.scene, this.camera);
   };
 

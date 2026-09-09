@@ -14,6 +14,10 @@ export interface MonsterDef {
   aggroRange: number;
   moveSpeed: number;
   attackCooldown: number;
+  /** Seconds from death to respawn. The corpse itself only lingers for
+   * LIFETIME_SECONDS (Corpse.ts, 10 min) — respawnDelay is longer everywhere
+   * (15 min) on purpose, so a spot sits genuinely empty for a while, not
+   * respawn-the-instant-the-body-fades. */
   respawnDelay: number;
   xp: number;
   goldMin: number;
@@ -43,7 +47,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     aggroRange: 2.4,
     moveSpeed: 0.4,
     attackCooldown: 1.4,
-    respawnDelay: 5,
+    respawnDelay: 900, // 15 min
     xp: 4,
     goldMin: 0,
     goldMax: 1,
@@ -62,7 +66,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     aggroRange: 4.5,
     moveSpeed: 0.9,
     attackCooldown: 1.1,
-    respawnDelay: 8,
+    respawnDelay: 900, // 15 min
     xp: 14,
     goldMin: 1,
     goldMax: 3,
@@ -86,7 +90,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     aggroRange: 4,
     moveSpeed: 0.75,
     attackCooldown: 1.0,
-    respawnDelay: 10,
+    respawnDelay: 900, // 15 min
     xp: 20,
     goldMin: 2,
     goldMax: 5,
@@ -119,7 +123,7 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
     aggroRange: 3.5,
     moveSpeed: 1.0,
     attackCooldown: 1.3,
-    respawnDelay: 14,
+    respawnDelay: 900, // 15 min
     xp: 28,
     goldMin: 3,
     goldMax: 7,

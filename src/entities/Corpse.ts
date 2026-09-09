@@ -9,8 +9,10 @@ export interface CorpseLoot {
 // GDD Section 12: a kill doesn't hand loot to the killer — it drops a
 // corpse that anyone can open, first-come-first-served, until it decays.
 // Opening only collects the (weightless) gold; each item still has to be
-// individually taken, checked against carry capacity (Section 2.5).
-const LIFETIME_SECONDS = 60;
+// individually taken, checked against carry capacity (Section 2.5). It can
+// be reopened as many times as needed while it's still here — nothing
+// about "opening" it consumes anything beyond whatever loot is actually taken.
+const LIFETIME_SECONDS = 600; // 10 minutes
 
 export class Corpse {
   readonly mesh: THREE.Mesh;
