@@ -591,7 +591,10 @@ canvas {
 }
 
 .attack-label {
-  pointer-events: none;
+  /* The button's art now speaks for itself — the context-sensitive verb (ATAK/SZUKAJ/
+     Kop/Rozmawiaj/Depozyt) is still set every frame in InputController.setActionLabel()
+     for anything that reads the DOM in tests, it's just not rendered visually anymore. */
+  display: none;
 }
 
 /* The little cyan dot that slides toward the drag direction on the attack joystick itself —
