@@ -22,9 +22,13 @@ not a fixed profit target.
 
 Lot size grows the closer an entry is to that shared SL: every
 `lot_tier_orders` orders, counted starting from the entry furthest from
-SL, size increases by one more `lot` increment - e.g. with lot=0.01 and
-lot_tier_orders=3 across 10 orders: 0.01,0.01,0.01,0.02,0.02,0.02,0.03,
-0.03,0.03,0.04.
+SL, size increases one more tier (`lot_scaling_mode`):
+  "additive" (default) - +1 more `lot` increment per tier, e.g. with
+    lot=0.01 and lot_tier_orders=3 across 10 orders:
+    0.01,0.01,0.01,0.02,0.02,0.02,0.03,0.03,0.03,0.04.
+  "multiplier" - each tier is `lot_multiplier` times the previous one
+    (compounding), e.g. lot=0.1, lot_multiplier=1.2, lot_tier_orders=3:
+    0.1,0.1,0.1,0.12,0.12,0.12,0.14,0.14,0.14,0.17 (rounded to 2dp per step).
 """
 from __future__ import annotations
 
@@ -91,6 +95,8 @@ def plan_orders(
     start_tp_pips: float,
     tp_increment_pips: float,
     lot_tier_orders: int = 3,
+    lot_scaling_mode: str = "additive",
+    lot_multiplier: float = 1.2,
     tp_mode: str = "ladder",
     tp_risk_reward_ratio: float = 1.0,
     exit_mode: str = "tp",
@@ -120,7 +126,11 @@ def plan_orders(
                 tp_distance = tp_pips * pip_size
             tp_price = entry + tp_distance if zone.direction == "BUY" else entry - tp_distance
 
-        order_lot = round(lot * (tier_of_index[i] + 1), 2)
+        tier = tier_of_index[i]
+        if lot_scaling_mode == "multiplier":
+            order_lot = round(lot * (lot_multiplier ** tier), 2)
+        else:
+            order_lot = round(lot * (tier + 1), 2)
 
         plans.append(
             OrderPlan(

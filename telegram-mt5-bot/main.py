@@ -70,6 +70,8 @@ class Bot:
             start_tp_pips=self.config.start_tp_pips,
             tp_increment_pips=self.config.tp_increment_pips,
             lot_tier_orders=self.config.lot_tier_orders,
+            lot_scaling_mode=self.config.lot_scaling_mode,
+            lot_multiplier=self.config.lot_multiplier,
             tp_mode=self.config.tp_mode,
             tp_risk_reward_ratio=self.config.tp_risk_reward_ratio,
             exit_mode=self.config.exit_mode,

@@ -51,6 +51,19 @@ def test_plan_orders_lot_tier_orders_is_configurable():
     assert [p.lot for p in plans] == [0.03, 0.02, 0.01]
 
 
+def test_plan_orders_lot_scaling_mode_multiplier_compounds_per_tier():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.1, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        lot_scaling_mode="multiplier", lot_multiplier=1.2,
+    )
+    # Same tiering as the additive test (3 orders per tier, closest-to-SL
+    # entries in the highest tier), but each tier is 1.2x the previous one
+    # (compounding) instead of +0.1 flat: 0.1 -> 0.12 -> 0.144(~0.14) ->
+    # 0.1728(~0.17), rounded to 2dp at each step.
+    assert [p.lot for p in plans] == [0.17, 0.17, 0.14, 0.14, 0.14, 0.12, 0.12, 0.12, 0.1, 0.1, 0.1]
+
+
 def test_plan_orders_risk_reward_tp_mode_is_1to1_per_order():
     zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
     plans = plan_orders(

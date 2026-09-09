@@ -48,6 +48,11 @@ class Config:
     symbol: str
     lot_size: float
     lot_tier_orders: int
+    # "additive" (default) - each tier adds +1 more lot_size step.
+    # "multiplier" - each tier is lot_multiplier times the previous one
+    # (compounding), e.g. 0.1 -> 0.12 -> 0.144 -> ... for lot_multiplier=1.2.
+    lot_scaling_mode: str
+    lot_multiplier: float
     zone_step: float
     pip_size: float
     start_tp_pips: float
@@ -97,6 +102,8 @@ def load_config() -> Config:
         symbol=os.getenv("SYMBOL", "XAUUSD"),
         lot_size=_float("LOT_SIZE", 0.01),
         lot_tier_orders=_int("LOT_TIER_ORDERS", 3),
+        lot_scaling_mode=os.getenv("LOT_SCALING_MODE", "additive"),
+        lot_multiplier=_float("LOT_MULTIPLIER", 1.2),
         zone_step=_float("ZONE_STEP", 0.5),
         pip_size=_float("PIP_SIZE", 0.1),
         start_tp_pips=_float("START_TP_PIPS", 60),
