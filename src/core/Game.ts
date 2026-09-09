@@ -12,6 +12,7 @@ import { DialoguePanel } from '../ui/DialoguePanel';
 import { DepotPanel } from '../ui/DepotPanel';
 import { MiniMap } from '../ui/MiniMap';
 import { MonsterLabels } from '../ui/MonsterLabels';
+import { MapEditor } from '../editor/MapEditor';
 import { buildWorld, clampToWorld, type Obstacle } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
@@ -87,6 +88,8 @@ export class Game {
   private readonly miniMap: MiniMap;
   private readonly monsterLabels: MonsterLabels;
   private readonly aimReticle: THREE.Group;
+  /** Dev-only ('M' key) — never constructed outside import.meta.env.DEV. */
+  private readonly mapEditor: MapEditor | null;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
@@ -154,6 +157,9 @@ export class Game {
     this.monsterLabels = new MonsterLabels(root, this.monsters);
     this.aimReticle = this.buildAimReticle();
     this.scene.add(this.aimReticle);
+    this.mapEditor = import.meta.env.DEV
+      ? new MapEditor(this.scene, this.camera, this.renderer.domElement, this.obstacles, () => this.player.position)
+      : null;
     this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
@@ -339,6 +345,13 @@ export class Game {
 
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.1);
+
+    if (this.mapEditor?.active) {
+      this.mapEditor.update(dt);
+      this.updateCamera(dt);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
 
     if (!this.player.isDead) {
       this.player.update(dt, this.input.moveX, this.input.moveY);
@@ -968,9 +981,16 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
-    const desired = this.player.position.clone().add(CAMERA_OFFSET);
-    this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-    const lookAt = this.player.position.clone().add(new THREE.Vector3(0, 1, 0));
+    const editing = this.mapEditor?.active ?? false;
+    const focus = editing ? this.mapEditor!.cameraFocus : this.player.position;
+    const zoom = editing ? this.mapEditor!.cameraZoom : 1;
+    const desired = focus.clone().add(CAMERA_OFFSET.clone().multiplyScalar(zoom));
+    // Snap instantly while editing (no smoothing) — the map editor's ground raycast needs
+    // the camera to be exactly where the pan/zoom inputs put it, every frame, so clicking
+    // the same screen spot twice in a row reliably hits the same world point.
+    if (editing) this.camera.position.copy(desired);
+    else this.camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+    const lookAt = focus.clone().add(new THREE.Vector3(0, 1, 0));
     this.camera.lookAt(lookAt);
   }
 
