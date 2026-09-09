@@ -164,8 +164,11 @@ export class Monster {
     this.wanderTimer = 2 + Math.random() * 2;
   }
 
-  /** Returns damage dealt to the player this frame, if any. */
-  update(dt: number, playerPosition: THREE.Vector3): number {
+  /** Returns damage dealt to the player this frame, if any. `playerStealthed` (Assassin's
+   * sprint ability — GDD Section 28) makes the player undetectable to aggro logic for every
+   * monster except isBoss ones, checked fresh every frame — a monster already mid-chase drops
+   * it (falls back to wandering) the instant stealth kicks in, not just for new aggro rolls. */
+  update(dt: number, playerPosition: THREE.Vector3, playerStealthed = false): number {
     if (!this.alive) {
       this.updateAnimation(dt, false);
       if (this.deathLingerTimer > 0) {
@@ -192,7 +195,8 @@ export class Monster {
 
     const moveSpeed = this.def.moveSpeed * (1 - this.slowPercent);
     const distToPlayer = this.mesh.position.distanceTo(playerPosition);
-    const inAggro = distToPlayer <= this.def.aggroRange;
+    const canDetectPlayer = !playerStealthed || this.def.isBoss === true;
+    const inAggro = canDetectPlayer && distToPlayer <= this.def.aggroRange;
 
     if (this.def.behavior === 'passive') {
       if (inAggro) {

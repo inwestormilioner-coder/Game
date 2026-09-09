@@ -26,7 +26,7 @@ export class InputController {
   private attackAimDot: HTMLElement;
   private abilityButtons: HTMLElement[];
   private loadoutBtn: HTMLElement;
-  private abilityRequested = [false, false, false, false, false];
+  private abilityRequested = [false, false, false, false, false, false, false];
 
   private dragging = false;
   private pointerId: number | null = null;
@@ -210,10 +210,13 @@ export class InputController {
     return v;
   }
 
-  /** Icon/cooldown text and disabled look for one ability slot; called every frame from Game.ts. */
+  /** Icon/cooldown text and disabled look for one ability slot; called every frame from Game.ts.
+   * A slot with no icon (the class's loadout doesn't reach this far — e.g. slot 7 for every
+   * class but Mage) is hidden entirely rather than shown empty/disabled. */
   setAbilityDisplay(slot: number, icon: string, cooldownText: string, disabled: boolean): void {
     const btn = this.abilityButtons[slot];
     if (!btn) return;
+    btn.style.display = icon ? '' : 'none';
     btn.querySelector('.ability-icon')!.textContent = icon;
     btn.querySelector('.ability-cd')!.textContent = cooldownText;
     btn.classList.toggle('on-cooldown', disabled);

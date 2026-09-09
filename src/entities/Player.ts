@@ -77,6 +77,14 @@ export class Player {
   private attackBuffRemaining = 0;
   private armorBuffPercent = 0;
   private armorBuffRemaining = 0;
+  private moveSpeedBuffPercent = 0;
+  private moveSpeedBuffRemaining = 0;
+  private reflectPercentValue = 0;
+  private reflectRemaining = 0;
+  private attackSpeedBuffPercent = 0;
+  private attackSpeedBuffRemaining = 0;
+  private stealthOpacityValue = 1;
+  private stealthRemaining = 0;
   facing = new THREE.Vector3(0, 0, 1);
 
   private readonly placeholder: THREE.Group;
@@ -218,9 +226,30 @@ export class Player {
     return this.attackTimer <= 0;
   }
 
+  /** Seconds left before the next basic attack is allowed — test-only visibility into
+   * tryAttack()'s cooldown, useful for verifying Archer's sprint haste actually shortens it. */
+  get attackCooldownRemaining(): number {
+    return this.attackTimer;
+  }
+
   /** Current move speed in world units/sec, from the GDD's movement-speed curve. */
   get moveSpeed(): number {
-    return BASE_MOVE_SPEED * (speedRatingForLevel(this.stats.level) / 100);
+    return BASE_MOVE_SPEED * (speedRatingForLevel(this.stats.level) / 100) * (1 + this.moveSpeedBuffPercent);
+  }
+
+  /** Fraction of incoming (post-mitigation) damage reflected back at the attacker while a
+   * sprint barrier (Knight) is active — 0 otherwise. */
+  get reflectPercent(): number {
+    return this.reflectPercentValue;
+  }
+
+  /** 1 = fully visible, down to e.g. 0.02 while a stealth sprint (Assassin) is active. */
+  get stealthOpacity(): number {
+    return this.stealthOpacityValue;
+  }
+
+  get isStealthed(): boolean {
+    return this.stealthOpacityValue < 1;
   }
 
   update(dt: number, moveX: number, moveY: number): void {
@@ -247,7 +276,7 @@ export class Player {
   /** Attempts an attack; returns true if it actually fired (i.e. off cooldown). */
   tryAttack(): boolean {
     if (!this.canAttack) return false;
-    this.attackTimer = ATTACK_COOLDOWN;
+    this.attackTimer = ATTACK_COOLDOWN * (1 - this.attackSpeedBuffPercent);
     this.attackAnimTimer = ATTACK_ANIM_SECONDS;
     this.playOneShot('Attack', ATTACK_ANIM_SECONDS);
     return true;
@@ -340,6 +369,36 @@ export class Player {
       this.armorBuffRemaining -= dt;
       if (this.armorBuffRemaining <= 0) this.armorBuffPercent = 0;
     }
+    if (this.moveSpeedBuffRemaining > 0) {
+      this.moveSpeedBuffRemaining -= dt;
+      if (this.moveSpeedBuffRemaining <= 0) this.moveSpeedBuffPercent = 0;
+    }
+    if (this.reflectRemaining > 0) {
+      this.reflectRemaining -= dt;
+      if (this.reflectRemaining <= 0) this.reflectPercentValue = 0;
+    }
+    if (this.attackSpeedBuffRemaining > 0) {
+      this.attackSpeedBuffRemaining -= dt;
+      if (this.attackSpeedBuffRemaining <= 0) this.attackSpeedBuffPercent = 0;
+    }
+    if (this.stealthRemaining > 0) {
+      this.stealthRemaining -= dt;
+      if (this.stealthRemaining <= 0) this.stealthOpacityValue = 1;
+    }
+    this.applyStealthVisual();
+  }
+
+  private applyStealthVisual(): void {
+    this.mesh.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of materials) {
+        const m = mat as THREE.Material & { opacity: number; transparent: boolean };
+        m.transparent = this.stealthOpacityValue < 1;
+        m.opacity = this.stealthOpacityValue;
+      }
+    });
   }
 
   getCooldownRemaining(abilityId: string): number {
@@ -372,6 +431,22 @@ export class Player {
     if (effect.buffArmorPercent && effect.buffDuration) {
       this.armorBuffPercent = effect.buffArmorPercent;
       this.armorBuffRemaining = effect.buffDuration;
+    }
+    if (effect.buffMoveSpeedPercent && effect.buffDuration) {
+      this.moveSpeedBuffPercent = effect.buffMoveSpeedPercent;
+      this.moveSpeedBuffRemaining = effect.buffDuration;
+    }
+    if (effect.reflectPercent && effect.buffDuration) {
+      this.reflectPercentValue = effect.reflectPercent;
+      this.reflectRemaining = effect.buffDuration;
+    }
+    if (effect.buffAttackSpeedPercent && effect.buffDuration) {
+      this.attackSpeedBuffPercent = effect.buffAttackSpeedPercent;
+      this.attackSpeedBuffRemaining = effect.buffDuration;
+    }
+    if (effect.stealthOpacity && effect.buffDuration) {
+      this.stealthOpacityValue = effect.stealthOpacity;
+      this.stealthRemaining = effect.buffDuration;
     }
     if (effect.dashDistance) {
       const dir = effect.dashDirection === 'away' ? this.facing.clone().negate() : this.facing.clone();

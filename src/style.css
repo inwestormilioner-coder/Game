@@ -697,6 +697,16 @@ canvas {
 .ability-3 { right: 116px; bottom: 88px; }
 .ability-4 { right: 142px; bottom: 46px; }
 .ability-5 { right: 148px; bottom: 0px; }
+/* Sprint slots (GDD Section 28) — a small pair stacked above the main arc and to the left of
+   the loadout switch, clear of both it and ability-1 (the "yellow" group in the layout sketch). */
+.ability-6 { right: 80px; bottom: 175px; width: 30px; height: 30px; }
+.ability-7 { right: 80px; bottom: 213px; width: 30px; height: 30px; }
+
+.ability-sprint {
+  background:
+    url("/hud/ability-ring.png") center / contain no-repeat,
+    radial-gradient(circle, rgba(255, 210, 77, 0.35), transparent 70%);
+}
 
 #loadout-switch {
   all: unset;

@@ -25,6 +25,18 @@ export interface AbilityEffect {
   /** Moves the caster this many world units toward or away from the current target. */
   dashDistance?: number;
   dashDirection?: 'toward' | 'away';
+  /** Self-buff: temporary % increase to move speed, lasting buffDuration seconds. */
+  buffMoveSpeedPercent?: number;
+  /** Self-buff: reflects this fraction of incoming damage back at the attacker while it lasts
+   * (Knight's sprint barrier), lasting buffDuration seconds. */
+  reflectPercent?: number;
+  /** Self-buff: temporary % reduction to the basic-attack cooldown (Archer's sprint haste),
+   * lasting buffDuration seconds. */
+  buffAttackSpeedPercent?: number;
+  /** Self-buff: caster's model opacity drops to this fraction (Assassin's sprint stealth) —
+   * aggressive monsters that aren't isBoss stop noticing/attacking the caster while it holds,
+   * lasting buffDuration seconds. */
+  stealthOpacity?: number;
 }
 
 export interface AbilityDef {
@@ -173,13 +185,50 @@ export const ABILITIES: Record<string, AbilityDef> = {
     resourceCost: 20, cooldown: 15, range: 0,
     effect: { buffAttackPercent: 0.4, buffDuration: 8 },
   },
+
+  // ---- Sprint abilities: every class gets a move-speed self-buff, but only Mage gets a
+  // second, stronger tier (Fast + Very Fast) — everyone else's single tier comes bundled
+  // with a class-flavored bonus effect instead. Numbers (barrier/haste %, durations) are a
+  // first-pass balance guess, easy to retune later — shout if you want different values. ----
+  knightSprintBarrier: {
+    id: 'knightSprintBarrier', name: 'Fervent Charge', icon: '🏃',
+    resourceCost: 20, cooldown: 20, range: 0,
+    effect: { buffMoveSpeedPercent: 0.3, reflectPercent: 0.3, buffDuration: 10 },
+  },
+  archerSprintHaste: {
+    id: 'archerSprintHaste', name: "Hunter's Sprint", icon: '🏃',
+    resourceCost: 20, cooldown: 20, range: 0,
+    effect: { buffMoveSpeedPercent: 0.3, buffAttackSpeedPercent: 0.3, buffDuration: 10 },
+  },
+  mageSprintFast: {
+    id: 'mageSprintFast', name: 'Haste', icon: '🏃',
+    resourceCost: 15, cooldown: 15, range: 0,
+    effect: { buffMoveSpeedPercent: 0.3, buffDuration: 10 },
+  },
+  mageSprintVeryFast: {
+    id: 'mageSprintVeryFast', name: 'Windstep', icon: '💨',
+    resourceCost: 30, cooldown: 25, range: 0,
+    effect: { buffMoveSpeedPercent: 0.6, buffDuration: 10 },
+  },
+  druidSprint: {
+    id: 'druidSprint', name: "Wild Stride", icon: '🏃',
+    resourceCost: 20, cooldown: 20, range: 0,
+    effect: { buffMoveSpeedPercent: 0.3, buffDuration: 10 },
+  },
+  assassinSprintStealth: {
+    id: 'assassinSprintStealth', name: 'Vanish', icon: '🏃',
+    resourceCost: 25, cooldown: 22, range: 0,
+    effect: { buffMoveSpeedPercent: 0.3, stealthOpacity: 0.02, buffDuration: 10 },
+  },
 };
 
-/** Loadout A only for now — Loadout B is an empty, switchable placeholder (GDD Section 10). */
+/** Loadout A only for now — Loadout B is an empty, switchable placeholder (GDD Section 10).
+ * Every class's original 5 stay as-is; the sprint ability(-ies) are appended as extra slots
+ * rather than replacing anything — Mage gets two (Fast + Very Fast), everyone else gets one. */
 export const CLASS_LOADOUT_A: Record<ClassId, string[]> = {
-  knight: ['shieldBash', 'cleave', 'fortify', 'secondWind', 'warcry'],
-  archer: ['aimedShot', 'multishot', 'cripplingShot', 'evasiveRoll', 'focusAim'],
-  mage: ['firebolt', 'fireball', 'frostNova', 'arcaneShield', 'blink'],
-  druid: ['wrath', 'brambleGrowth', 'thornSnare', 'regrowth', 'verdantWard'],
-  assassin: ['backstab', 'shadowStep', 'fanOfKnives', 'cripplingStrike', 'adrenaline'],
+  knight: ['shieldBash', 'cleave', 'fortify', 'secondWind', 'warcry', 'knightSprintBarrier'],
+  archer: ['aimedShot', 'multishot', 'cripplingShot', 'evasiveRoll', 'focusAim', 'archerSprintHaste'],
+  mage: ['firebolt', 'fireball', 'frostNova', 'arcaneShield', 'blink', 'mageSprintFast', 'mageSprintVeryFast'],
+  druid: ['wrath', 'brambleGrowth', 'thornSnare', 'regrowth', 'verdantWard', 'druidSprint'],
+  assassin: ['backstab', 'shadowStep', 'fanOfKnives', 'cripplingStrike', 'adrenaline', 'assassinSprintStealth'],
 };

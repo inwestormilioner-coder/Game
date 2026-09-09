@@ -34,6 +34,9 @@ export interface MonsterDef {
    * asset, so its whole rig came back 100x too small — corrected on load, not baked
    * into the file, so it's visible/documented here rather than hidden in the asset. */
   modelScale?: number;
+  /** Sees through an Assassin's stealth sprint (Section 28) — everything else can't.
+   * Undefined/false for every current monster; no boss-tier monster exists yet. */
+  isBoss?: boolean;
 }
 
 export const MONSTER_DEFS: Record<string, MonsterDef> = {

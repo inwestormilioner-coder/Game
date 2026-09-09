@@ -46,6 +46,9 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 11, -9);
 const CAMERA_FOV = 45;
 
 const TARGET_SELECT_RADIUS = 4;
+// The 5 original abilities per class (green in the layout sketch) plus up to 2 sprint slots
+// (yellow) — Mage uses both, everyone else uses 1 and leaves the 7th hidden (GDD Section 28).
+const MAX_ABILITY_SLOTS = 7;
 // Half-width of the aimed-attack joystick's cone (GDD Section 28) — a monster has to fall
 // within this angle of the drag direction (and inside ATTACK_RANGE) to be attackable by it.
 const AIM_CONE_HALF_ANGLE = (40 * Math.PI) / 180;
@@ -296,6 +299,25 @@ export class Game {
 
   get debugEffectiveAttack(): number {
     return this.player.effectiveAttack;
+  }
+
+  get debugPlayerSpeed(): number {
+    return this.player.moveSpeed;
+  }
+
+  get debugPlayerIsStealthed(): boolean {
+    return this.player.isStealthed;
+  }
+
+  get debugPlayerReflectPercent(): number {
+    return this.player.reflectPercent;
+  }
+
+  /** Test-only: fires a real basic attack and reports the resulting cooldown, so a test can
+   * verify Archer's sprint haste (buffAttackSpeedPercent) actually shortens ATTACK_COOLDOWN. */
+  debugPlayerTryAttackCooldown(): number {
+    this.player.tryAttack();
+    return this.player.attackCooldownRemaining;
   }
 
   get debugTargetMonster() {
@@ -811,11 +833,16 @@ export class Game {
 
   private handleMonsterUpdates(dt: number): void {
     for (const monster of this.monsters) {
-      const damage = monster.update(dt, this.player.position);
+      const damage = monster.update(dt, this.player.position, this.player.isStealthed);
       if (damage > 0) {
         const result = this.player.takeDamage(damage);
         if (result.wardcraftLeveledUp) {
           this.hud.showToast(`${SKILL_NAMES.wardcraft} → ${result.wardcraftLevel}!`);
+        }
+        // Knight's sprint barrier (Section 28) — reflects a fraction of what actually got
+        // through (post-block, post-armor) back at whichever monster just landed the hit.
+        if (result.dealt > 0 && this.player.reflectPercent > 0) {
+          monster.takeDamage(Math.round(result.dealt * this.player.reflectPercent));
         }
         if (this.player.isDead) this.onPlayerDeath();
       }
@@ -979,7 +1006,7 @@ export class Game {
   private updateAbilityUI(): void {
     const loadout = this.currentLoadout === 'A' ? CLASS_LOADOUT_A[this.player.stats.classId] : [];
     this.input.setLoadoutLabel(this.currentLoadout);
-    for (let slot = 0; slot < 5; slot++) {
+    for (let slot = 0; slot < MAX_ABILITY_SLOTS; slot++) {
       const abilityId = loadout[slot];
       if (!abilityId) {
         this.input.setAbilityDisplay(slot, '', '', true);
