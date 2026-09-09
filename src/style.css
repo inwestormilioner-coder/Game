@@ -657,9 +657,7 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background:
-    url("/hud/ability-ring.png") center / contain no-repeat,
-    radial-gradient(circle at 35% 28%, #2c2415, #14100a);
+  background: url("/hud/ability-ring.png") center / contain no-repeat;
   color: #fff;
   pointer-events: auto;
 }
@@ -701,9 +699,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    url("/hud/ability-ring.png") center / contain no-repeat,
-    rgba(0, 0, 0, 0.5);
+  background: url("/hud/ability-ring.png") center / contain no-repeat;
   color: #fff;
   font-size: 13px;
   font-weight: 800;
