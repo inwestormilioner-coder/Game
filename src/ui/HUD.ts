@@ -6,6 +6,14 @@ function formatMinSec(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Resource-bar color per class (Section 28 HUD art): Mana gets the blue variant, every
+// other resource (Fervor, Focus, Momentum) shares the green "energy" variant. Rage/yellow
+// is prepared in the art but unused until a class/mechanic actually needs it.
+const RESOURCE_COLOR_CLASS: Record<string, string> = { Mana: 'mana' };
+function resourceColorClass(resourceName: string): string {
+  return RESOURCE_COLOR_CLASS[resourceName] ?? 'energy';
+}
+
 export class HUD {
   private hpFill: HTMLElement;
   private resourceFill: HTMLElement;
@@ -48,6 +56,8 @@ export class HUD {
   ): void {
     this.hpFill.style.width = `${(stats.hp / stats.maxHp) * 100}%`;
     this.resourceFill.style.width = `${(stats.resource / derived.maxResource) * 100}%`;
+    this.resourceFill.classList.remove('energy', 'mana', 'rage');
+    this.resourceFill.classList.add(resourceColorClass(stats.resourceName));
     this.resourceLabel.textContent = stats.resourceName;
     this.xpFill.style.width = `${(stats.exp / stats.expToNext) * 100}%`;
     this.levelLabel.textContent = `Lvl ${stats.level}`;

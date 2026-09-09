@@ -88,6 +88,87 @@ canvas {
   background: linear-gradient(90deg, #8f6bff, #5a2fd6);
 }
 
+/* Ornate HP/resource bar frame (Section 28 HUD art) — the gold frame image sits on
+   top with its bar interiors cut transparent, so these plain colored divs underneath
+   (sized 0-100% by HUD.ts, exactly like the old .bar-fill) show through the holes. */
+.hp-resource-frame {
+  position: relative;
+  width: min(360px, 78vw);
+  aspect-ratio: 2170 / 725;
+  margin-top: 2px;
+}
+
+.frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.frame-track {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.frame-track.hp-track {
+  left: 25.71%;
+  top: 33.52%;
+  width: 64.61%;
+  height: 21.93%;
+}
+
+.frame-track.resource-track {
+  left: 23.73%;
+  top: 57.24%;
+  width: 44.7%;
+  height: 14.48%;
+}
+
+.frame-fill {
+  height: 100%;
+  width: 100%;
+  transition: width 0.15s ease-out;
+}
+
+/* Vertical gradient stops sampled directly from the real bar art (HPbarENERGY/MANA/RAGE.png)
+   so the CSS fill matches the frame's glossy shading without needing a stretched texture image. */
+.frame-fill.hp {
+  background: linear-gradient(
+    180deg,
+    #b65138 0%, #100101 6%, #590709 25%, #800e12 45%,
+    #850f13 60%, #780c10 75%, #570909 88%, #cc4f35 100%
+  );
+}
+
+.frame-fill.energy {
+  background: linear-gradient(
+    180deg,
+    #004a03 0%, #000400 6%, #005006 25%, #016a0a 45%,
+    #01700b 60%, #016a0a 75%, #015807 88%, #000902 100%
+  );
+}
+
+.frame-fill.mana {
+  background: linear-gradient(
+    180deg,
+    #1d4580 0%, #3c78c2 6%, #00163f 25%, #002967 45%,
+    #003073 60%, #003074 75%, #002d6e 88%, #002763 100%
+  );
+}
+
+.frame-fill.rage {
+  background: linear-gradient(
+    180deg,
+    #040200 0%, #7a4100 6%, #d89703 25%, #e4ae04 45%,
+    #e4b004 60%, #e1a803 75%, #c98201 88%, #554401 100%
+  );
+}
+
 .resource-label {
   font-size: 11px;
   font-weight: 700;
@@ -474,18 +555,8 @@ canvas {
   width: 128px;
   height: 128px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.35);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+  background: url("/hud/joystick-base.png") center / contain no-repeat;
   display: flex;
-}
-
-#joystick-base::before {
-  content: "";
-  position: absolute;
-  inset: 14px;
-  border-radius: 50%;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
 }
 
 #joystick-stick {
@@ -493,9 +564,7 @@ canvas {
   width: 54px;
   height: 54px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffffff, #c9c9c9);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  background: url("/hud/stick.png") center / cover no-repeat;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -509,14 +578,12 @@ canvas {
   width: 84px;
   height: 84px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ff7a59, #b3260c);
-  border: 3px solid rgba(255, 255, 255, 0.6);
+  background: url("/hud/action-button.png") center / cover no-repeat;
   color: #fff;
   font-weight: 800;
   font-size: 13px;
   letter-spacing: 0.5px;
   pointer-events: auto;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
 
 #attack-btn:active {
@@ -566,11 +633,11 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 35% 28%, #2c2415, #14100a);
-  border: 2px solid rgba(255, 210, 77, 0.7);
+  background:
+    url("/hud/ability-ring.png") center / contain no-repeat,
+    radial-gradient(circle at 35% 28%, #2c2415, #14100a);
   color: #fff;
   pointer-events: auto;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
 }
 
 .ability-btn:active {
@@ -610,8 +677,9 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 2px dashed rgba(255, 255, 255, 0.6);
+  background:
+    url("/hud/ability-ring.png") center / contain no-repeat,
+    rgba(0, 0, 0, 0.5);
   color: #fff;
   font-size: 13px;
   font-weight: 800;
