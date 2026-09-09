@@ -6,7 +6,6 @@ import type { MonsterDef } from '../data/monsters';
 
 export interface MonsterResult {
   exp: number;
-  gold: number;
   items: LootDrop[];
 }
 
@@ -269,10 +268,13 @@ export class Monster {
     if (this.hp <= 0) this.die();
   }
 
-  /** Call once, right after a kill — rolls gold/loot, so don't call it twice for one death. */
+  /** Call once, right after a kill — rolls gold/loot, so don't call it twice for one death.
+   * Gold is just a Gold Coin item stack now (GDD's physical-coin currency), not a separate field. */
   rollResult(): MonsterResult {
     const gold = this.def.goldMin + Math.floor(Math.random() * (this.def.goldMax - this.def.goldMin + 1));
-    return { exp: this.def.xp, gold, items: rollLoot(this.def.lootTable) };
+    const items = rollLoot(this.def.lootTable);
+    if (gold > 0) items.unshift({ itemId: 'goldCoin', qty: gold });
+    return { exp: this.def.xp, items };
   }
 
   private die(): void {

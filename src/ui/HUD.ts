@@ -22,7 +22,6 @@ export class HUD {
   private levelLabel: HTMLElement;
   private classLabel: HTMLElement;
   private skillLabel: HTMLElement;
-  private goldLabel: HTMLElement;
   private capacityLabel: HTMLElement;
   private satietyIndicator: HTMLElement;
   private satietyLabel: HTMLElement;
@@ -40,7 +39,6 @@ export class HUD {
     this.levelLabel = root.querySelector('#level-label')!;
     this.classLabel = root.querySelector('#class-label')!;
     this.skillLabel = root.querySelector('#skill-label')!;
-    this.goldLabel = root.querySelector('#gold-label')!;
     this.capacityLabel = root.querySelector('#capacity-label')!;
     this.satietyIndicator = root.querySelector('#satiety-indicator')!;
     this.satietyLabel = root.querySelector('#satiety-label')!;
@@ -63,7 +61,6 @@ export class HUD {
     this.levelLabel.textContent = `Lvl ${stats.level}`;
     this.classLabel.textContent = CLASSES[stats.classId].name;
     this.skillLabel.textContent = `${derived.skillName} ${derived.skillLevel}`;
-    this.goldLabel.textContent = String(stats.gold);
     this.capacityLabel.textContent = `${derived.carriedWeight.toFixed(1)} / ${stats.maxCapacity}`;
     this.capacityLabel.parentElement!.classList.toggle('over-limit', derived.carriedWeight >= stats.maxCapacity);
 

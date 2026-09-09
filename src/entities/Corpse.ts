@@ -2,16 +2,14 @@ import * as THREE from 'three';
 import type { LootDrop } from '../systems/loot';
 
 export interface CorpseLoot {
-  gold: number;
   items: LootDrop[];
 }
 
-// GDD Section 12: a kill doesn't hand loot to the killer — it drops a
-// corpse that anyone can open, first-come-first-served, until it decays.
-// Opening only collects the (weightless) gold; each item still has to be
-// individually taken, checked against carry capacity (Section 2.5). It can
-// be reopened as many times as needed while it's still here — nothing
-// about "opening" it consumes anything beyond whatever loot is actually taken.
+// GDD Section 12: a kill doesn't hand loot to the killer — it drops a corpse that anyone can
+// open, first-come-first-served, until it decays. Gold Coins are just another item stack in
+// the list now (the currency system's physical coins), so there's nothing special about
+// gold anymore — every item, coins included, is individually taken and checked against carry
+// capacity. It can be reopened as many times as needed while it's still here.
 const LIFETIME_SECONDS = 600; // 10 minutes
 
 export class Corpse {
@@ -36,21 +34,13 @@ export class Corpse {
     return this.lifeTimer <= 0;
   }
 
-  /** Nothing left to take — gold already collected and every item already claimed. */
+  /** Nothing left to take — every item (Gold Coins included) already claimed. */
   get hasLoot(): boolean {
-    return this.loot.gold > 0 || this.loot.items.length > 0;
+    return this.loot.items.length > 0;
   }
 
   update(dt: number): void {
     this.lifeTimer -= dt;
-  }
-
-  /** Collects the gold (idempotent — returns 0 if it was already taken). */
-  collectGold(): number {
-    const gold = this.loot.gold;
-    this.loot.gold = 0;
-    if (gold > 0) this.dimIfEmpty();
-    return gold;
   }
 
   peekItem(itemId: string): LootDrop | undefined {

@@ -32,6 +32,15 @@ export interface ItemDef {
 }
 
 export const ITEMS: Record<string, ItemDef> = {
+  // Currency (GDD Section "Currency"): physical, stackable coins — not a HUD number. They
+  // take up backpack/Depot weight like anything else, can be dropped, deposited, or traded.
+  // Gold Coins is the base unit; Sapphire/Arcane are just denser denominations of the same
+  // wealth (100 Gold = 1 Sapphire, 100 Sapphire = 1 Arcane) — Player.trySpendGold() breaks
+  // down and re-consolidates them automatically, the way real change-making works.
+  goldCoin: { id: 'goldCoin', name: 'Gold Coin', weight: 0.01 },
+  sapphireCoin: { id: 'sapphireCoin', name: 'Sapphire Coin', weight: 0.05 },
+  arcaneCoin: { id: 'arcaneCoin', name: 'Arcane Coin', weight: 0.1 },
+
   grubIchor: { id: 'grubIchor', name: 'Grub Ichor', weight: 0.2 },
   wolfPelt: { id: 'wolfPelt', name: 'Wolf Pelt', weight: 3.0 },
   wolfFang: { id: 'wolfFang', name: 'Wolf Fang', weight: 0.3 },

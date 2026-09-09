@@ -34,6 +34,10 @@ const BASE_MOVE_SPEED = 2.75;
 export const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
 
+// Currency system (GDD): 100 Gold Coins = 1 Sapphire Coin, 100 Sapphire Coins = 1 Arcane Coin.
+const GOLD_PER_SAPPHIRE = 100;
+const SAPPHIRE_PER_ARCANE = 100;
+
 // Real character models (Meshy.ai exports, merged with Mixamo-style animation clips —
 // see docs/GDD.md Section 28). Only the Knight exists so far; other classes fall back to
 // the placeholder primitive mesh below until their own models arrive.
@@ -554,10 +558,6 @@ export class Player {
     return leveledUp;
   }
 
-  gainGold(amount: number): void {
-    this.stats.gold += amount;
-  }
-
   /** Total weight of backpack contents AND equipped gear — wearing something doesn't make it weightless. */
   get carriedWeight(): number {
     let total = 0;
@@ -579,6 +579,47 @@ export class Player {
     if (!this.canCarry(itemId, qty)) return false;
     this.stats.inventory[itemId] = (this.stats.inventory[itemId] ?? 0) + qty;
     return true;
+  }
+
+  /** Spends `amountInGold` worth of the currency system's physical coins (Gold/Sapphire/Arcane
+   * Coins, 100:1 each — GDD Currency). Breaks down higher coins into smaller ones only as far
+   * as actually needed to cover the cost, then hands back any change re-consolidated into the
+   * biggest coins it can (e.g. paying with a 10000-gold Arcane Coin for a 1000-gold purchase
+   * comes back as 90 Sapphire Coins) — real change-making, not a HUD number. Never fails on
+   * carry weight: this only reshuffles coins already owned, and bigger coins are always
+   * lighter per unit of value, so total weight can only go down or stay the same. */
+  trySpendGold(amountInGold: number): boolean {
+    let gold = this.stats.inventory.goldCoin ?? 0;
+    let sapphire = this.stats.inventory.sapphireCoin ?? 0;
+    let arcane = this.stats.inventory.arcaneCoin ?? 0;
+    const total = gold + sapphire * GOLD_PER_SAPPHIRE + arcane * SAPPHIRE_PER_ARCANE * GOLD_PER_SAPPHIRE;
+    if (total < amountInGold) return false;
+
+    while (gold < amountInGold) {
+      if (sapphire > 0) {
+        sapphire -= 1;
+        gold += GOLD_PER_SAPPHIRE;
+      } else {
+        arcane -= 1;
+        sapphire += SAPPHIRE_PER_ARCANE;
+      }
+    }
+    gold -= amountInGold;
+
+    sapphire += Math.floor(gold / GOLD_PER_SAPPHIRE);
+    gold %= GOLD_PER_SAPPHIRE;
+    arcane += Math.floor(sapphire / SAPPHIRE_PER_ARCANE);
+    sapphire %= SAPPHIRE_PER_ARCANE;
+
+    this.setCoinStack('goldCoin', gold);
+    this.setCoinStack('sapphireCoin', sapphire);
+    this.setCoinStack('arcaneCoin', arcane);
+    return true;
+  }
+
+  private setCoinStack(itemId: 'goldCoin' | 'sapphireCoin' | 'arcaneCoin', qty: number): void {
+    if (qty > 0) this.stats.inventory[itemId] = qty;
+    else delete this.stats.inventory[itemId];
   }
 
   /** Moving gear from backpack to equipped slot doesn't change total carried weight, so this never fails on capacity. */
@@ -661,7 +702,7 @@ export class Player {
 
     state.status = 'completed';
     const leveledUp = this.gainExp(def.rewardXp);
-    this.gainGold(def.rewardGold);
+    if (def.rewardGold > 0) this.addItem('goldCoin', def.rewardGold);
     if (def.rewardItemId) this.addItem(def.rewardItemId, 1);
     return { ok: true, leveledUp };
   }

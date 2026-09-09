@@ -219,7 +219,6 @@ export interface Stats {
   /** Base values from level/class only — see Player.effectiveAttack/effectiveArmor for the gear-adjusted ones. */
   attack: number;
   armor: number;
-  gold: number;
   maxCapacity: number;
   /** itemId -> quantity carried in the backpack (not equipped). */
   inventory: Record<string, number>;
@@ -249,7 +248,6 @@ export function createInitialStats(classId: ClassId = 'knight'): Stats {
     expToNext: expToNextLevel(1),
     attack: def.baseAttack,
     armor: def.baseArmor,
-    gold: 0,
     maxCapacity: def.baseCapacity,
     // MVP starter kit (GDD gathering professions): every class begins with the basic
     // tier-1 toolkit so gathering is reachable from minute one, with no general-goods

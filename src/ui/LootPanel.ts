@@ -4,7 +4,8 @@ import type { LootDrop } from '../systems/loot';
 /**
  * The corpse-contents window (GDD Section 12): opening a corpse doesn't
  * vacuum everything into the backpack — each item sits here until the
- * player taps it, at which point the game checks carry capacity.
+ * player taps it, at which point the game checks carry capacity. Gold
+ * Coins (the currency system's physical coins) are just another item here.
  */
 export class LootPanel {
   private root: HTMLElement;
@@ -12,7 +13,6 @@ export class LootPanel {
   private itemsEl: HTMLElement;
   private closeBtn: HTMLElement;
   private onPick: ((itemId: string) => void) | null = null;
-  private onPickGold: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root.querySelector('#loot-panel')!;
@@ -26,29 +26,16 @@ export class LootPanel {
     return !this.root.classList.contains('hidden');
   }
 
-  /** Gold sits in the loot list like any other pickup now (GDD Section 12) — opening a
-   * corpse no longer vacuums it straight into the wallet, tapping it does. */
-  show(title: string, items: LootDrop[], gold: number, onPick: (itemId: string) => void, onPickGold: () => void): void {
+  show(title: string, items: LootDrop[], onPick: (itemId: string) => void): void {
     this.title.textContent = title;
     this.onPick = onPick;
-    this.onPickGold = onPickGold;
-    this.render(items, gold);
+    this.render(items);
     this.root.classList.remove('hidden');
   }
 
-  render(items: LootDrop[], gold: number): void {
+  render(items: LootDrop[]): void {
     this.itemsEl.innerHTML = '';
-    if (gold > 0) {
-      const btn = document.createElement('button');
-      btn.className = 'loot-item loot-item-gold';
-      const name = document.createElement('span');
-      name.textContent = `🪙 ${gold} złota`;
-      btn.append(name);
-      btn.addEventListener('click', () => this.onPickGold?.());
-      this.itemsEl.appendChild(btn);
-    }
-
-    if (items.length === 0 && gold <= 0) {
+    if (items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'loot-empty';
       empty.textContent = 'Puste';

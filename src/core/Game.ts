@@ -313,6 +313,10 @@ export class Game {
     return this.player.reflectPercent;
   }
 
+  debugPlayerTrySpendGold(amountInGold: number): boolean {
+    return this.player.trySpendGold(amountInGold);
+  }
+
   /** Test-only: fires a real basic attack and reports the resulting cooldown, so a test can
    * verify Archer's sprint haste (buffAttackSpeedPercent) actually shortens ATTACK_COOLDOWN. */
   debugPlayerTryAttackCooldown(): number {
@@ -767,15 +771,14 @@ export class Game {
     if (def.role === 'ferryman') {
       const dest = def.destination!;
       const fare = def.fare ?? 0;
-      this.dialoguePanel.show(def.name, `${def.idleText} The crossing to ${dest.name} costs ${fare} Glints.`, [
+      this.dialoguePanel.show(def.name, `${def.idleText} The crossing to ${dest.name} costs ${fare} Gold Coins.`, [
         {
           label: `Zapłać ${fare} i płyń`,
           onClick: () => {
-            if (this.player.stats.gold < fare) {
+            if (!this.player.trySpendGold(fare)) {
               this.hud.showToast('Za mało złota');
               return;
             }
-            this.player.stats.gold -= fare;
             this.player.position.set(dest.x, 0, dest.z);
             this.hud.showToast(`Przybijasz do brzegu: ${dest.name}`);
             this.dialoguePanel.hide();
@@ -983,8 +986,8 @@ export class Game {
 
     // GDD Section 12: EXP is awarded on the kill itself; gold/items go into
     // a corpse anyone can race to open, not straight to the killer.
-    const { exp, gold, items } = monster.rollResult();
-    const corpse = new Corpse(monster.def.name, monster.mesh.position, monster.def.color, { gold, items });
+    const { exp, items } = monster.rollResult();
+    const corpse = new Corpse(monster.def.name, monster.mesh.position, monster.def.color, { items });
     this.corpses.push(corpse);
     this.scene.add(corpse.mesh);
 
@@ -1019,30 +1022,11 @@ export class Game {
     }
   }
 
-  /** Opening just reveals the contents — gold sits in the list like any other pickup now,
-   * nothing is collected automatically. */
+  /** Opening just reveals the contents — nothing is collected automatically, Gold Coins
+   * included (it's a physical coin item now, not an auto-collected number). */
   private openCorpse(corpse: Corpse): void {
     this.openedCorpse = corpse;
-    this.lootPanel.show(
-      corpse.monsterName,
-      corpse.loot.items,
-      corpse.loot.gold,
-      (itemId) => this.tryTakeItem(corpse, itemId),
-      () => this.tryTakeGold(corpse),
-    );
-  }
-
-  private tryTakeGold(corpse: Corpse): void {
-    const gold = corpse.collectGold();
-    if (gold <= 0) return; // someone else already took it
-    this.player.gainGold(gold);
-    this.hud.showToast(`+${gold} złota`);
-    this.lootPanel.render(corpse.loot.items, corpse.loot.gold);
-
-    if (!corpse.hasLoot) {
-      this.lootPanel.hide();
-      this.openedCorpse = null;
-    }
+    this.lootPanel.show(corpse.monsterName, corpse.loot.items, (itemId) => this.tryTakeItem(corpse, itemId));
   }
 
   private tryTakeItem(corpse: Corpse, itemId: string): void {
@@ -1056,7 +1040,7 @@ export class Game {
 
     corpse.takeItem(itemId);
     this.player.addItem(drop.itemId, drop.qty);
-    this.lootPanel.render(corpse.loot.items, corpse.loot.gold);
+    this.lootPanel.render(corpse.loot.items);
 
     if (!corpse.hasLoot) {
       this.lootPanel.hide();
