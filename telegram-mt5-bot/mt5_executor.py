@@ -25,6 +25,7 @@ EXIT_MODE=trailing_stop's per-position trailing).
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -211,12 +212,27 @@ class Mt5Executor:
         return True
 
     def check_trailing_stops(self, campaign: Campaign, trailing_pips: float, pip_size: float) -> None:
-        """EXIT_MODE=trailing_stop only: every open position in this
-        campaign trails its OWN SL trailing_pips behind the current price,
-        independently of every other position and of the basket-average
-        logic in check_average_breakeven (the two are mutually exclusive -
-        see main.py). Only ever tightens a position's SL, never loosens it,
-        so this is safe to call every poll tick unconditionally.
+        """EXIT_MODE=trailing_stop only: a STEPPED trailing stop - it does
+        NOT continuously follow the price trailing_pips behind it. Each
+        open position trails independently, based on ITS OWN entry price:
+
+          - Below trailing_pips profit: untouched, SL stays wherever it
+            already is (the zone's shared initial SL) - not yet activated.
+          - At trailing_pips profit: SL jumps to breakeven (this position's
+            own entry price) - trailing "activates".
+          - Every further trailing_pips of profit beyond that: SL jumps
+            another trailing_pips in the profit direction. So right after
+            each jump the gap between SL and the current price is exactly
+            trailing_pips (it then widens as price keeps moving, until the
+            next jump snaps it back to trailing_pips) - it moves in
+            discrete trailing_pips steps, not tick-by-tick with the price.
+
+        Comparing each candidate against the position's own current live
+        SL (not recomputing from scratch) is what makes this tightening-only
+        for free: a price pullback computes a candidate from an
+        already-passed, lower step, which is never better than the SL a
+        later step already set - so this is safe to call every poll tick
+        unconditionally, and SL never moves back down.
 
         Since each position can need a different new SL, this queues one
         MODIFY_POSITIONS command (targeting each position by ticket) rather
@@ -229,15 +245,25 @@ class Mt5Executor:
             return
 
         bid, ask = self.current_price()
-        trailing_distance = trailing_pips * pip_size
+        step_distance = trailing_pips * pip_size
 
         updates = []
         for pos in positions:
+            profit_distance = (bid - pos.price_open) if campaign.direction == "BUY" else (pos.price_open - ask)
+            # round() before floor() guards against float noise (e.g.
+            # 3.5999999999999996) putting profit_distance one step short of
+            # an exact multiple of step_distance, which would delay
+            # activation/the next jump by one tick's worth of price.
+            steps = math.floor(round(profit_distance / step_distance, 6))
+            if steps < 1:
+                continue
+            locked_distance = (steps - 1) * step_distance
+
             if campaign.direction == "BUY":
-                candidate_sl = round(bid - trailing_distance, 2)
+                candidate_sl = round(pos.price_open + locked_distance, 2)
                 improved = candidate_sl > pos.sl
             else:
-                candidate_sl = round(ask + trailing_distance, 2)
+                candidate_sl = round(pos.price_open - locked_distance, 2)
                 improved = candidate_sl < pos.sl
             if improved:
                 updates.append((pos.ticket, candidate_sl, pos.tp))

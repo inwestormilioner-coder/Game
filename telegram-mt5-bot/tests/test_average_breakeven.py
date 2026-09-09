@@ -167,12 +167,26 @@ def test_sell_basket_uses_ask_and_mirrors_math(tmp_path):
     assert "NEW_SL=4427.5" in files[0].read_text()
 
 
-def test_trailing_stop_tightens_sl_when_price_moves_favorably(tmp_path):
-    # BUY position entry 4420, initial (shared-zone) SL 4414. Price has run
-    # up to bid=4460 - trailing 36 pips (=$3.6) behind gives candidate SL
-    # 4456.4, well past the current 4414, so it should update.
+def test_trailing_stop_not_yet_activated_below_threshold(tmp_path):
+    # BUY position entry 4420, profit so far is only 3.0 (30 pips) - below
+    # the 36-pip activation threshold, so the initial zone SL (4414) must
+    # be left untouched (no jump to breakeven yet).
     positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
-    fake = FakeMt5(positions=positions, bid=4460.0, ask=4460.2, commondata_path=str(tmp_path))
+    fake = FakeMt5(positions=positions, bid=4423.0, ask=4423.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    assert _bridge_files(fake, "trail_") == []
+
+
+def test_trailing_stop_activates_at_breakeven_on_first_36_pips(tmp_path):
+    # BUY position entry 4420, price exactly 3.6 (36 pips) in profit -
+    # trailing activates: SL jumps to breakeven (the entry price), not
+    # continuously to price-minus-3.6.
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    fake = FakeMt5(positions=positions, bid=4423.6, ask=4423.8, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
@@ -182,13 +196,47 @@ def test_trailing_stop_tightens_sl_when_price_moves_favorably(tmp_path):
     assert len(files) == 1
     content = files[0].read_text()
     assert "TYPE=MODIFY_POSITIONS" in content
-    assert "POSITION=111,4456.4,0.0" in content
+    assert "POSITION=111,4420.0,0.0" in content
+
+
+def test_trailing_stop_jumps_another_36_pips_once_second_threshold_reached(tmp_path):
+    # BUY position entry 4420, already trailed to breakeven (sl=4420.0) by
+    # an earlier tick. Now 72 pips ($7.2) in profit - two 36-pip steps
+    # completed - so SL should jump one more step to entry+36pips (4423.6),
+    # NOT continuously to price-minus-3.6 (which would be 4423.6 too here,
+    # coincidentally - see the next test for a case that tells them apart).
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4420.0)]
+    fake = FakeMt5(positions=positions, bid=4427.2, ask=4427.4, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    assert "POSITION=111,4423.6,0.0" in files[0].read_text()
+
+
+def test_trailing_stop_does_not_move_mid_step_even_though_price_kept_rising(tmp_path):
+    # Same position as above, but price has run further (100 pips profit,
+    # still within the SAME completed step - 108 would be the next one) -
+    # SL must stay exactly at the step-2 value (4423.6), NOT follow price
+    # continuously (which a price-minus-3.6 formula would do, giving a
+    # bigger number here).
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4423.6)]
+    fake = FakeMt5(positions=positions, bid=4430.0, ask=4430.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1)
+
+    assert _bridge_files(fake, "trail_") == []
 
 
 def test_trailing_stop_does_not_loosen_an_already_tighter_sl(tmp_path):
-    # Candidate SL from the current price (4460 - 3.6 = 4456.4) is WORSE
-    # than the position's current SL (4458.0, already trailed further by
-    # an earlier tick) - must not move it backwards.
+    # 40 profit -> 11 steps completed -> candidate = entry + 10*3.6 =
+    # 4456.0, WORSE than the position's current SL (4458.0, already
+    # trailed further by an earlier tick) - must not move it backwards.
     positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4458.0)]
     fake = FakeMt5(positions=positions, bid=4460.0, ask=4460.2, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
@@ -199,9 +247,13 @@ def test_trailing_stop_does_not_loosen_an_already_tighter_sl(tmp_path):
     assert _bridge_files(fake, "trail_") == []
 
 
-def test_trailing_stop_sell_direction_trails_above_ask(tmp_path):
+def test_trailing_stop_sell_direction_mirrors_activation_and_steps(tmp_path):
+    # SELL position entry 4430, ask has dropped to 4426.4 - exactly 3.6
+    # (36 pips) profit, one step completed - SL jumps to breakeven
+    # (4430.0), mirroring the BUY case (profit measured from ask, SL moves
+    # DOWN from entry as more steps complete).
     positions = [FakePosition(ticket=222, magic=990000, price_open=4430.0, volume=0.01, tp=0.0, sl=4436.0)]
-    fake = FakeMt5(positions=positions, bid=4389.8, ask=4390.0, commondata_path=str(tmp_path))
+    fake = FakeMt5(positions=positions, bid=4426.2, ask=4426.4, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="SELL", magic=990000, sl_pips=60)
 
@@ -209,15 +261,16 @@ def test_trailing_stop_sell_direction_trails_above_ask(tmp_path):
 
     files = _bridge_files(fake, "trail_")
     assert len(files) == 1
-    # SELL: candidate = ask + trailing distance = 4390.0 + 3.6 = 4393.6
-    assert "POSITION=222,4393.6,0.0" in files[0].read_text()
+    assert "POSITION=222,4430.0,0.0" in files[0].read_text()
 
 
 def test_trailing_stop_handles_each_position_independently(tmp_path):
-    # Candidate SL from the current price is 4460.0 - 3.6 = 4456.4 for
-    # both positions (same symbol/price), but only ticket 1's current SL
-    # (4414.0) is behind that; ticket 2 (4457.0, already trailed tighter
-    # than the new candidate by an earlier tick) must be left alone.
+    # Same bid (4460.0) for both, but each trails from ITS OWN entry:
+    # ticket 1 (entry 4420, 40 profit -> 11 steps -> candidate 4456.0) is
+    # well past its current SL (4414.0) so it updates; ticket 2 (entry
+    # 4455, only 5 profit -> 1 step -> candidate is breakeven, 4455.0)
+    # is WORSE than its current SL (4457.0, already trailed further by an
+    # earlier tick) so it must be left alone.
     positions = [
         FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
         FakePosition(ticket=2, magic=990000, price_open=4455.0, volume=0.01, tp=0.0, sl=4457.0),
@@ -231,7 +284,7 @@ def test_trailing_stop_handles_each_position_independently(tmp_path):
     files = _bridge_files(fake, "trail_")
     assert len(files) == 1
     content = files[0].read_text()
-    assert "POSITION=1,4456.4,0.0" in content
+    assert "POSITION=1,4456.0,0.0" in content
     assert "POSITION=2" not in content
 
 
