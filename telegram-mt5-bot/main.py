@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import logging
 import uuid
+from datetime import datetime
 
 from campaign_store import Campaign, CampaignStore
 from config import Config, load_config
@@ -188,6 +189,76 @@ class Bot:
                     log.exception("error monitoring campaign %s", campaign.id)
             await asyncio.sleep(self.config.monitor_interval_seconds)
 
+    async def watch_fills(self, notifier) -> None:
+        """Sends a chart screenshot + entry details to Telegram (see
+        notifier.py) whenever TelegramBridgeEA reports one of our pending
+        orders actually filled - not when it's merely placed. See
+        mt5_executor.take_pending_fill_notifications and the EA's
+        OnTradeTransaction. No-op without a live MT5 connection."""
+        if self.executor is None:
+            return
+        while True:
+            try:
+                for fn in self.executor.take_pending_fill_notifications():
+                    caption = self._format_fill_caption(fn.meta)
+                    await notifier.send_photo(fn.png_path, caption)
+                    fn.png_path.unlink(missing_ok=True)
+            except Exception:
+                log.exception("error sending fill notification")
+            await asyncio.sleep(self.config.monitor_interval_seconds)
+
+    def _format_fill_caption(self, meta: dict) -> str:
+        magic = int(meta.get("MAGIC", 0))
+        position_id = int(meta.get("POSITION", 0))
+        symbol = meta.get("SYMBOL", self.config.symbol)
+        campaign = self.store.find_by_magic(magic)
+        details = self.executor.position_details(position_id)
+
+        lines = [f"✅ Złapane entry - {symbol}"]
+        if details:
+            lines.append(f"{details.direction} {details.volume:.2f} lota @ {details.entry:.2f}")
+            lines.append(f"SL: {details.sl:.2f}  TP: {details.tp:.2f}")
+        if campaign:
+            lines.append(f"Kampania: {campaign.id}")
+        return "\n".join(lines)
+
+    async def daily_summary_loop(self, notifier) -> None:
+        """Sends one automatic summary per day at config.daily_summary_time
+        (local time, "HH:MM") of what actually filled/closed that day - see
+        mt5_executor.daily_stats. No-op without a live MT5 connection."""
+        if self.executor is None:
+            return
+        try:
+            target_h, target_m = (int(x) for x in self.config.daily_summary_time.split(":"))
+        except ValueError:
+            log.error(
+                "DAILY_SUMMARY_TIME=%r is not HH:MM - daily summary disabled", self.config.daily_summary_time
+            )
+            return
+
+        last_sent = None
+        while True:
+            now = datetime.now()
+            if now.hour == target_h and now.minute == target_m and last_sent != now.date():
+                try:
+                    await self._send_daily_summary(notifier, now)
+                    last_sent = now.date()
+                except Exception:
+                    log.exception("error sending daily summary")
+            await asyncio.sleep(30)
+
+    async def _send_daily_summary(self, notifier, now: datetime) -> None:
+        day_start = datetime.combine(now.date(), datetime.min.time())
+        day_end = datetime.combine(now.date(), datetime.max.time())
+        stats = self.executor.daily_stats(self.config.magic_base, self.config.pip_size, day_start, day_end)
+        text = (
+            f"\U0001F4CA Podsumowanie dnia {now.date().isoformat()}\n"
+            f"Złapane entry: {stats.opened_count} ({stats.opened_lots:.2f} lota)\n"
+            f"Zamknięte pozycje: {stats.closed_count}\n"
+            f"Wynik: {stats.total_pips:+.1f} pips ({stats.total_profit:+.2f})"
+        )
+        await notifier.send_text(text)
+
 
 def replay(config: Config, path: str) -> None:
     bot = Bot(config)
@@ -198,13 +269,24 @@ def replay(config: Config, path: str) -> None:
 
 
 async def live(config: Config) -> None:
-    from telegram_listener import run_listener
+    from telegram_listener import build_client, run_listener
+
+    client = build_client(config)
+    await client.start()
 
     bot = Bot(config)
-    await asyncio.gather(
-        run_listener(config, bot.handle_text),
-        bot.monitor_campaigns(),
-    )
+    tasks = [run_listener(client, config, bot.handle_text), bot.monitor_campaigns()]
+
+    if config.notify_enabled and not config.dry_run:
+        from notifier import Notifier, resolve_chat_identifier
+
+        notifier = Notifier(client, resolve_chat_identifier(config.telegram_notify_chat))
+        tasks.append(bot.watch_fills(notifier))
+        tasks.append(bot.daily_summary_loop(notifier))
+    elif config.notify_enabled:
+        log.info("NOTIFY_ENABLED is on but DRY_RUN is on too - no MT5 connection, notifications stay off")
+
+    await asyncio.gather(*tasks)
 
 
 def main() -> None:

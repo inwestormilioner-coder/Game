@@ -23,7 +23,9 @@ def _dry_run_config(**overrides) -> Config:
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
         exit_mode="tp", trailing_stop_pips=36.0,
         deviation_points=20, magic_base=990000,
-        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, dry_run=True,
+        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5,
+        notify_enabled=False, telegram_notify_chat="me", daily_summary_time="23:55",
+        dry_run=True,
     )
     base.update(overrides)
     return Config(**base)

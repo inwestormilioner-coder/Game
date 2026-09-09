@@ -92,6 +92,17 @@ class Config:
     risk_reward_trigger: float
     monitor_interval_seconds: float
 
+    # Telegram notifications (fills + daily summary) - uses the SAME
+    # logged-in Telethon session that reads the signal channel, no separate
+    # bot needed. Only active when dry_run is False (needs a live MT5
+    # connection to read fills/deal history) - see notifier.py, main.py's
+    # Bot.watch_fills/daily_summary_loop, and mt5_executor's
+    # take_pending_fill_notifications/position_details/daily_stats.
+    notify_enabled: bool
+    telegram_notify_chat: str
+    # Local time (24h "HH:MM") the daily pips/profit summary is sent.
+    daily_summary_time: str
+
     dry_run: bool
 
 
@@ -126,5 +137,8 @@ def load_config() -> Config:
         max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),
         risk_reward_trigger=_float("RISK_REWARD_TRIGGER", 1.0),
         monitor_interval_seconds=_float("MONITOR_INTERVAL_SECONDS", 5),
+        notify_enabled=_bool("NOTIFY_ENABLED", True),
+        telegram_notify_chat=os.getenv("TELEGRAM_NOTIFY_CHAT", "me"),
+        daily_summary_time=os.getenv("DAILY_SUMMARY_TIME", "23:55"),
         dry_run=_bool("DRY_RUN", True),
     )

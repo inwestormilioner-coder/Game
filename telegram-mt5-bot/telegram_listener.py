@@ -30,8 +30,17 @@ def resolve_chat_identifier(value: str) -> Union[int, str]:
     return value
 
 
-async def run_listener(config: Config, on_message: MessageHandler) -> None:
-    client = TelegramClient(config.telegram_session_name, config.telegram_api_id, config.telegram_api_hash)
+def build_client(config: Config) -> TelegramClient:
+    """A bare, unstarted client - callers must `await client.start()` before
+    using it (run_listener no longer does this itself, so the SAME started
+    client can also be handed to notifier.Notifier to send fill/daily-summary
+    notifications - see main.py's live())."""
+    return TelegramClient(config.telegram_session_name, config.telegram_api_id, config.telegram_api_hash)
+
+
+async def run_listener(client: TelegramClient, config: Config, on_message: MessageHandler) -> None:
+    """Assumes `client` is already started (see build_client) - blocks
+    forever listening on config.telegram_channel."""
     channel = resolve_chat_identifier(config.telegram_channel)
 
     @client.on(events.NewMessage(chats=channel))
@@ -45,6 +54,5 @@ async def run_listener(config: Config, on_message: MessageHandler) -> None:
         except Exception:
             log.exception("error handling message")
 
-    await client.start()
     log.info("listening on channel %s", channel)
     await client.run_until_disconnected()

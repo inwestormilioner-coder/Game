@@ -34,7 +34,8 @@ format.
    - Tab **Common (Ogólne)**: check **"Allow live trading" / "Zezwól na
      handel na żywo"**.
    - Tab **Inputs (Wejścia)**: defaults are fine (`BridgeSubfolder=tg_bridge`,
-     `PollSeconds=1`).
+     `PollSeconds=1`, `MagicRangeStart=990000` - must match `MAGIC_BASE` in
+     `.env`, `ScreenshotWidth`/`ScreenshotHeight=1024x600`).
    - Click OK.
 7. Make sure the global **"Algo Trading"** button in the MT5 toolbar is on
    (green) - the EA needs it too, same as any automated trading.
@@ -77,6 +78,32 @@ automatically), or remove and re-drag it onto the chart if it doesn't.
   show up in MT5's **Handel (Trade)** tab a moment later.
 - If the Python bot's own log ever shows a warning about "command file(s)
   ... still unprocessed" - the EA isn't attached/running; redo steps 4-6.
+
+## Powiadomienia na Telegram przy realnym wypełnieniu zlecenia
+
+Poza wystawianiem/modyfikowaniem zleceń ten EA robi jeszcze jedną rzecz:
+gdy jedno z naszych zleceń oczekujących faktycznie się wypełni (nie w
+momencie wystawienia, tylko dopiero gdy cena je faktycznie złapie), robi
+zrzut wykresu (`ChartScreenShot`) i zapisuje go razem z małym plikiem
+tekstowym (numer transakcji/pozycji/magic/symbol) do
+`Common\Files\<BridgeSubfolder>\fills\`. Rozpoznaje "nasze" zlecenia po
+magic number - każda transakcja z magic `>= MagicRangeStart` (domyślnie
+990000, musi się zgadzać z `MAGIC_BASE` w `.env`) liczy się jako nasza,
+niezależnie od tego, kiedy EA został uruchomiony/zrestartowany.
+
+Stronę Python odbiera te pliki (`mt5_executor.take_pending_fill_notifications`,
+wołane z `main.py`'s `Bot.watch_fills`) i wysyła screenshot + szczegóły
+zlecenia na Telegram tą samą sesją, która czyta kanał z sygnałami - zobacz
+`NOTIFY_ENABLED`/`TELEGRAM_NOTIFY_CHAT`/`DAILY_SUMMARY_TIME` w
+`.env.example`. Zamknięcia pozycji i dzienne podsumowanie pipsów/wyniku EA
+w ogóle nie liczy - to Python robi z historii transakcji MT5, do której ma
+dostęp przez zwykłe (read-only, więc nieobjęte retcode 10027) wywołania
+API.
+
+Żeby zrzuty ekranu były sensowne (pokazywały realny wykres złota, nie
+przypadkowy inny symbol), EA musi być podpięty do wykresu tego samego
+symbolu co handluje (u nas: XAUUSD) - dokładnie tak, jak jest to opisane w
+kroku 5 powyżej.
 
 ## Uninstalling / going back to direct API calls
 

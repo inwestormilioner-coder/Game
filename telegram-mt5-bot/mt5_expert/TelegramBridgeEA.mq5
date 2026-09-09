@@ -47,6 +47,17 @@
 //| stop/freeze distance of the current price fills at MARKET       |
 //| instead of being sent as a pending order (which would just get  |
 //| rejected for being too close) - same SL/TP either way.          |
+//|                                                                  |
+//| Fill notifications: whenever a deal with magic >= MagicRangeStart|
+//| actually fills (not just gets placed), OnTradeTransaction below  |
+//| drops a chart screenshot + a small metadata file into            |
+//| Common\Files\<BridgeSubfolder>\fills\ - <deal_ticket>.png and    |
+//| <deal_ticket>.txt (DEAL=/POSITION=/MAGIC=/SYMBOL= lines). The    |
+//| Python side polls that folder and forwards it to Telegram (see   |
+//| mt5_executor.take_pending_fill_notifications / main.py's          |
+//| Bot.watch_fills) - closes and the daily pips/profit summary are  |
+//| computed entirely on the Python side from MT5's own deal history,|
+//| not handled here.                                                 |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
@@ -54,6 +65,9 @@
 input string BridgeSubfolder   = "tg_bridge";   // subfolder under Common\Files
 input int    PollSeconds       = 1;             // how often to check for new commands
 input int    HeartbeatSeconds  = 60;            // how often to print an "I'm alive" log line
+input long   MagicRangeStart   = 990000;        // fill notifications: deals with magic >= this are treated as ours - match MAGIC_BASE in .env
+input int    ScreenshotWidth   = 1024;          // fill notification screenshot size (pixels)
+input int    ScreenshotHeight  = 600;
 
 datetime g_lastHeartbeat = 0;
 
@@ -64,6 +78,7 @@ int OnInit()
    PrintFormat("TelegramBridgeEA started, watching Common\\Files\\%s\\", BridgeSubfolder);
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       Print("WARNING: Algo Trading is currently OFF - this EA cannot place orders until it's enabled.");
+   FolderCreate(BridgeSubfolder + "\\fills", FILE_COMMON);
    ProcessBridgeFolder();
    return(INIT_SUCCEEDED);
   }
@@ -398,5 +413,72 @@ void HandleModifyPositions(string symbol, string &positionLines[], int positionC
       else
          PrintFormat("Bridge: trailing SL -> %.2f for ticket %d", newSl, (int)ticket);
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Fires on every deal/order change. When one of our pending orders  |
+//| actually fills (a DEAL_ENTRY_IN deal whose magic is in our range),|
+//| drops a chart screenshot + a small metadata file into the bridge  |
+//| folder's fills\ subfolder - see the header comment above and     |
+//| mt5_executor.take_pending_fill_notifications on the Python side. |
+//| Closes are deliberately NOT handled here - the Python side reads |
+//| MT5's own deal history for those (and the daily summary), which  |
+//| it can already do without going through this EA.                 |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                         const MqlTradeRequest &request,
+                         const MqlTradeResult &result)
+  {
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+   if(!HistoryDealSelect(trans.deal))
+      return;
+
+   long dealMagic = HistoryDealGetInteger(trans.deal, DEAL_MAGIC);
+   if(dealMagic < MagicRangeStart)
+      return;
+
+   ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+   if(entry != DEAL_ENTRY_IN)
+      return;
+
+   string symbol = HistoryDealGetString(trans.deal, DEAL_SYMBOL);
+   long positionId = HistoryDealGetInteger(trans.deal, DEAL_POSITION_ID);
+   string dealStr = (string)trans.deal;
+
+   string shotName = "tg_bridge_shot_" + dealStr + ".png";
+   if(!ChartScreenShot(0, shotName, ScreenshotWidth, ScreenshotHeight))
+     {
+      PrintFormat("Bridge: fill notification for deal %s - ChartScreenShot failed (error %d)", dealStr, GetLastError());
+      return;
+     }
+
+   string destPng = BridgeSubfolder + "\\fills\\" + dealStr + ".png";
+   if(!FileCopy(shotName, 0, destPng, FILE_COMMON))
+     {
+      PrintFormat("Bridge: fill notification for deal %s - could not copy screenshot into bridge folder (error %d)", dealStr, GetLastError());
+      FileDelete(shotName, 0);
+      return;
+     }
+   FileDelete(shotName, 0);
+
+   string tmpMeta = BridgeSubfolder + "\\fills\\" + dealStr + ".tmp";
+   int fh = FileOpen(tmpMeta, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+   if(fh == INVALID_HANDLE)
+     {
+      PrintFormat("Bridge: fill notification for deal %s - could not write metadata (error %d)", dealStr, GetLastError());
+      return;
+     }
+   FileWrite(fh, "DEAL=" + dealStr);
+   FileWrite(fh, "POSITION=" + (string)positionId);
+   FileWrite(fh, "MAGIC=" + (string)dealMagic);
+   FileWrite(fh, "SYMBOL=" + symbol);
+   FileClose(fh);
+
+   string finalMeta = BridgeSubfolder + "\\fills\\" + dealStr + ".txt";
+   if(!FileMove(tmpMeta, FILE_COMMON, finalMeta, FILE_COMMON))
+      PrintFormat("Bridge: fill notification for deal %s - could not finalize metadata file (error %d)", dealStr, GetLastError());
+   else
+      PrintFormat("Bridge: fill notification queued for deal %s (magic=%d)", dealStr, (int)dealMagic);
   }
 //+------------------------------------------------------------------+

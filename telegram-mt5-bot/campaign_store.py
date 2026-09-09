@@ -70,6 +70,12 @@ class CampaignStore:
         matches.sort(key=lambda c: c.opened_at, reverse=True)
         return matches
 
+    def find_by_magic(self, magic: int) -> Campaign | None:
+        for c in self._campaigns:
+            if c.magic == magic:
+                return c
+        return None
+
     def deactivate(self, campaign_id: str) -> None:
         for c in self._campaigns:
             if c.id == campaign_id:

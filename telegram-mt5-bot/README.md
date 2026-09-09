@@ -62,6 +62,17 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
 - **Domyślnie `DRY_RUN=true`** - bot parsuje wiadomości i loguje, co BY
   wysłał do MT5, ale nic nie wysyła. Włącz realne zlecenia (`DRY_RUN=false`)
   dopiero gdy przejrzysz logi z kilku prawdziwych sygnałów.
+- **Powiadomienia na Telegram** (`NOTIFY_ENABLED=true`, domyślnie włączone,
+  wymaga `DRY_RUN=false`): gdy zlecenie oczekujące faktycznie się wypełni
+  (nie w momencie wystawienia - dopiero gdy cena je złapie), bot wysyła na
+  Telegram (tą samą sesją co czyta kanał - `TELEGRAM_NOTIFY_CHAT`, domyślnie
+  "me" czyli własne Zapisane Wiadomości) zrzut wykresu z EA + kierunek/
+  entry/SL/TP/lot. Do tego raz dziennie o `DAILY_SUMMARY_TIME` (domyślnie
+  23:55) wysyła podsumowanie: ile entry faktycznie złapaliśmy danego dnia
+  (i ile lotów), ile pozycji się zamknęło i jaki łączny wynik (pipsy + $) -
+  liczone z historii transakcji MT5, niezależnie od tego kiedy sygnał
+  przyszedł. Zobacz **`mt5_expert/README.md`** sekcję "Powiadomienia..." -
+  wymaga zaktualizowanego EA.
 
 ## Instalacja (na Windows, obok MT5)
 
@@ -135,6 +146,8 @@ campaign_store.py      - który magic/ticket należy do której strefy
 mt5_executor.py        - czyta ceny/pozycje przez API, zlecenia/SL zleca
                           EA pisząc polecenia do wspólnego folderu (tylko Windows)
 telegram_listener.py   - nasłuch kanału (Telethon)
+notifier.py             - wysyłka powiadomień (screeny wypełnień, dzienne
+                          podsumowanie) tą samą sesją Telethon
 main.py                - spina wszystko, tryb live i --replay
 list_chats.py           - jednorazowa pomoc: wypisuje Twoje czaty z ID
                           (do znalezienia ID prywatnego kanału bez usernamu)

@@ -26,14 +26,43 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from campaign_store import Campaign
 from config import Config
 from order_planner import OrderPlan
 
 log = logging.getLogger("mt5_executor")
+
+
+@dataclass
+class FillNotification:
+    """One pending order that TelegramBridgeEA reports as filled - a chart
+    screenshot taken at the moment of the fill, plus the handful of fields
+    from its metadata file (see take_pending_fill_notifications)."""
+    png_path: Path
+    meta: dict
+
+
+@dataclass
+class PositionDetails:
+    direction: str
+    entry: float
+    sl: float
+    tp: float
+    volume: float
+
+
+@dataclass
+class DailyStats:
+    opened_count: int
+    opened_lots: float
+    closed_count: int
+    total_pips: float
+    total_profit: float
 
 
 class Mt5Executor:
@@ -258,3 +287,89 @@ class Mt5Executor:
         for p in stale:
             log.warning("  stuck: %s", p.name)
         log.warning("=" * 70)
+
+    def take_pending_fill_notifications(self) -> List[FillNotification]:
+        """Picks up screenshot+metadata pairs TelegramBridgeEA drops into
+        the bridge folder's fills\\ subfolder whenever one of our pending
+        orders actually fills (see TelegramBridgeEA.mq5's
+        OnTradeTransaction) - one chart screenshot taken at the moment of
+        the fill, one plain-text metadata file (DEAL/POSITION/MAGIC/SYMBOL)
+        with the same base name. The metadata file is only written AFTER
+        the screenshot is copied in, so a .txt with no matching .png yet
+        just means the EA is mid-write - left alone for the next poll."""
+        fills_dir = self._bridge_dir() / "fills"
+        fills_dir.mkdir(exist_ok=True)
+        results = []
+        for meta_path in sorted(fills_dir.glob("*.txt")):
+            png_path = meta_path.with_suffix(".png")
+            if not png_path.exists():
+                continue
+            meta = {}
+            for line in meta_path.read_text(encoding="ascii").splitlines():
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    meta[key] = value
+            meta_path.unlink()
+            results.append(FillNotification(png_path=png_path, meta=meta))
+        return results
+
+    def position_details(self, ticket: int) -> Optional[PositionDetails]:
+        positions = self._mt5.positions_get(ticket=ticket)
+        if not positions:
+            return None
+        p = positions[0]
+        direction = "BUY" if p.type == self._mt5.POSITION_TYPE_BUY else "SELL"
+        return PositionDetails(direction=direction, entry=p.price_open, sl=p.sl, tp=p.tp, volume=p.volume)
+
+    def daily_stats(self, magic_base: int, pip_size: float, day_start: datetime, day_end: datetime) -> DailyStats:
+        """Reads today's deal history (a read-only MT5 API call, always
+        available regardless of the retcode-10027 restriction on order
+        placement) to report what actually filled and closed today,
+        independent of when a campaign's zone signal originally arrived.
+        magic_base filters to this bot's own trades - campaign magics are
+        assigned sequentially upward from it (campaign_store.next_magic)
+        and never reused, so ">= magic_base" is a safe "is this ours" test.
+
+        Pips for a closed position are computed from its own deal history
+        (open price vs. volume-weighted close price), not from sl_pips,
+        since a position can close at TP, at SL, or (once 1:1 is reached)
+        at the basket-average SL - all different distances from entry.
+        """
+        mt5 = self._mt5
+        deals = mt5.history_deals_get(day_start, day_end) or ()
+        deals = [d for d in deals if d.symbol == self.config.symbol and d.magic >= magic_base]
+
+        opened = [d for d in deals if d.entry == mt5.DEAL_ENTRY_IN]
+        closed_out = [d for d in deals if d.entry in (mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_OUT_BY)]
+
+        total_profit = 0.0
+        total_pips = 0.0
+        seen_positions = set()
+        for out_deal in closed_out:
+            pid = out_deal.position_id
+            if pid in seen_positions:
+                continue
+            seen_positions.add(pid)
+
+            pos_deals = mt5.history_deals_get(position=pid) or ()
+            in_deals = [d for d in pos_deals if d.entry == mt5.DEAL_ENTRY_IN]
+            out_deals = [d for d in pos_deals if d.entry in (mt5.DEAL_ENTRY_OUT, mt5.DEAL_ENTRY_OUT_BY)]
+            if not in_deals or not out_deals:
+                continue
+
+            in_price = in_deals[0].price
+            out_volume = sum(d.volume for d in out_deals)
+            out_price = sum(d.price * d.volume for d in out_deals) / out_volume
+            direction = "BUY" if in_deals[0].type == mt5.DEAL_TYPE_BUY else "SELL"
+            pips = (out_price - in_price) / pip_size if direction == "BUY" else (in_price - out_price) / pip_size
+
+            total_pips += pips
+            total_profit += sum(d.profit + d.swap + d.commission for d in out_deals)
+
+        return DailyStats(
+            opened_count=len(opened),
+            opened_lots=round(sum(d.volume for d in opened), 2),
+            closed_count=len(seen_positions),
+            total_pips=round(total_pips, 1),
+            total_profit=round(total_profit, 2),
+        )
