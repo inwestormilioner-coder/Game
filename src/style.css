@@ -572,6 +572,7 @@ canvas {
 }
 
 #attack-btn {
+  all: unset;
   position: absolute;
   right: 24px;
   bottom: 34px;
@@ -584,6 +585,29 @@ canvas {
   font-size: 13px;
   letter-spacing: 0.5px;
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attack-label {
+  pointer-events: none;
+}
+
+/* The little cyan dot that slides toward the drag direction on the attack joystick itself —
+   a small, close-range echo of the larger ground reticle Game.ts draws while aiming. */
+#attack-aim-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #baf3ff, #26c6f2);
+  box-shadow: 0 0 8px rgba(38, 198, 242, 0.9);
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s linear;
+  pointer-events: none;
 }
 
 #attack-btn:active {

@@ -31,7 +31,7 @@ import type { GatherNodeDef } from '../data/gathering';
 // Halved from 5.5 — real-device testing found movement (and the monsters'
 // matching speeds in monsters.ts) way too fast relative to the new character art.
 const BASE_MOVE_SPEED = 2.75;
-const ATTACK_RANGE = 2.2;
+export const ATTACK_RANGE = 2.2;
 const ATTACK_COOLDOWN = 0.55;
 
 // Real character models (Meshy.ai exports, merged with Mixamo-style animation clips —

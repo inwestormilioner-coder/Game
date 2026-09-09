@@ -20,7 +20,7 @@ import { QUESTS } from '../data/quests';
 import { GATHER_NODES } from '../data/gathering';
 import { ITEMS } from '../data/items';
 import { applyLevelStats, SKILL_NAMES, type ClassId, type GatherKind, type SkillId } from '../types';
-import type { GatherFailReason } from '../entities/Player';
+import { ATTACK_RANGE, type GatherFailReason } from '../entities/Player';
 
 // No two spots share a monster type — GDD Section 13: different creatures
 // should create different hunting strategies, not one best monster.
@@ -44,6 +44,9 @@ const CAMERA_OFFSET = new THREE.Vector3(0, 11, -9);
 const CAMERA_FOV = 45;
 
 const TARGET_SELECT_RADIUS = 4;
+// Half-width of the aimed-attack joystick's cone (GDD Section 28) — a monster has to fall
+// within this angle of the drag direction (and inside ATTACK_RANGE) to be attackable by it.
+const AIM_CONE_HALF_ANGLE = (40 * Math.PI) / 180;
 // Player capsule radius (matches Player.ts's CapsuleGeometry) — used for obstacle/monster collision.
 const PLAYER_RADIUS = 0.4;
 // NPCs are stationary and have no def.radius field of their own (unlike monsters) — a flat
@@ -83,12 +86,16 @@ export class Game {
   private readonly depotPanel: DepotPanel;
   private readonly miniMap: MiniMap;
   private readonly monsterLabels: MonsterLabels;
+  private readonly aimReticle: THREE.Group;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
   private targetCorpse: Corpse | null = null;
   private targetNpc: Npc | null = null;
   private targetNode: GatherNode | null = null;
+  /** Live while the aim joystick is held (GDD Section 28) — the monster the cone is
+   * currently pointed at, recomputed every frame; null when not aiming or nothing's in the cone. */
+  private aimedMonster: Monster | null = null;
   /** The corpse the loot panel is currently showing, if any (distinct from targetCorpse,
    * which recomputes every frame by proximity and would otherwise yank the panel around). */
   private openedCorpse: Corpse | null = null;
@@ -145,6 +152,8 @@ export class Game {
     this.depotPanel = new DepotPanel(root);
     this.miniMap = new MiniMap(root);
     this.monsterLabels = new MonsterLabels(root, this.monsters);
+    this.aimReticle = this.buildAimReticle();
+    this.scene.add(this.aimReticle);
     this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
@@ -251,6 +260,14 @@ export class Game {
     return this.targetMonster;
   }
 
+  get debugAimedMonster() {
+    return this.aimedMonster;
+  }
+
+  get debugAimReticleVisible(): boolean {
+    return this.aimReticle.visible;
+  }
+
   get debugTargetNpc() {
     return this.targetNpc;
   }
@@ -332,6 +349,7 @@ export class Game {
       this.updateCorpses(dt);
       this.updateGatherNodes(dt);
       this.updateTargets();
+      this.updateAimReticle();
       this.handleMonsterUpdates(dt);
       this.handleActionInput();
       this.handleAbilityInput();
@@ -342,7 +360,7 @@ export class Game {
     this.updateCamera(dt);
     this.hud.update(this.player.stats, this.hudDerived());
     this.miniMap.draw(this.player.position, this.player.facing, this.monsters);
-    this.monsterLabels.update(this.camera, this.targetMonster, window.innerWidth, window.innerHeight);
+    this.monsterLabels.update(this.camera, this.aimedMonster ?? this.targetMonster, window.innerWidth, window.innerHeight);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -380,6 +398,92 @@ export class Game {
     const push = minDist - dist;
     pos.x += (dx / dist) * push;
     pos.z += (dz / dist) * push;
+  }
+
+  /** The ground reticle shown while the attack joystick is held: a translucent wedge (the aim
+   * cone) plus a thin full-circle rim (ATTACK_RANGE) — both flattened onto the XZ ground plane.
+   * Built once and just repositioned/rotated/toggled each frame in updateAimReticle(). */
+  private buildAimReticle(): THREE.Group {
+    const group = new THREE.Group();
+    group.visible = false;
+
+    // Centered on local +Z (theta = -90°) so that, just like a character's rotation.y =
+    // atan2(dx, dz), setting this group's rotation.y to that same angle points the wedge
+    // at world direction (dx, dz) — see updateAimReticle.
+    const wedgeGeo = new THREE.RingGeometry(
+      0,
+      ATTACK_RANGE,
+      32,
+      1,
+      -Math.PI / 2 - AIM_CONE_HALF_ANGLE,
+      AIM_CONE_HALF_ANGLE * 2,
+    );
+    wedgeGeo.rotateX(-Math.PI / 2);
+    const wedge = new THREE.Mesh(
+      wedgeGeo,
+      new THREE.MeshBasicMaterial({ color: 0x4dd2ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+    );
+
+    const rimGeo = new THREE.RingGeometry(ATTACK_RANGE - 0.04, ATTACK_RANGE, 48);
+    rimGeo.rotateX(-Math.PI / 2);
+    const rim = new THREE.Mesh(
+      rimGeo,
+      new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false }),
+    );
+
+    group.add(wedge, rim);
+    return group;
+  }
+
+  /** Runs every frame: shows/hides and orients the aim reticle, and recomputes which monster
+   * (if any) the cone currently points at — handleActionInput() reads aimedMonster on an
+   * 'aimed' release, and MonsterLabels highlights it in place of the auto-picked targetMonster
+   * while aiming, so the player always sees exactly who they're about to hit. */
+  private updateAimReticle(): void {
+    if (!this.input.aiming) {
+      // Deliberately NOT clearing aimedMonster here: aiming flips false the instant the
+      // pointer lifts, in the same frame handleActionInput() still needs to read it for
+      // the 'aimed' release it's about to consume. handleActionInput() clears it once done.
+      this.aimReticle.visible = false;
+      return;
+    }
+
+    // Same screen-to-world negation as the movement joystick (Game.ts's fixed camera has its
+    // on-screen "right" pointing at world -X and "up" pointing at world +Z — Player.ts.update).
+    let dx = -this.input.aimX;
+    let dz = -this.input.aimY;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.001) {
+      dx = this.player.facing.x;
+      dz = this.player.facing.z;
+    } else {
+      dx /= len;
+      dz /= len;
+    }
+    const aimAngle = Math.atan2(dx, dz);
+
+    this.aimReticle.visible = true;
+    this.aimReticle.position.set(this.player.position.x, 0.03, this.player.position.z);
+    this.aimReticle.rotation.y = aimAngle;
+
+    let best: Monster | null = null;
+    let bestDist = Infinity;
+    for (const m of this.monsters) {
+      if (!m.alive) continue;
+      const mdx = m.mesh.position.x - this.player.position.x;
+      const mdz = m.mesh.position.z - this.player.position.z;
+      const dist = Math.hypot(mdx, mdz);
+      if (dist > ATTACK_RANGE || dist < 1e-4) continue;
+      const angleTo = Math.atan2(mdx, mdz);
+      let diff = angleTo - aimAngle;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff)); // wrap to [-pi, pi]
+      if (Math.abs(diff) > AIM_CONE_HALF_ANGLE) continue;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = m;
+      }
+    }
+    this.aimedMonster = best;
   }
 
   private updateCorpses(dt: number): void {
@@ -659,8 +763,24 @@ export class Game {
   }
 
   private handleActionInput(): void {
-    if (!this.input.consumeAttack()) return;
+    const release = this.input.consumeAttack();
+    if (!release) return;
     if (this.isAnyPanelOpen()) return;
+
+    // A real drag-and-release on the attack joystick (GDD Section 28) is unambiguously
+    // "fight in this direction" — it bypasses corpse/node/NPC interaction entirely (aiming
+    // at those doesn't make sense) and attacks whatever the cone landed on, if anything.
+    if (release === 'aimed') {
+      const monster = this.aimedMonster;
+      this.aimedMonster = null; // consumed — see the comment in updateAimReticle()
+      if (!monster) {
+        this.hud.showToast('Brak celu w tym kierunku');
+        return;
+      }
+      if (!this.player.tryAttack()) return;
+      this.attackMonster(monster);
+      return;
+    }
 
     if (this.targetCorpse) {
       if (!this.player.isInRange(this.targetCorpse.mesh.position)) return;
@@ -691,8 +811,14 @@ export class Game {
       return;
     }
 
-    const wasAlive = this.targetMonster.alive;
-    this.applyDamageToMonster(this.targetMonster, this.player.effectiveAttack);
+    this.attackMonster(this.targetMonster);
+  }
+
+  /** Shared by both the quick-tap (auto-picked target) and aimed (cone-picked target)
+   * attack paths — everything after "we have a monster and tryAttack() already succeeded". */
+  private attackMonster(monster: Monster): void {
+    const wasAlive = monster.alive;
+    this.applyDamageToMonster(monster, this.player.effectiveAttack);
     if (wasAlive) {
       const skillResult = this.player.trainPrimarySkill();
       if (skillResult.leveledUp) {
