@@ -697,10 +697,12 @@ canvas {
 .ability-3 { right: 116px; bottom: 88px; }
 .ability-4 { right: 142px; bottom: 46px; }
 .ability-5 { right: 148px; bottom: 0px; }
-/* Sprint slots (GDD Section 28) — a small pair stacked above the main arc and to the left of
-   the loadout switch, clear of both it and ability-1 (the "yellow" group in the layout sketch). */
-.ability-6 { right: 80px; bottom: 175px; width: 30px; height: 30px; }
-.ability-7 { right: 80px; bottom: 213px; width: 30px; height: 30px; }
+/* Sprint slots (GDD Section 28) — stacked right beside the attack button, in the one genuinely
+   open pocket of this corner (between it and the ability-4/5 tail) — matching the layout
+   sketch's "yellow next to red" as closely as a packed landscape screen corner allows; the
+   sketch itself was drawn portrait with open space to red's right that landscape doesn't have. */
+.ability-6 { right: 112px; bottom: 6px; width: 28px; height: 28px; }
+.ability-7 { right: 112px; bottom: 42px; width: 28px; height: 28px; }
 
 .ability-sprint {
   background:
