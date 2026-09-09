@@ -395,7 +395,7 @@ Pure function of level + summed equipment/buff percentages, evaluated client-pre
 
 ### Physical collision
 
-Characters, live monsters, trees, and rocks are all **solid** — walking into one pushes the character back out to a minimum separation distance (a simple circle-vs-circle resolve against each obstacle's radius) rather than letting the player clip straight through. A defeated monster's corpse and gathering nodes (ore veins/trees/fishing spots) are deliberately **not** solid, since standing on one is exactly how the unified action button targets it (Section 5's gathering professions, Section 12's looting). This is table-stakes world-feel, not a combat mechanic — a world you can walk through isn't a world.
+Characters, live monsters, NPCs, trees, and rocks are all **solid** — walking into one pushes the character back out to a minimum separation distance (a simple circle-vs-circle resolve against each obstacle's radius) rather than letting the player clip straight through. A defeated monster's corpse and gathering nodes (ore veins/trees/fishing spots) are deliberately **not** solid, since standing on one is exactly how the unified action button targets it (Section 5's gathering professions, Section 12's looting). This is table-stakes world-feel, not a combat mechanic — a world you can walk through isn't a world.
 
 ---
 
@@ -403,7 +403,8 @@ Characters, live monsters, trees, and rocks are all **solid** — walking into o
 
 ### Targeting
 - **Tap** an enemy silhouette to select it (highlighted outline). Selection persists until it dies, leaves range, or the player taps another target/empty ground.
-- Basic attack (bottom-right button) always fires at the current selection if in range; if no selection, tapping the button auto-selects the nearest valid hostile in range (assist-target).
+- Every alive monster carries a floating name + HP bar above it, screen-projected from its 3D position every frame — real-device testing showed a subtle mesh-tint-only highlight wasn't legible, so the current target's label is additionally called out in gold with a glowing border. This is the actual "what am I fighting and how hurt is it" readout, not just flavor.
+- Basic attack (bottom-right button) always fires at the current selection if in range; if no selection, tapping the button auto-selects the nearest valid hostile in range (assist-target). Tapping with nothing in select range at all, or a target too far to actually swing at, toasts why ("Brak celu w zasięgu" / "Podejdź bliżej") rather than silently doing nothing.
 - Abilities and offensive runes default to the current selection; **dragging** a rune or a "skill-shot" ability toward a different target/location overrides the current selection for that single use only (Section 9).
 - Ground-targeted AoE abilities show a placement reticle on drag; releasing confirms.
 

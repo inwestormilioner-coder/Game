@@ -11,6 +11,7 @@ import { InventoryPanel } from '../ui/InventoryPanel';
 import { DialoguePanel } from '../ui/DialoguePanel';
 import { DepotPanel } from '../ui/DepotPanel';
 import { MiniMap } from '../ui/MiniMap';
+import { MonsterLabels } from '../ui/MonsterLabels';
 import { buildWorld, clampToWorld, type Obstacle } from '../world/World';
 import { MONSTER_DEFS } from '../data/monsters';
 import { ABILITIES, CLASS_LOADOUT_A } from '../data/abilities';
@@ -45,6 +46,9 @@ const CAMERA_FOV = 45;
 const TARGET_SELECT_RADIUS = 4;
 // Player capsule radius (matches Player.ts's CapsuleGeometry) — used for obstacle/monster collision.
 const PLAYER_RADIUS = 0.4;
+// NPCs are stationary and have no def.radius field of their own (unlike monsters) — a flat
+// collision radius is enough since they never move.
+const NPC_RADIUS = 0.4;
 
 const GATHER_ACTION_LABEL: Record<GatherKind, string> = {
   mining: 'Kop',
@@ -78,6 +82,7 @@ export class Game {
   private readonly dialoguePanel: DialoguePanel;
   private readonly depotPanel: DepotPanel;
   private readonly miniMap: MiniMap;
+  private readonly monsterLabels: MonsterLabels;
 
   private clock = new THREE.Clock();
   private targetMonster: Monster | null = null;
@@ -139,6 +144,7 @@ export class Game {
     this.dialoguePanel = new DialoguePanel(root);
     this.depotPanel = new DepotPanel(root);
     this.miniMap = new MiniMap(root);
+    this.monsterLabels = new MonsterLabels(root, this.monsters);
     this.hud.update(this.player.stats, this.hudDerived());
 
     root.querySelector('#capacity-btn')!.addEventListener('click', () => this.toggleInventory());
@@ -336,6 +342,7 @@ export class Game {
     this.updateCamera(dt);
     this.hud.update(this.player.stats, this.hudDerived());
     this.miniMap.draw(this.player.position, this.player.facing, this.monsters);
+    this.monsterLabels.update(this.camera, this.targetMonster, window.innerWidth, window.innerHeight);
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -353,6 +360,10 @@ export class Game {
     for (const monster of this.monsters) {
       if (!monster.alive) continue;
       this.pushOutOfCircle(pos, monster.mesh.position.x, monster.mesh.position.z, monster.def.radius);
+    }
+
+    for (const npc of this.npcs) {
+      this.pushOutOfCircle(pos, npc.mesh.position.x, npc.mesh.position.z, NPC_RADIUS);
     }
   }
 
@@ -671,8 +682,16 @@ export class Game {
       return;
     }
 
+    if (!this.targetMonster) {
+      this.hud.showToast('Brak celu w zasięgu');
+      return;
+    }
+
     if (!this.player.tryAttack()) return;
-    if (!this.targetMonster || !this.player.isInRange(this.targetMonster.mesh.position)) return;
+    if (!this.player.isInRange(this.targetMonster.mesh.position)) {
+      this.hud.showToast('Podejdź bliżej');
+      return;
+    }
 
     const wasAlive = this.targetMonster.alive;
     this.applyDamageToMonster(this.targetMonster, this.player.effectiveAttack);

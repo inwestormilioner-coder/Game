@@ -192,14 +192,22 @@ canvas {
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  font-weight: 600;
-  opacity: 0.85;
-  color: inherit;
-  text-shadow: inherit;
+  font-weight: 700;
+  color: #ffd24d;
+  padding: 5px 10px;
+  border-radius: 12px;
+  background: rgba(255, 210, 77, 0.16);
+  border: 1px solid rgba(255, 210, 77, 0.55);
+}
+
+.capacity:active {
+  background: rgba(255, 210, 77, 0.32);
 }
 
 .capacity.over-limit {
   color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.16);
 }
 
 /* ---------- minimap ---------- */
@@ -620,6 +628,57 @@ canvas {
   pointer-events: none;
   background: radial-gradient(circle, rgba(255, 215, 77, 0.35), transparent 70%);
   opacity: 0;
+}
+
+/* ---------- floating monster name/HP labels ---------- */
+
+#monster-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.monster-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.monster-label-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.monster-label-bar {
+  width: 46px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+
+.monster-label-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff4d4d, #b30000);
+  transition: width 0.15s ease-out;
+}
+
+/* The current target stands out — gold name + gold bar border, not just a subtle mesh tint. */
+.monster-label.targeted .monster-label-name {
+  color: #ffd24d;
+}
+
+.monster-label.targeted .monster-label-bar {
+  border-color: #ffd24d;
+  box-shadow: 0 0 6px rgba(255, 210, 77, 0.7);
 }
 
 #level-up-flash.show {
