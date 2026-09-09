@@ -23,6 +23,13 @@ export interface MonsterDef {
   color: number;
   radius: number;
   lootTable: LootEntry[];
+  /** Real model (Meshy.ai + Mixamo export, same pipeline as the player — GDD Section 28).
+   * Optional; types without one yet keep the placeholder sphere. */
+  modelPath?: string;
+  /** Mixamo interpreted our export's units as centimeters rather than meters for this
+   * asset, so its whole rig came back 100x too small — corrected on load, not baked
+   * into the file, so it's visible/documented here rather than hidden in the asset. */
+  modelScale?: number;
 }
 
 export const MONSTER_DEFS: Record<string, MonsterDef> = {
@@ -99,6 +106,8 @@ export const MONSTER_DEFS: Record<string, MonsterDef> = {
       { itemId: 'essencePouch', rarity: 'rare', chance: 0.03, qtyMin: 1, qtyMax: 1 },
       { itemId: 'travelersCape', rarity: 'veryRare', chance: 0.01, qtyMin: 1, qtyMax: 1 },
     ],
+    modelPath: '/models/goblin/goblin.glb',
+    modelScale: 100,
   },
   ironhideBoar: {
     id: 'ironhideBoar',

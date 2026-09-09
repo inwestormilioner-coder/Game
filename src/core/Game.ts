@@ -506,11 +506,9 @@ export class Game {
       this.input.setActionLabel('ATAK');
     }
 
-    for (const m of this.monsters) {
-      const mat = m.mesh.material as THREE.MeshStandardMaterial;
-      mat.opacity = m === this.targetMonster ? 1 : 0.85;
-      mat.emissive = m === this.targetMonster ? new THREE.Color(0x224422) : new THREE.Color(0x000000);
-    }
+    // Per-mesh opacity/emissive tint used to live here, but it wasn't legible on a real
+    // device — MonsterLabels' gold highlight (Section 10) is the actual "you're targeting
+    // this" signal now, and it works the same whether a monster has a real model or not.
 
     if (this.openedNpc && this.openedNpc.distanceTo(this.player.position) > TARGET_SELECT_RADIUS) {
       this.dialoguePanel.hide();
