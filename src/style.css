@@ -66,7 +66,7 @@ canvas {
 .hp-resource-frame {
   position: relative;
   width: min(300px, 72vw);
-  aspect-ratio: 345 / 112;
+  aspect-ratio: 580 / 185;
   margin-top: 2px;
 }
 
@@ -88,24 +88,24 @@ canvas {
 }
 
 .frame-track.hp-track {
-  left: 1.74%;
-  top: 13.4%;
-  width: 93.3%;
-  height: 17.0%;
+  left: 38.6%;
+  top: 25.9%;
+  width: 56.9%;
+  height: 14.1%;
 }
 
 .frame-track.resource-track {
-  left: 1.74%;
-  top: 39.3%;
-  width: 93.3%;
-  height: 21.4%;
+  left: 38.6%;
+  top: 50.8%;
+  width: 56.9%;
+  height: 14.1%;
 }
 
 .frame-track.xp-track {
-  left: 1.74%;
-  top: 67.9%;
-  width: 93.3%;
-  height: 18.75%;
+  left: 38.6%;
+  top: 75.1%;
+  width: 56.9%;
+  height: 14.6%;
 }
 
 .frame-fill {
@@ -272,17 +272,17 @@ canvas {
   top: env(safe-area-inset-top, 0px);
   right: 0;
   margin: 10px 14px;
-  width: 145px;
-  height: 135px;
+  width: 173px;
+  height: 153px;
   pointer-events: auto;
 }
 
 #minimap-canvas {
   display: block;
   position: absolute;
-  left: 8px;
-  top: 22px;
-  width: 128px;
+  left: 31px;
+  top: 34px;
+  width: 123px;
   height: 96px;
   border-radius: 7px;
   background: #0a0a0a;
@@ -361,7 +361,13 @@ canvas {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: url("/hud/panel-frame.png") center / 100% 100% no-repeat;
+  background: rgba(10, 10, 18, 0.94);
+  border-style: solid;
+  border-width: 26px;
+  border-image-source: url("/hud/panel-frame.png");
+  border-image-slice: 13% 13% 9% 7%;
+  border-image-width: 26px;
+  border-image-repeat: stretch;
   overflow: hidden;
   pointer-events: auto;
   color: #fff;
@@ -375,7 +381,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 40px 12px 18px;
+  padding: 6px 30px 6px 4px;
   font-weight: 800;
   font-size: 14px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
@@ -384,12 +390,13 @@ canvas {
 .panel-close {
   all: unset;
   position: absolute;
-  right: 6%;
-  top: 6%;
-  width: 15%;
-  aspect-ratio: 1;
+  right: 2px;
+  top: 2px;
+  width: 30px;
+  height: 30px;
   cursor: pointer;
   opacity: 0;
+  pointer-events: auto;
 }
 
 .panel-list {
