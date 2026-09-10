@@ -46,9 +46,28 @@ function addPropSprite(scene: THREE.Scene, x: number, z: number, propId: string)
  * in-game map editor — 'M' in a dev build) once it's non-empty; falls back to the original
  * seeded-random scatter until then, so an empty layout file changes nothing. */
 export function buildWorld(scene: THREE.Scene): Obstacle[] {
+  // Tiled grass texture (cropped from the uploaded ground-tile sheet) instead of a flat
+  // color fill. CircleGeometry's default UVs are radial (would spiral the texture around
+  // the center), so its UV attribute is overwritten below with a planar, world-space
+  // mapping — one texture repeat per GROUND_TILE_WORLD_SIZE units — before it tiles.
+  const GROUND_TILE_WORLD_SIZE = 2;
+  const groundTexture = new THREE.TextureLoader().load('/tiles/grass-patch.png');
+  groundTexture.wrapS = THREE.RepeatWrapping;
+  groundTexture.wrapT = THREE.RepeatWrapping;
+  groundTexture.colorSpace = THREE.SRGBColorSpace;
+
+  const groundGeometry = new THREE.CircleGeometry(WORLD_RADIUS, 64);
+  const positions = groundGeometry.attributes.position;
+  const uv = new Float32Array(positions.count * 2);
+  for (let i = 0; i < positions.count; i++) {
+    uv[i * 2] = positions.getX(i) / GROUND_TILE_WORLD_SIZE;
+    uv[i * 2 + 1] = positions.getY(i) / GROUND_TILE_WORLD_SIZE;
+  }
+  groundGeometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+
   const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(WORLD_RADIUS, 64),
-    new THREE.MeshStandardMaterial({ color: 0x3a5f3a, roughness: 1 }),
+    groundGeometry,
+    new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
