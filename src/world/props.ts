@@ -15,9 +15,9 @@ export interface PropDef {
 }
 
 export const PROPS: Record<string, PropDef> = {
-  oakTree: { id: 'oakTree', texture: '/props/oak-tree.png', width: 2.55, height: 3.2, radius: 0.6 },
-  smallTree: { id: 'smallTree', texture: '/props/small-tree.png', width: 1.44, height: 2.0, radius: 0.4 },
-  mossyRock: { id: 'mossyRock', texture: '/props/mossy-rock.png', width: 1.18, height: 1.0, radius: 0.5 },
+  oakTree: { id: 'oakTree', texture: '/props/oak-tree.png', width: 2.48, height: 3.2, radius: 0.6 },
+  smallTree: { id: 'smallTree', texture: '/props/small-tree.png', width: 1.57, height: 2.0, radius: 0.4 },
+  mossyRock: { id: 'mossyRock', texture: '/props/mossy-rock.png', width: 1.13, height: 1.0, radius: 0.5 },
 };
 
 const loader = new THREE.TextureLoader();
