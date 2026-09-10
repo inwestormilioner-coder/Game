@@ -1,5 +1,16 @@
 import type { Obstacle } from './World';
 
+/** Flat ground decals (paths/water — src/world/groundTiles.ts), no collision. A short
+ * demo path from the hub toward Elder Mara/Orin, using the only two path tiles cropped
+ * so far (straight + corner) — extend once more tile art (T-junctions, water) arrives. */
+export const CUSTOM_GROUND_TILES: Array<{ tileId: string; x: number; z: number; rotationDeg?: number }> = [
+  { tileId: 'pathStraight', x: -1.1, z: 0, rotationDeg: 90 },
+  { tileId: 'pathStraight', x: -3.3, z: 0, rotationDeg: 90 },
+  { tileId: 'pathCorner', x: -4.4, z: 0, rotationDeg: 0 },
+  { tileId: 'pathStraight', x: -4.4, z: -1.6, rotationDeg: 0 },
+  { tileId: 'pathStraight', x: -4.4, z: -3.8, rotationDeg: 0 },
+];
+
 /** Hand-authored world dressing (GDD map). Seeded procedural placement of the currently
  * available nature props (oakTree/smallTree/mossyRock — src/world/props.ts), keeping clear
  * of the hub, NPCs, docks, gathering nodes, and the pond. A placeholder pass, not final —

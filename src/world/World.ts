@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { CUSTOM_OBSTACLES } from './customLayout';
+import { CUSTOM_OBSTACLES, CUSTOM_GROUND_TILES } from './customLayout';
 import { createPropSprite, PROPS } from './props';
+import { createGroundTile } from './groundTiles';
 
 export const WORLD_RADIUS = 40;
 
@@ -66,6 +67,15 @@ export function buildWorld(scene: THREE.Scene): Obstacle[] {
   pond.rotation.x = -Math.PI / 2;
   pond.position.set(19.5, 0.01, 19);
   scene.add(pond);
+
+  // Tiny per-tile y stagger avoids z-fighting where the slightly-oversized tiles overlap
+  // (see groundTiles.ts) — imperceptible visually, just enough to give the depth buffer
+  // a consistent winner.
+  CUSTOM_GROUND_TILES.forEach((t, i) => {
+    const tile = createGroundTile(t.tileId, t.rotationDeg ?? 0);
+    tile.position.set(t.x, 0.015 + i * 0.0005, t.z);
+    scene.add(tile);
+  });
 
   const treeMat = new THREE.MeshStandardMaterial({ color: 0x2d5a2d });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3d20 });
