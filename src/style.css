@@ -280,9 +280,9 @@ canvas {
 #minimap-canvas {
   display: block;
   position: absolute;
-  left: 15px;
+  left: 8px;
   top: 22px;
-  width: 114px;
+  width: 128px;
   height: 96px;
   border-radius: 7px;
   background: #0a0a0a;
