@@ -85,3 +85,27 @@ def test_accepts_a_normal_width_zone_at_the_limit(tmp_path):
     asyncio.run(bot.handle_text("Kierunek: Buy Gold\nStrefa: 4425-20\nSL: 60 pips"))
 
     assert len(store.most_recent_active("XAUUSD")) == 1
+
+
+def test_add_to_position_opens_a_new_zone_with_the_previous_direction(tmp_path):
+    store = CampaignStore(path=tmp_path / "campaigns.json")
+    bot = Bot(_dry_run_config(), store=store)
+
+    asyncio.run(bot.handle_text("Kierunek: Sell Gold\nStrefa: 4425-20\nSL: 60 pips"))
+    asyncio.run(bot.handle_text("TAKE PROFIT: Dołóż do pozycji\nStrefa: 4415-10\nSL: 60 pips"))
+
+    campaigns = store.most_recent_active("XAUUSD")
+    assert len(campaigns) == 2
+    assert all(c.direction == "SELL" for c in campaigns)
+    # the add-to-zone campaign got its own new zone/SL, not a copy of the first
+    assert campaigns[0].sl_pips == 60.0
+    assert campaigns[0].id != campaigns[1].id
+
+
+def test_add_to_position_with_no_active_campaign_is_ignored(tmp_path):
+    store = CampaignStore(path=tmp_path / "campaigns.json")
+    bot = Bot(_dry_run_config(), store=store)
+
+    asyncio.run(bot.handle_text("TAKE PROFIT: Dołóż do pozycji\nStrefa: 4415-10\nSL: 60 pips"))
+
+    assert store.most_recent_active("XAUUSD") == []

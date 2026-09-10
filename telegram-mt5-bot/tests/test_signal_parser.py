@@ -82,3 +82,28 @@ def test_close_all_update():
 def test_unknown_message_is_ignored():
     msg = parse("Cześć wszystkim, jak leci?")
     assert msg.type == SignalType.UNKNOWN
+
+
+def test_add_to_position_without_direction_is_add_to_zone():
+    msg = parse("TAKE PROFIT: Dołóż do pozycji\nStrefa: 4415-10\nSL: 60 pips")
+    assert msg.type == SignalType.ADD_TO_ZONE
+    assert msg.add_to_zone.zone_low == 4410.0
+    assert msg.add_to_zone.zone_high == 4415.0
+    assert msg.add_to_zone.sl_pips == 60.0
+    assert msg.zone is None
+
+
+def test_add_to_position_with_explicit_direction_is_still_a_normal_zone():
+    # "Dołóż do pozycji" alongside its OWN "Kierunek:" line already parses
+    # fine as a normal ZONE (unaffected by the add-to-zone phrase).
+    msg = parse("TAKE PROFIT: Dołóż do pozycji\nKierunek: Buy Gold\nStrefa: 4425-20\nSL: 60 pips")
+    assert msg.type == SignalType.ZONE
+    assert msg.zone.direction == "BUY"
+
+
+def test_zone_without_direction_or_add_to_position_phrase_is_not_a_signal():
+    # A bare Strefa/SL with no Kierunek AND no "dołóż do pozycji" phrase
+    # isn't enough context to guess a direction - stays unrecognized.
+    msg = parse("Strefa: 4415-10\nSL: 60 pips")
+    assert msg.type != SignalType.ZONE
+    assert msg.type != SignalType.ADD_TO_ZONE

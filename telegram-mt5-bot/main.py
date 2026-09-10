@@ -18,7 +18,7 @@ from datetime import datetime
 from campaign_store import Campaign, CampaignStore
 from config import Config, load_config
 from order_planner import plan_orders
-from signal_parser import ParsedMessage, SignalType, parse
+from signal_parser import ParsedMessage, SignalType, ZoneSignal, parse
 
 log = logging.getLogger("main")
 
@@ -38,7 +38,9 @@ class Bot:
     async def handle_text(self, text: str) -> None:
         msg = parse(text)
         if msg.type == SignalType.ZONE:
-            self._handle_zone(msg)
+            self._handle_zone(msg.zone, msg.raw_text)
+        elif msg.type == SignalType.ADD_TO_ZONE:
+            self._handle_add_to_zone(msg)
         elif msg.type == SignalType.BREAKEVEN:
             self._handle_breakeven(msg)
         elif msg.type == SignalType.CLOSE_ALL:
@@ -48,9 +50,34 @@ class Bot:
         else:
             log.info("unrecognized message, ignored: %s", text.replace("\n", " | "))
 
-    def _handle_zone(self, msg: ParsedMessage) -> None:
-        zone = msg.zone
+    def _handle_add_to_zone(self, msg: ParsedMessage) -> None:
+        """Channel said "dolóz do pozycji" with a new zone/SL but no
+        "Kierunek: Buy/Sell Gold" of its own - treated as another zone
+        signal, with direction inferred from the most recently active
+        campaign for this symbol (per the user's request: "kolejny sygnal,
+        kierunek zgodny z poprzednim")."""
+        campaigns = self.store.most_recent_active(self.config.symbol)
+        if not campaigns:
+            log.info(
+                "channel said 'dolóz do pozycji' with a new zone, but there's no active campaign "
+                "to infer a direction from - ignoring: %s", msg.raw_text.replace("\n", " | "),
+            )
+            return
 
+        direction = campaigns[0].direction
+        zone = ZoneSignal(
+            direction=direction,
+            zone_low=msg.add_to_zone.zone_low,
+            zone_high=msg.add_to_zone.zone_high,
+            sl_pips=msg.add_to_zone.sl_pips,
+        )
+        log.info(
+            "channel said 'dolóz do pozycji' - treating as a new %s zone signal "
+            "(direction inferred from the most recent active campaign)", direction,
+        )
+        self._handle_zone(zone, msg.raw_text)
+
+    def _handle_zone(self, zone: ZoneSignal, raw_text: str = "") -> None:
         zone_width = zone.zone_high - zone.zone_low
         if zone_width > self.config.max_zone_width:
             log.error("=" * 70)
@@ -59,7 +86,7 @@ class Bot:
                 "this looks like a parsing error, not a real signal. No orders placed.",
                 zone.zone_low, zone.zone_high, zone_width, self.config.max_zone_width,
             )
-            log.error("raw message: %s", msg.raw_text.replace("\n", " | "))
+            log.error("raw message: %s", raw_text.replace("\n", " | "))
             log.error("=" * 70)
             return
 

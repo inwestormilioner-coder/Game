@@ -20,6 +20,9 @@ from typing import Optional
 
 class SignalType(Enum):
     ZONE = "zone"           # a new buy/sell zone to open orders in
+    ADD_TO_ZONE = "add_to_zone"  # "dolóz do pozycji" - a new zone/SL but no
+                             # direction of its own; inferred from the most
+                             # recently active campaign (see main.py)
     BREAKEVEN = "breakeven"  # move SL to entry on the active zone
     CLOSE_ALL = "close_all"  # close everything for the active zone
     PARTIAL_INFO = "partial_info"  # profit update, no automated action
@@ -35,9 +38,21 @@ class ZoneSignal:
 
 
 @dataclass(frozen=True)
+class AddToZoneSignal:
+    """Same shape as ZoneSignal minus direction - "dolóz do pozycji"
+    messages give a new zone/SL but don't repeat "Kierunek: Buy/Sell Gold",
+    so the direction has to come from context (main.py infers it from the
+    most recently active campaign for the symbol)."""
+    zone_low: float
+    zone_high: float
+    sl_pips: float
+
+
+@dataclass(frozen=True)
 class ParsedMessage:
     type: SignalType
     zone: Optional[ZoneSignal] = None
+    add_to_zone: Optional[AddToZoneSignal] = None
     profit_pips: Optional[float] = None
     raw_text: str = ""
 
@@ -104,14 +119,20 @@ def parse(raw_text: str) -> ParsedMessage:
     direction_match = _DIRECTION_RE.search(text)
     zone_match = _ZONE_RE.search(text)
     sl_match = _SL_RE.search(text)
+    add_to_position = "doloz do pozycji" in plain
 
-    if direction_match and zone_match and sl_match:
-        direction = direction_match.group(1).upper()
+    if zone_match and sl_match and (direction_match or add_to_position):
         zone_low, zone_high = _combine_zone_prices(zone_match.group(1), zone_match.group(2))
         sl_pips = float(sl_match.group(1).replace(",", "."))
+        if direction_match:
+            return ParsedMessage(
+                type=SignalType.ZONE,
+                zone=ZoneSignal(direction=direction_match.group(1).upper(), zone_low=zone_low, zone_high=zone_high, sl_pips=sl_pips),
+                raw_text=text,
+            )
         return ParsedMessage(
-            type=SignalType.ZONE,
-            zone=ZoneSignal(direction=direction, zone_low=zone_low, zone_high=zone_high, sl_pips=sl_pips),
+            type=SignalType.ADD_TO_ZONE,
+            add_to_zone=AddToZoneSignal(zone_low=zone_low, zone_high=zone_high, sl_pips=sl_pips),
             raw_text=text,
         )
 
