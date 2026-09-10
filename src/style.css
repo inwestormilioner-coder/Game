@@ -431,6 +431,20 @@ canvas {
   font-size: 13px;
 }
 
+.item-name-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.item-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .loot-item:active {
   background: rgba(255, 210, 77, 0.25);
   border-color: #ffd24d;

@@ -48,14 +48,26 @@ export class LootPanel {
       const btn = document.createElement('button');
       btn.className = 'loot-item';
 
+      const nameGroup = document.createElement('span');
+      nameGroup.className = 'item-name-group';
+
+      if (def.icon) {
+        const icon = document.createElement('img');
+        icon.className = 'item-icon';
+        icon.src = def.icon;
+        icon.alt = '';
+        nameGroup.appendChild(icon);
+      }
+
       const name = document.createElement('span');
       name.textContent = drop.qty > 1 ? `${def.name} x${drop.qty}` : def.name;
+      nameGroup.appendChild(name);
 
       const weight = document.createElement('span');
       weight.className = 'loot-item-weight';
       weight.textContent = `${(def.weight * drop.qty).toFixed(1)} kg`;
 
-      btn.append(name, weight);
+      btn.append(nameGroup, weight);
       btn.addEventListener('click', () => this.onPick?.(drop.itemId));
       this.itemsEl.appendChild(btn);
     }

@@ -97,10 +97,22 @@ export class InventoryPanel {
       const row = document.createElement('div');
       row.className = 'inventory-row';
 
+      const nameGroup = document.createElement('span');
+      nameGroup.className = 'item-name-group';
+
+      if (def.icon) {
+        const icon = document.createElement('img');
+        icon.className = 'item-icon';
+        icon.src = def.icon;
+        icon.alt = '';
+        nameGroup.appendChild(icon);
+      }
+
       const name = document.createElement('span');
       name.textContent = qty > 1 ? `${def.name} x${qty}` : def.name;
+      nameGroup.appendChild(name);
 
-      row.appendChild(name);
+      row.appendChild(nameGroup);
 
       if (def.equip) {
         const btn = document.createElement('button');

@@ -59,9 +59,22 @@ export class DepotPanel {
       const row = document.createElement('div');
       row.className = 'inventory-row';
 
+      const nameGroup = document.createElement('span');
+      nameGroup.className = 'item-name-group';
+
+      if (def.icon) {
+        const icon = document.createElement('img');
+        icon.className = 'item-icon';
+        icon.src = def.icon;
+        icon.alt = '';
+        nameGroup.appendChild(icon);
+      }
+
       const name = document.createElement('span');
       name.textContent = qty > 1 ? `${def.name} x${qty}` : def.name;
-      row.appendChild(name);
+      nameGroup.appendChild(name);
+
+      row.appendChild(nameGroup);
 
       const btn = document.createElement('button');
       btn.className = 'slot-action';

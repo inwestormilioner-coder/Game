@@ -29,6 +29,9 @@ export interface ItemDef {
   /** Present only on fishing bait — consumed one per successful cast; its tier, together with
    * the rod's, caps which fish tier a cast can land. */
   bait?: { tier: number };
+  /** Path under /public to an icon image. Most items don't have one yet — panels fall back
+   * to text-only rows until more of the uploaded art gets cropped into icons. */
+  icon?: string;
 }
 
 export const ITEMS: Record<string, ItemDef> = {
@@ -37,9 +40,9 @@ export const ITEMS: Record<string, ItemDef> = {
   // Gold Coins is the base unit; Sapphire/Arcane are just denser denominations of the same
   // wealth (100 Gold = 1 Sapphire, 100 Sapphire = 1 Arcane) — Player.trySpendGold() breaks
   // down and re-consolidates them automatically, the way real change-making works.
-  goldCoin: { id: 'goldCoin', name: 'Gold Coin', weight: 0.01 },
-  sapphireCoin: { id: 'sapphireCoin', name: 'Sapphire Coin', weight: 0.05 },
-  arcaneCoin: { id: 'arcaneCoin', name: 'Arcane Coin', weight: 0.1 },
+  goldCoin: { id: 'goldCoin', name: 'Gold Coin', weight: 0.01, icon: '/icons/items/gold-coin.png' },
+  sapphireCoin: { id: 'sapphireCoin', name: 'Sapphire Coin', weight: 0.05, icon: '/icons/items/sapphire-coin.png' },
+  arcaneCoin: { id: 'arcaneCoin', name: 'Arcane Coin', weight: 0.1, icon: '/icons/items/arcane-coin.png' },
 
   grubIchor: { id: 'grubIchor', name: 'Grub Ichor', weight: 0.2 },
   wolfPelt: { id: 'wolfPelt', name: 'Wolf Pelt', weight: 3.0 },
