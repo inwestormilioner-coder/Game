@@ -1,14 +1,17 @@
 import * as THREE from 'three';
 import { CUSTOM_OBSTACLES } from './customLayout';
+import { createPropSprite, PROPS } from './props';
 
 export const WORLD_RADIUS = 40;
 
-/** A solid, roughly-circular thing in the world the player can't walk through. */
+/** A solid, roughly-circular thing in the world the player can't walk through.
+ * type 'prop' renders as a billboard sprite (see props.ts) — propId picks which one. */
 export interface Obstacle {
-  type: 'tree' | 'rock';
+  type: 'tree' | 'rock' | 'prop';
   x: number;
   z: number;
   radius: number;
+  propId?: keyof typeof PROPS;
 }
 
 function addTreeMesh(scene: THREE.Scene, x: number, z: number, treeMat: THREE.Material, trunkMat: THREE.Material): void {
@@ -28,6 +31,12 @@ function addRockMesh(scene: THREE.Scene, x: number, z: number, radius: number, r
   rock.position.set(x, 0.25, z);
   rock.castShadow = true;
   scene.add(rock);
+}
+
+function addPropSprite(scene: THREE.Scene, x: number, z: number, propId: string): void {
+  const sprite = createPropSprite(propId);
+  sprite.position.set(x, 0, z);
+  scene.add(sprite);
 }
 
 /** Flat open-world ground with scattered rocks/trees so it reads as a world, not a void.
@@ -66,7 +75,8 @@ export function buildWorld(scene: THREE.Scene): Obstacle[] {
 
   if (CUSTOM_OBSTACLES.length > 0) {
     for (const o of CUSTOM_OBSTACLES) {
-      if (o.type === 'tree') addTreeMesh(scene, o.x, o.z, treeMat, trunkMat);
+      if (o.type === 'prop' && o.propId) addPropSprite(scene, o.x, o.z, o.propId);
+      else if (o.type === 'tree') addTreeMesh(scene, o.x, o.z, treeMat, trunkMat);
       else addRockMesh(scene, o.x, o.z, o.radius, rockMat);
       obstacles.push({ ...o });
     }

@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 import type { Obstacle } from '../world/World';
+import { createPropSprite, PROPS } from '../world/props';
 
 const GROUND_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const PICK_RADIUS = 0.7;
 const PAN_SPEED = 14;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
+
+/** Cycled with 'T' alongside the two procedural types — every id in props.ts's registry. */
+const PROP_IDS = Object.keys(PROPS);
 
 /** Dev-only in-game map editor ('M' toggles it — never wired up outside import.meta.env.DEV).
  * Lets you click to place trees/rocks directly on the live 3D world (they're immediately
@@ -15,12 +19,14 @@ const MAX_ZOOM = 4;
  * removed by clicking them again — editing the old ones is a hand-edit-the-export job. */
 export class MapEditor {
   active = false;
-  currentType: Obstacle['type'] = 'tree';
+  /** 'tree'/'rock' (procedural) or a props.ts id (billboard sprite) — cycled with 'T'. */
+  currentType: string = 'tree';
   readonly cameraFocus = new THREE.Vector3();
   cameraZoom = 1.6;
 
+  private readonly cycleTypes: string[] = ['tree', 'rock', ...PROP_IDS];
   private readonly raycaster = new THREE.Raycaster();
-  private readonly preview: THREE.Group;
+  private preview: THREE.Object3D;
   private readonly placed: Array<{ obstacle: Obstacle; mesh: THREE.Object3D }> = [];
   private readonly panKeys = new Set<string>();
   private readonly treeMat = new THREE.MeshStandardMaterial({ color: 0x2d5a2d });
@@ -104,10 +110,25 @@ export class MapEditor {
 
   private updateHint(): void {
     this.hint.textContent =
-      `EDYCJA MAPY — typ: ${this.currentType === 'tree' ? 'drzewo' : 'skała'}\n` +
+      `EDYCJA MAPY — typ: ${this.currentType} (${this.cycleTypes.indexOf(this.currentType) + 1}/${this.cycleTypes.length})\n` +
       'klik: postaw   klik na postawionym: usuń\n' +
-      'T/R: typ drzewo/skała   WASD: przesuń widok\n' +
+      'T: następny typ   R: poprzedni typ   WASD: przesuń widok\n' +
       'kółko myszy: zoom   X: eksportuj   M: wyjście';
+  }
+
+  private setType(type: string): void {
+    this.currentType = type;
+    this.scene.remove(this.preview);
+    this.preview = this.buildGhost(type);
+    this.preview.visible = false;
+    this.scene.add(this.preview);
+    this.updateHint();
+  }
+
+  private cycleType(delta: number): void {
+    const i = this.cycleTypes.indexOf(this.currentType);
+    const next = (i + delta + this.cycleTypes.length) % this.cycleTypes.length;
+    this.setType(this.cycleTypes[next]);
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -123,13 +144,11 @@ export class MapEditor {
     }
     if (key === 't') {
       e.preventDefault();
-      this.currentType = 'tree';
-      this.updateHint();
+      this.cycleType(1);
     }
     if (key === 'r') {
       e.preventDefault();
-      this.currentType = 'rock';
-      this.updateHint();
+      this.cycleType(-1);
     }
     if (key === 'x') {
       e.preventDefault();
@@ -180,8 +199,15 @@ export class MapEditor {
       return;
     }
 
-    const radius = this.currentType === 'tree' ? 0.5 : 0.3 + Math.random() * 0.35;
-    const obstacle: Obstacle = { type: this.currentType, x: hit.x, z: hit.z, radius };
+    const isProp = this.currentType !== 'tree' && this.currentType !== 'rock';
+    const radius = isProp
+      ? PROPS[this.currentType].radius
+      : this.currentType === 'tree'
+        ? 0.5
+        : 0.3 + Math.random() * 0.35;
+    const obstacle: Obstacle = isProp
+      ? { type: 'prop', x: hit.x, z: hit.z, radius, propId: this.currentType as keyof typeof PROPS }
+      : { type: this.currentType as 'tree' | 'rock', x: hit.x, z: hit.z, radius };
     const mesh = this.buildGhost(this.currentType, false);
     mesh.position.set(hit.x, 0, hit.z);
     this.scene.add(mesh);
@@ -189,7 +215,11 @@ export class MapEditor {
     this.placed.push({ obstacle, mesh });
   };
 
-  private buildGhost(type: Obstacle['type'], ghostly = true): THREE.Group {
+  private buildGhost(type: string, ghostly = true): THREE.Object3D {
+    if (type !== 'tree' && type !== 'rock') {
+      return createPropSprite(type, ghostly ? 0.45 : 1);
+    }
+
     const group = new THREE.Group();
     if (type === 'tree') {
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.2, 6), this.trunkMat);
@@ -218,7 +248,8 @@ export class MapEditor {
 
   private showExport(): void {
     const lines = this.obstacles.map(
-      (o) => `  { type: '${o.type}', x: ${o.x.toFixed(2)}, z: ${o.z.toFixed(2)}, radius: ${o.radius.toFixed(2)} },`,
+      (o) =>
+        `  { type: '${o.type}', x: ${o.x.toFixed(2)}, z: ${o.z.toFixed(2)}, radius: ${o.radius.toFixed(2)}${o.propId ? `, propId: '${o.propId}'` : ''} },`,
     );
     this.exportBox.value =
       `// Wklej to do src/world/customLayout.ts, zastępując CUSTOM_OBSTACLES:\n` +
