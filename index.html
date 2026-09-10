@@ -11,19 +11,110 @@
   </head>
   <body>
     <div id="app">
+      <div id="class-select-overlay">
+        <h1>Wybierz klasę</h1>
+        <div id="class-select-grid">
+          <button class="class-card" data-class="knight">
+            <span class="class-icon">🛡️</span>
+            <span class="class-name">Knight</span>
+            <span class="class-tagline">Tank — najwyższe HP, twardy w zwarciu</span>
+          </button>
+          <button class="class-card" data-class="archer">
+            <span class="class-icon">🏹</span>
+            <span class="class-name">Archer</span>
+            <span class="class-tagline">Dystans — stały dps, dobra pozycja</span>
+          </button>
+          <button class="class-card" data-class="mage">
+            <span class="class-icon">🔮</span>
+            <span class="class-name">Mage</span>
+            <span class="class-tagline">Ofensywna magia — mocny, ale kruchy</span>
+          </button>
+          <button class="class-card" data-class="druid">
+            <span class="class-icon">🌿</span>
+            <span class="class-name">Druid</span>
+            <span class="class-tagline">Wsparcie — leczenie, kontrola pola walki</span>
+          </button>
+          <button class="class-card" data-class="assassin">
+            <span class="class-icon">🗡️</span>
+            <span class="class-name">Assassin</span>
+            <span class="class-tagline">Burst w zwarciu — szybki, bardzo kruchy</span>
+          </button>
+        </div>
+      </div>
+
       <div id="hud">
         <div class="hud-top">
           <div class="stat-row">
             <span id="level-label">Lvl 1</span>
-            <div class="bar"><div id="hp-fill" class="bar-fill hp"></div></div>
+            <span id="class-label" class="class-label"></span>
+            <span id="skill-label" class="skill-label"></span>
+            <span id="resource-label" class="resource-label"></span>
+          </div>
+          <div class="hp-resource-frame">
+            <div class="frame-track hp-track"><div id="hp-fill" class="frame-fill hp"></div></div>
+            <div class="frame-track resource-track"><div id="resource-fill" class="frame-fill energy"></div></div>
+            <div class="frame-track xp-track"><div id="xp-fill" class="frame-fill xp"></div></div>
+            <img src="/hud/hp-bar-frame.png" class="frame-art" alt="" />
           </div>
           <div class="stat-row">
-            <div class="bar"><div id="xp-fill" class="bar-fill xp"></div></div>
-            <span class="gold">🪙 <span id="gold-label">0</span></span>
+            <button id="capacity-btn" class="capacity">🎒 <span id="capacity-label">0 / 0</span> kg</button>
+          </div>
+          <div class="stat-row">
+            <span id="satiety-indicator" class="satiety">🍗 <span id="satiety-label">Głodny</span></span>
+            <span id="poison-indicator" class="poison hidden">☠️ <span id="poison-label"></span></span>
           </div>
         </div>
         <div id="toast"></div>
         <div id="level-up-flash"></div>
+        <div id="monster-labels"></div>
+        <div id="player-label"></div>
+
+        <div id="minimap">
+          <canvas id="minimap-canvas" width="128" height="128"></canvas>
+          <img src="/hud/minimap-frame.png" class="minimap-frame-art" alt="" />
+          <div id="minimap-zoom">
+            <button id="minimap-zoom-in">+</button>
+            <button id="minimap-zoom-out">–</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="loot-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span id="loot-panel-title">Zwłoki</span>
+          <button id="loot-panel-close" class="panel-close">✕</button>
+        </div>
+        <div id="loot-panel-items" class="panel-list"></div>
+      </div>
+
+      <div id="inventory-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span>Ekwipunek</span>
+          <button id="inventory-panel-close" class="panel-close">✕</button>
+        </div>
+        <div id="inventory-equipped" class="equip-slots"></div>
+        <div class="inventory-divider">Plecak</div>
+        <div id="inventory-items" class="panel-list"></div>
+      </div>
+
+      <div id="dialogue-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span id="dialogue-name">NPC</span>
+          <button id="dialogue-panel-close" class="panel-close">✕</button>
+        </div>
+        <div id="dialogue-text" class="dialogue-text"></div>
+        <div id="dialogue-options" class="dialogue-options"></div>
+      </div>
+
+      <div id="depot-panel" class="floating-panel hidden">
+        <div class="loot-panel-header">
+          <span>Depozyt</span>
+          <button id="depot-panel-close" class="panel-close">✕</button>
+        </div>
+        <div class="inventory-divider">Plecak</div>
+        <div id="depot-backpack-items" class="panel-list"></div>
+        <div class="inventory-divider">W depozycie</div>
+        <div id="depot-stored-items" class="panel-list"></div>
       </div>
 
       <div id="joystick-zone">
@@ -31,7 +122,21 @@
           <div id="joystick-stick"></div>
         </div>
       </div>
-      <button id="attack-btn">ATAK</button>
+      <button id="attack-btn">
+        <span class="attack-label">ATAK</span>
+        <span id="attack-aim-dot"></span>
+      </button>
+
+      <button id="loadout-switch">A</button>
+      <div id="ability-bar">
+        <button class="ability-btn ability-1"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-2"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-3"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-4"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-5"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-sprint ability-6"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+        <button class="ability-btn ability-sprint ability-7"><span class="ability-icon"></span><span class="ability-cd"></span></button>
+      </div>
 
       <div id="rotate-overlay">
         <div class="rotate-icon">📱</div>

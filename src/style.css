@@ -60,37 +60,469 @@ canvas {
   font-weight: 600;
 }
 
-.bar {
-  flex: 1;
-  height: 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  overflow: hidden;
-  max-width: 220px;
+/* Ornate HP/resource bar frame (Section 28 HUD art) — the gold frame image sits on
+   top with its bar interiors cut transparent, so these plain colored divs underneath
+   (sized 0-100% by HUD.ts, exactly like the old .bar-fill) show through the holes. */
+.hp-resource-frame {
+  position: relative;
+  width: min(300px, 72vw);
+  aspect-ratio: 580 / 185;
+  margin-top: 2px;
 }
 
-.bar-fill {
+.frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.frame-track {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.frame-track.hp-track {
+  left: 38.6%;
+  top: 25.9%;
+  width: 56.9%;
+  height: 14.1%;
+}
+
+.frame-track.resource-track {
+  left: 38.6%;
+  top: 50.8%;
+  width: 56.9%;
+  height: 14.1%;
+}
+
+.frame-track.xp-track {
+  left: 38.6%;
+  top: 75.1%;
+  width: 56.9%;
+  height: 14.6%;
+}
+
+.frame-fill {
   height: 100%;
   width: 100%;
   transition: width 0.15s ease-out;
 }
 
-.bar-fill.hp {
-  background: linear-gradient(90deg, #ff4d4d, #b30000);
+/* Vertical gradient stops sampled directly from the real bar art (HPbarENERGY/MANA/RAGE.png)
+   so the CSS fill matches the frame's glossy shading without needing a stretched texture image. */
+.frame-fill.hp {
+  background: linear-gradient(
+    180deg,
+    #b65138 0%, #100101 6%, #590709 25%, #800e12 45%,
+    #850f13 60%, #780c10 75%, #570909 88%, #cc4f35 100%
+  );
 }
 
-.bar-fill.xp {
-  background: linear-gradient(90deg, #4dd2ff, #0080ff);
+.frame-fill.energy {
+  background: linear-gradient(
+    180deg,
+    #004a03 0%, #000400 6%, #005006 25%, #016a0a 45%,
+    #01700b 60%, #016a0a 75%, #015807 88%, #000902 100%
+  );
 }
 
-.gold {
+.frame-fill.mana {
+  background: linear-gradient(
+    180deg,
+    #1d4580 0%, #3c78c2 6%, #00163f 25%, #002967 45%,
+    #003073 60%, #003074 75%, #002d6e 88%, #002763 100%
+  );
+}
+
+.frame-fill.rage {
+  background: linear-gradient(
+    180deg,
+    #040200 0%, #7a4100 6%, #d89703 25%, #e4ae04 45%,
+    #e4b004 60%, #e1a803 75%, #c98201 88%, #554401 100%
+  );
+}
+
+.frame-fill.xp {
+  background: linear-gradient(180deg, #7fd8ff 0%, #1b8fd6 45%, #0f5fa8 75%, #0a3f70 100%);
+}
+
+.resource-label {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
+  min-width: 36px;
+}
+
+.skill-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.class-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+/* ---------- class select ---------- */
+
+#class-select-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 30%, #1a2a1a, #0a0a12 75%);
+  color: #fff;
+}
+
+#class-select-overlay h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+}
+
+#class-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+}
+
+.class-card {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  text-align: center;
+  cursor: pointer;
+}
+
+.class-card:active {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffd24d;
+}
+
+.class-icon {
+  font-size: 30px;
+}
+
+.class-name {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.class-tagline {
+  font-size: 11px;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+
+#class-select-overlay.hidden {
+  display: none;
+}
+
+.capacity {
+  all: unset;
+  cursor: pointer;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #ffd24d;
+  padding: 5px 10px;
+  border-radius: 12px;
+  background: rgba(255, 210, 77, 0.16);
+  border: 1px solid rgba(255, 210, 77, 0.55);
+}
+
+.capacity:active {
+  background: rgba(255, 210, 77, 0.32);
+}
+
+.capacity.over-limit {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.16);
+}
+
+/* ---------- minimap ---------- */
+
+#minimap {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  right: 0;
+  margin: 10px 14px;
+  width: 173px;
+  height: 153px;
+  pointer-events: auto;
+}
+
+#minimap-canvas {
+  display: block;
+  position: absolute;
+  left: 31px;
+  top: 34px;
+  width: 123px;
+  height: 96px;
+  border-radius: 7px;
+  background: #0a0a0a;
+}
+
+.minimap-frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+#minimap-zoom {
+  position: absolute;
+  right: -6px;
+  bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#minimap-zoom button {
+  all: unset;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.satiety {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.satiety.hungry {
+  color: #ff9d4d;
+}
+
+.poison {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7cff6b;
+  margin-left: 10px;
+}
+
+.poison.hidden {
+  display: none;
+}
+
+/* ---------- floating panels (loot, inventory) ---------- */
+
+.floating-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 400;
+  width: min(320px, 84vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 18, 0.94);
+  border-style: solid;
+  border-width: 26px;
+  border-image-source: url("/hud/panel-frame.png");
+  border-image-slice: 13% 13% 9% 7%;
+  border-image-width: 26px;
+  border-image-repeat: stretch;
+  overflow: hidden;
+  pointer-events: auto;
+  color: #fff;
+}
+
+.floating-panel.hidden {
+  display: none;
+}
+
+.loot-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 30px 6px 4px;
+  font-weight: 800;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.panel-close {
+  all: unset;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.loot-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.item-name-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.item-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.loot-item:active {
+  background: rgba(255, 210, 77, 0.25);
+  border-color: #ffd24d;
+}
+
+.loot-item-weight {
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+
+.loot-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+/* ---------- inventory panel ---------- */
+
+.equip-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 0;
+}
+
+.equip-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+}
+
+.equip-slot-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+  min-width: 46px;
+}
+
+.equip-slot-name {
+  flex: 1;
+  font-weight: 700;
+}
+
+.slot-action {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 210, 77, 0.18);
+  border: 1px solid rgba(255, 210, 77, 0.5);
+  color: #ffd24d;
+}
+
+.slot-action:active {
+  background: rgba(255, 210, 77, 0.35);
+}
+
+.inventory-divider {
+  margin: 6px 10px 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.6;
+}
+
+.inventory-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 13px;
 }
 
 #toast {
@@ -130,18 +562,8 @@ canvas {
   width: 128px;
   height: 128px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.35);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+  background: url("/hud/joystick-base.png") center / contain no-repeat;
   display: flex;
-}
-
-#joystick-base::before {
-  content: "";
-  position: absolute;
-  inset: 14px;
-  border-radius: 50%;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
 }
 
 #joystick-stick {
@@ -149,9 +571,7 @@ canvas {
   width: 54px;
   height: 54px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffffff, #c9c9c9);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  background: url("/hud/stick.png") center / cover no-repeat;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -159,23 +579,156 @@ canvas {
 }
 
 #attack-btn {
+  all: unset;
   position: absolute;
   right: 24px;
   bottom: 34px;
   width: 84px;
   height: 84px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ff7a59, #b3260c);
-  border: 3px solid rgba(255, 255, 255, 0.6);
+  background: url("/hud/action-button.png") center / cover no-repeat;
   color: #fff;
   font-weight: 800;
   font-size: 13px;
   letter-spacing: 0.5px;
   pointer-events: auto;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attack-label {
+  /* The button's art now speaks for itself — the context-sensitive verb (ATAK/SZUKAJ/
+     Kop/Rozmawiaj/Depozyt) is still set every frame in InputController.setActionLabel()
+     for anything that reads the DOM in tests, it's just not rendered visually anymore. */
+  display: none;
+}
+
+/* The little cyan dot that slides toward the drag direction on the attack joystick itself —
+   a small, close-range echo of the larger ground reticle Game.ts draws while aiming. */
+#attack-aim-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #baf3ff, #26c6f2);
+  box-shadow: 0 0 8px rgba(38, 198, 242, 0.9);
+  transform: translate(-50%, -50%);
+  transition: transform 0.05s linear;
+  pointer-events: none;
 }
 
 #attack-btn:active {
+  transform: scale(0.92);
+}
+
+/* ---------- dialogue panel ---------- */
+
+.dialogue-text {
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.dialogue-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.dialogue-option {
+  all: unset;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 210, 77, 0.14);
+  border: 1px solid rgba(255, 210, 77, 0.45);
+  color: #ffd24d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dialogue-option:active {
+  background: rgba(255, 210, 77, 0.3);
+}
+
+/* ---------- ability bar ---------- */
+
+.ability-btn {
+  all: unset;
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: url("/hud/ability-ring.png") center / contain no-repeat;
+  color: #fff;
+  pointer-events: auto;
+}
+
+.ability-btn:active {
+  transform: scale(0.92);
+}
+
+.ability-btn.on-cooldown {
+  filter: grayscale(0.8);
+  opacity: 0.6;
+}
+
+.ability-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ability-cd {
+  font-size: 10px;
+  font-weight: 700;
+  min-height: 12px;
+}
+
+.ability-1 { right: 30px; bottom: 132px; }
+.ability-2 { right: 76px; bottom: 118px; }
+.ability-3 { right: 116px; bottom: 88px; }
+.ability-4 { right: 142px; bottom: 46px; }
+.ability-5 { right: 148px; bottom: 0px; }
+/* Sprint slots (GDD Section 28) — stacked right beside the attack button, in the one genuinely
+   open pocket of this corner (between it and the ability-4/5 tail) — matching the layout
+   sketch's "yellow next to red" as closely as a packed landscape screen corner allows; the
+   sketch itself was drawn portrait with open space to red's right that landscape doesn't have. */
+.ability-6 { right: 112px; bottom: 6px; width: 28px; height: 28px; }
+.ability-7 { right: 112px; bottom: 42px; width: 28px; height: 28px; }
+
+.ability-sprint {
+  background:
+    url("/hud/ability-ring.png") center / contain no-repeat,
+    radial-gradient(circle, rgba(255, 210, 77, 0.35), transparent 70%);
+}
+
+#loadout-switch {
+  all: unset;
+  position: absolute;
+  right: 30px;
+  bottom: 190px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: url("/hud/ability-ring.png") center / contain no-repeat;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  pointer-events: auto;
+}
+
+#loadout-switch:active {
   transform: scale(0.92);
 }
 
@@ -185,6 +738,58 @@ canvas {
   pointer-events: none;
   background: radial-gradient(circle, rgba(255, 215, 77, 0.35), transparent 70%);
   opacity: 0;
+}
+
+/* ---------- floating monster name/HP labels ---------- */
+
+#monster-labels,
+#player-label {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.monster-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.monster-label-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.monster-label-bar {
+  width: 46px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+
+.monster-label-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff4d4d, #b30000);
+  transition: width 0.15s ease-out;
+}
+
+/* The current target stands out — gold name + gold bar border, not just a subtle mesh tint. */
+.monster-label.targeted .monster-label-name {
+  color: #ffd24d;
+}
+
+.monster-label.targeted .monster-label-bar {
+  border-color: #ffd24d;
+  box-shadow: 0 0 6px rgba(255, 210, 77, 0.7);
 }
 
 #level-up-flash.show {
