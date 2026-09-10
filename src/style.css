@@ -60,41 +60,13 @@ canvas {
   font-weight: 600;
 }
 
-.bar {
-  flex: 1;
-  height: 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  overflow: hidden;
-  max-width: 220px;
-}
-
-.bar-fill {
-  height: 100%;
-  width: 100%;
-  transition: width 0.15s ease-out;
-}
-
-.bar-fill.hp {
-  background: linear-gradient(90deg, #ff4d4d, #b30000);
-}
-
-.bar-fill.xp {
-  background: linear-gradient(90deg, #4dd2ff, #0080ff);
-}
-
-.bar-fill.resource {
-  background: linear-gradient(90deg, #8f6bff, #5a2fd6);
-}
-
 /* Ornate HP/resource bar frame (Section 28 HUD art) — the gold frame image sits on
    top with its bar interiors cut transparent, so these plain colored divs underneath
    (sized 0-100% by HUD.ts, exactly like the old .bar-fill) show through the holes. */
 .hp-resource-frame {
   position: relative;
-  width: min(360px, 78vw);
-  aspect-ratio: 2170 / 725;
+  width: min(300px, 72vw);
+  aspect-ratio: 345 / 112;
   margin-top: 2px;
 }
 
@@ -116,17 +88,24 @@ canvas {
 }
 
 .frame-track.hp-track {
-  left: 25.71%;
-  top: 33.52%;
-  width: 64.61%;
-  height: 21.93%;
+  left: 1.74%;
+  top: 13.4%;
+  width: 93.3%;
+  height: 17.0%;
 }
 
 .frame-track.resource-track {
-  left: 23.73%;
-  top: 57.24%;
-  width: 44.7%;
-  height: 14.48%;
+  left: 1.74%;
+  top: 39.3%;
+  width: 93.3%;
+  height: 21.4%;
+}
+
+.frame-track.xp-track {
+  left: 1.74%;
+  top: 67.9%;
+  width: 93.3%;
+  height: 18.75%;
 }
 
 .frame-fill {
@@ -167,6 +146,10 @@ canvas {
     #040200 0%, #7a4100 6%, #d89703 25%, #e4ae04 45%,
     #e4b004 60%, #e1a803 75%, #c98201 88%, #554401 100%
   );
+}
+
+.frame-fill.xp {
+  background: linear-gradient(180deg, #7fd8ff 0%, #1b8fd6 45%, #0f5fa8 75%, #0a3f70 100%);
 }
 
 .resource-label {
