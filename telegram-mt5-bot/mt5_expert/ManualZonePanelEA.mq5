@@ -7,16 +7,22 @@
 //| manual BUY/SELL zone panel without touching the Python-driven    |
 //| bridge EA at all.                                                 |
 //|                                                                  |
-//| An on-chart panel with four editable fields - Strefa             |
-//| ("niska-wysoka", e.g. 4420-4425), SL (pips), Trailing (pips),    |
-//| Krok siatki ($) - and BUY/SELL buttons. On click it builds the   |
-//| same kind of order grid the Python bot's order_planner.py would  |
-//| (price levels every "Krok siatki" across the zone, ONE shared SL |
-//| "SL (pips)" from the worse edge, lot size tiering mirroring      |
-//| LOT_SIZE/LOT_TIER_ORDERS/LOT_SCALING_MODE/LOT_MULTIPLIER via the |
-//| Panel* inputs below) and places it with native OrderSend() calls |
-//| - same MARKET-fallback for an entry too close to the current     |
-//| price as the bridge EA uses.                                     |
+//| Fully click-driven - no typing, no dragging objects (both proved |
+//| unreliable in some MT5 setups/themes, so this avoids them        |
+//| entirely):                                                        |
+//|   - Click "Zaznacz strefe", then click two points on the chart - |
+//|     those become the zone's low/high price (order doesn't        |
+//|     matter, sorted automatically).                                |
+//|   - SL (pips) / Trailing (pips) / Krok siatki ($) are each a      |
+//|     value with "-"/"+" buttons next to it.                        |
+//|   - BUY/SELL builds the same kind of order grid the Python bot's |
+//|     order_planner.py would (price levels every "Krok siatki"     |
+//|     across the zone, ONE shared SL "SL (pips)" from the worse    |
+//|     edge, lot size tiering mirroring LOT_SIZE/LOT_TIER_ORDERS/    |
+//|     LOT_SCALING_MODE/LOT_MULTIPLIER via the Panel* inputs below) |
+//|     and places it with native OrderSend() calls - same MARKET-   |
+//|     fallback for an entry too close to the current price as the  |
+//|     bridge EA uses.                                               |
 //|                                                                  |
 //| No TP is set on these orders. Exits happen only through a        |
 //| STEPPED trailing stop (PanelUpdateTrailingStops(), run every     |
@@ -36,19 +42,13 @@
 //| - removed automatically once nothing is left open for that       |
 //| zone's magic (PanelCleanupFinishedZones, checked every timer     |
 //| tick).                                                            |
-//|                                                                  |
-//| Two draggable price lines (ZoneLowLine/ZoneHighLine) let you set |
-//| the zone by dragging on the chart instead of typing - the        |
-//| "Strefa" field updates live to match their prices as you drag    |
-//| (PanelSyncZoneFieldFromLines, fired on CHARTEVENT_OBJECT_DRAG).  |
-//| You can still type into the field directly too.                  |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
 
-input double PanelDefaultSlPips       = 60;    // default value shown in the panel's SL field
-input double PanelDefaultTrailingPips = 36;    // default value shown in the panel's Trailing field
-input double PanelDefaultStepDollars  = 0.5;   // default value shown in the panel's Step field
+input double PanelDefaultSlPips       = 60;    // starting value for the SL (pips) stepper
+input double PanelDefaultTrailingPips = 36;    // starting value for the Trailing (pips) stepper
+input double PanelDefaultStepDollars  = 0.5;   // starting value for the Krok siatki ($) stepper
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
 input int    PanelLotTierOrders       = 3;     // mirrors LOT_TIER_ORDERS
@@ -64,6 +64,15 @@ long   g_panelNextMagic = 0;
 long   g_panelMagics[];
 double g_panelTrailingPips[];
 
+double g_zoneLow = 0;
+double g_zoneHigh = 0;
+int    g_awaitingClick = 0;   // 0 = idle, 1 = waiting for the first point, 2 = waiting for the second
+double g_pendingFirstPrice = 0;
+
+double g_slPips = 0;
+double g_trailPips = 0;
+double g_stepDollars = 0;
+
 #define PANEL_PREFIX "TgManualPanel_"
 
 //+------------------------------------------------------------------+
@@ -72,8 +81,10 @@ int OnInit()
    EventSetTimer(PollSeconds);
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       Print("WARNING: Algo Trading is currently OFF - this EA cannot place orders until it's enabled.");
+   g_slPips = PanelDefaultSlPips;
+   g_trailPips = PanelDefaultTrailingPips;
+   g_stepDollars = PanelDefaultStepDollars;
    PanelCreate();
-   PanelCreateZoneLines();
    PrintFormat("ManualZonePanelEA started on %s", Symbol());
    return(INIT_SUCCEEDED);
   }
@@ -194,30 +205,6 @@ void PanelCreateLabel(string name, int x, int y, string text)
   }
 
 //+------------------------------------------------------------------+
-void PanelCreateEdit(string name, int x, int y, int w, string text)
-  {
-   string full = PANEL_PREFIX + name;
-   ObjectCreate(0, full, OBJ_EDIT, 0, 0, 0);
-   ObjectSetInteger(0, full, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, full, OBJPROP_YDISTANCE, y);
-   ObjectSetInteger(0, full, OBJPROP_XSIZE, w);
-   ObjectSetInteger(0, full, OBJPROP_YSIZE, 22);
-   ObjectSetString(0, full, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, full, OBJPROP_ALIGN, ALIGN_CENTER);
-   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 9);
-   ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
-   ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clrWhite);
-   ObjectSetInteger(0, full, OBJPROP_BORDER_COLOR, clrBlack);
-   ObjectSetInteger(0, full, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, full, OBJPROP_READONLY, false);
-   // High z-order so this sits above the background panel for click/hit
-   // testing - without it, a foreground background rectangle behind it
-   // (or drawn in the wrong order) can swallow clicks meant for the box.
-   ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
-  }
-
-//+------------------------------------------------------------------+
 void PanelCreateButton(string name, int x, int y, int w, int h, string text, color clr)
   {
    string full = PANEL_PREFIX + name;
@@ -237,9 +224,10 @@ void PanelCreateButton(string name, int x, int y, int w, int h, string text, col
 //+------------------------------------------------------------------+
 void PanelCreate()
   {
-   int x = PanelX, y = PanelY, rowH = 28, labelW = 175, editW = 100;
-   int panelW = labelW + editW + 25;
-   int panelH = rowH * 4 + 90;
+   int x = PanelX, y = PanelY;
+   int rowH = 32;
+   int panelW = 330;
+   int panelH = rowH * 4 + 100;
 
    ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
@@ -250,36 +238,39 @@ void PanelCreate()
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BGCOLOR, clrWhiteSmoke);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_COLOR, clrSilver);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BORDER_TYPE, BORDER_FLAT);
-   // BACK=true is essential: it draws (and hit-tests) this rectangle
-   // BEHIND every other object, so it never swallows clicks meant for the
-   // edit boxes/buttons drawn on top of it. BACK=false (the earlier bug
-   // here) put it in the foreground, right where mouse clicks land first.
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BACK, true);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_ZORDER, 0);
 
-   PanelCreateLabel("LblZone", x, y, "Strefa (niska-wysoka):");
-   PanelCreateEdit("ZoneEdit", x + labelW + 5, y, editW, "");
-   y += rowH;
+   int rowY = y;
+   PanelCreateLabel("LblZone", x, rowY, "Strefa:");
+   PanelCreateLabel("ZoneValueLbl", x + 65, rowY, "-- brak, kliknij Zaznacz --");
+   PanelCreateButton("PickZoneBtn", x + 220, rowY - 3, 100, 24, "Zaznacz strefe", clrKhaki);
 
-   PanelCreateLabel("LblSl", x, y, "SL (pips):");
-   PanelCreateEdit("SlEdit", x + labelW + 5, y, editW, DoubleToString(PanelDefaultSlPips, 0));
-   y += rowH;
+   rowY += rowH;
+   PanelCreateLabel("LblSl", x, rowY, "SL (pips):");
+   PanelCreateLabel("SlValueLbl", x + 100, rowY, DoubleToString(g_slPips, 0));
+   PanelCreateButton("SlMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
+   PanelCreateButton("SlPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
 
-   PanelCreateLabel("LblTrail", x, y, "Trailing (pips):");
-   PanelCreateEdit("TrailEdit", x + labelW + 5, y, editW, DoubleToString(PanelDefaultTrailingPips, 0));
-   y += rowH;
+   rowY += rowH;
+   PanelCreateLabel("LblTrail", x, rowY, "Trailing (pips):");
+   PanelCreateLabel("TrailValueLbl", x + 100, rowY, DoubleToString(g_trailPips, 0));
+   PanelCreateButton("TrailMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
+   PanelCreateButton("TrailPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
 
-   PanelCreateLabel("LblStep", x, y, "Krok siatki ($):");
-   PanelCreateEdit("StepEdit", x + labelW + 5, y, editW, DoubleToString(PanelDefaultStepDollars, 2));
-   y += rowH + 8;
+   rowY += rowH;
+   PanelCreateLabel("LblStep", x, rowY, "Krok siatki ($):");
+   PanelCreateLabel("StepValueLbl", x + 100, rowY, DoubleToString(g_stepDollars, 2));
+   PanelCreateButton("StepMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
+   PanelCreateButton("StepPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
 
-   int btnW = (labelW + editW - 5) / 2;
-   PanelCreateButton("BuyBtn", x, y, btnW, 28, "BUY", clrLimeGreen);
-   PanelCreateButton("SellBtn", x + btnW + 5, y, btnW, 28, "SELL", clrTomato);
-   y += 36;
+   rowY += rowH + 8;
+   PanelCreateButton("BuyBtn", x, rowY, 150, 28, "BUY", clrLimeGreen);
+   PanelCreateButton("SellBtn", x + 160, rowY, 150, 28, "SELL", clrTomato);
 
-   PanelCreateLabel("Status", x, y, "Gotowy.");
+   rowY += 36;
+   PanelCreateLabel("Status", x, rowY, "Gotowy - kliknij 'Zaznacz strefe'.");
    ChartRedraw(0);
   }
 
@@ -290,63 +281,92 @@ void PanelDestroy()
   }
 
 //+------------------------------------------------------------------+
-//| Two draggable horizontal price lines - drag them to set the zone |
-//| on the chart instead of typing prices by hand. Placed near the   |
-//| current Bid on start-up so they're visible without scrolling.    |
-//| The "Strefa" field is kept in sync with their prices live (see   |
-//| PanelSyncZoneFieldFromLines, called from OnChartEvent on drag).  |
-//+------------------------------------------------------------------+
-void PanelCreateZoneLines()
-  {
-   double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   double halfWidth = 2.5;
-
-   string lowName = PANEL_PREFIX + "ZoneLowLine";
-   ObjectCreate(0, lowName, OBJ_HLINE, 0, 0, NormalizeDouble(bid - halfWidth, 2));
-   ObjectSetInteger(0, lowName, OBJPROP_COLOR, clrDodgerBlue);
-   ObjectSetInteger(0, lowName, OBJPROP_STYLE, STYLE_DASHDOT);
-   ObjectSetInteger(0, lowName, OBJPROP_WIDTH, 2);
-   ObjectSetInteger(0, lowName, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, lowName, OBJPROP_ZORDER, 5);
-   ObjectSetString(0, lowName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
-
-   string highName = PANEL_PREFIX + "ZoneHighLine";
-   ObjectCreate(0, highName, OBJ_HLINE, 0, 0, NormalizeDouble(bid + halfWidth, 2));
-   ObjectSetInteger(0, highName, OBJPROP_COLOR, clrOrange);
-   ObjectSetInteger(0, highName, OBJPROP_STYLE, STYLE_DASHDOT);
-   ObjectSetInteger(0, highName, OBJPROP_WIDTH, 2);
-   ObjectSetInteger(0, highName, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, highName, OBJPROP_ZORDER, 5);
-   ObjectSetString(0, highName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
-
-   PanelSyncZoneFieldFromLines();
-  }
-
-//+------------------------------------------------------------------+
-//| Reads both zone lines' current prices and writes them into the    |
-//| "Strefa" field as "niska-wysoka" - sorted, so it doesn't matter   |
-//| which line is physically above the other at any given moment.     |
-//+------------------------------------------------------------------+
-void PanelSyncZoneFieldFromLines()
-  {
-   double lowPrice = ObjectGetDouble(0, PANEL_PREFIX + "ZoneLowLine", OBJPROP_PRICE);
-   double highPrice = ObjectGetDouble(0, PANEL_PREFIX + "ZoneHighLine", OBJPROP_PRICE);
-   if(lowPrice > highPrice)
-     {
-      double tmp = lowPrice;
-      lowPrice = highPrice;
-      highPrice = tmp;
-     }
-   ObjectSetString(0, PANEL_PREFIX + "ZoneEdit", OBJPROP_TEXT, StringFormat("%.2f-%.2f", lowPrice, highPrice));
-   ChartRedraw(0);
-  }
-
-//+------------------------------------------------------------------+
 void PanelSetStatus(string text)
   {
    ObjectSetString(0, PANEL_PREFIX + "Status", OBJPROP_TEXT, text);
    ChartRedraw(0);
    PrintFormat("Panel: %s", text);
+  }
+
+//+------------------------------------------------------------------+
+void PanelSetZoneValueLabel()
+  {
+   string text;
+   if(g_zoneLow > 0 && g_zoneHigh > 0)
+      text = StringFormat("%.2f - %.2f", g_zoneLow, g_zoneHigh);
+   else
+      text = "-- brak, kliknij Zaznacz --";
+   ObjectSetString(0, PANEL_PREFIX + "ZoneValueLbl", OBJPROP_TEXT, text);
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Arms two-click zone picking - PanelHandleChartClick below reads   |
+//| the next two plain chart clicks as the zone's two price bounds.   |
+//+------------------------------------------------------------------+
+void PanelStartZonePick()
+  {
+   g_zoneLow = 0;
+   g_zoneHigh = 0;
+   g_pendingFirstPrice = 0;
+   g_awaitingClick = 1;
+   PanelSetZoneValueLabel();
+   PanelSetStatus("Kliknij PIERWSZA granice strefy na wykresie.");
+  }
+
+//+------------------------------------------------------------------+
+//| Converts a plain chart click's pixel coordinates to a price and,  |
+//| while zone-picking is armed, records it as the first or second    |
+//| zone boundary. No-op otherwise (ignores ordinary chart clicks).   |
+//+------------------------------------------------------------------+
+void PanelHandleChartClick(int px, int py)
+  {
+   if(g_awaitingClick == 0)
+      return;
+
+   int sub;
+   datetime t;
+   double price;
+   if(!ChartXYToTimePrice(0, px, py, sub, t, price))
+      return;
+
+   if(g_awaitingClick == 1)
+     {
+      g_pendingFirstPrice = price;
+      g_awaitingClick = 2;
+      PanelSetStatus(StringFormat("Pierwsza granica: %.2f. Kliknij DRUGA granice strefy.", price));
+      return;
+     }
+
+   g_zoneLow = NormalizeDouble(MathMin(g_pendingFirstPrice, price), 2);
+   g_zoneHigh = NormalizeDouble(MathMax(g_pendingFirstPrice, price), 2);
+   g_awaitingClick = 0;
+   PanelSetZoneValueLabel();
+   PanelSetStatus(StringFormat("Strefa ustawiona: %.2f - %.2f. Kliknij BUY albo SELL.", g_zoneLow, g_zoneHigh));
+  }
+
+//+------------------------------------------------------------------+
+void PanelAdjustSl(double delta)
+  {
+   g_slPips = MathMax(5.0, g_slPips + delta);
+   ObjectSetString(0, PANEL_PREFIX + "SlValueLbl", OBJPROP_TEXT, DoubleToString(g_slPips, 0));
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+void PanelAdjustTrail(double delta)
+  {
+   g_trailPips = MathMax(5.0, g_trailPips + delta);
+   ObjectSetString(0, PANEL_PREFIX + "TrailValueLbl", OBJPROP_TEXT, DoubleToString(g_trailPips, 0));
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+void PanelAdjustStep(double delta)
+  {
+   g_stepDollars = MathMax(0.1, NormalizeDouble(g_stepDollars + delta, 2));
+   ObjectSetString(0, PANEL_PREFIX + "StepValueLbl", OBJPROP_TEXT, DoubleToString(g_stepDollars, 2));
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -406,46 +426,25 @@ void PanelLotTiers(double &levels[], int count, double slPrice, int tierOrders, 
   }
 
 //+------------------------------------------------------------------+
-//| Reads the panel's fields, builds the same kind of order grid as   |
-//| order_planner.plan_orders() (EXIT_MODE=trailing_stop shape - no   |
-//| TP), and places it via PlaceOrders() - MARKET-fallback for an     |
-//| entry too close to price applies here too.                        |
+//| Uses the zone/SL/trailing/step currently picked via the panel to  |
+//| build the same kind of order grid as order_planner.plan_orders()  |
+//| (EXIT_MODE=trailing_stop shape - no TP), and places it via         |
+//| PlaceOrders() - MARKET-fallback for an entry too close to price    |
+//| applies here too.                                                  |
 //+------------------------------------------------------------------+
 void PanelPlaceZone(string direction)
   {
-   string zoneText = ObjectGetString(0, PANEL_PREFIX + "ZoneEdit", OBJPROP_TEXT);
-   string slText = ObjectGetString(0, PANEL_PREFIX + "SlEdit", OBJPROP_TEXT);
-   string trailText = ObjectGetString(0, PANEL_PREFIX + "TrailEdit", OBJPROP_TEXT);
-   string stepText = ObjectGetString(0, PANEL_PREFIX + "StepEdit", OBJPROP_TEXT);
-
-   string parts[];
-   if(StringSplit(zoneText, '-', parts) != 2)
+   if(g_zoneLow <= 0 || g_zoneHigh <= 0 || g_zoneLow == g_zoneHigh)
      {
-      PanelSetStatus("Blad: strefa musi byc w formacie NISKA-WYSOKA, np. 4420-4425");
+      PanelSetStatus("Blad: najpierw zaznacz strefe (przycisk 'Zaznacz strefe', 2 kliknieca na wykresie).");
       return;
-     }
-   double zoneLow = StringToDouble(parts[0]);
-   double zoneHigh = StringToDouble(parts[1]);
-   if(zoneLow <= 0 || zoneHigh <= 0 || zoneLow == zoneHigh)
-     {
-      PanelSetStatus("Blad: nieprawidlowe ceny strefy");
-      return;
-     }
-   if(zoneLow > zoneHigh)
-     {
-      double tmp = zoneLow;
-      zoneLow = zoneHigh;
-      zoneHigh = tmp;
      }
 
-   double slPips = StringToDouble(slText);
-   double trailPips = StringToDouble(trailText);
-   double step = StringToDouble(stepText);
-   if(slPips <= 0 || step <= 0)
-     {
-      PanelSetStatus("Blad: SL (pips) i Krok siatki ($) musza byc > 0");
-      return;
-     }
+   double zoneLow = g_zoneLow;
+   double zoneHigh = g_zoneHigh;
+   double slPips = g_slPips;
+   double trailPips = g_trailPips;
+   double step = g_stepDollars;
 
    double slPrice = (direction == "BUY")
       ? NormalizeDouble(zoneLow - slPips * PanelPipSize, 2)
@@ -495,6 +494,12 @@ void PanelPlaceZone(string direction)
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
    PanelDrawZone(magic, direction, zoneLow, zoneHigh, slPrice);
+
+   // Clear the picked zone so the next click on BUY/SELL can't accidentally
+   // reuse a stale zone - a fresh "Zaznacz strefe" is required each time.
+   g_zoneLow = 0;
+   g_zoneHigh = 0;
+   PanelSetZoneValueLabel();
 
    PanelSetStatus(StringFormat(
       "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (magic=%d)",
@@ -664,17 +669,51 @@ void PanelUpdateTrailingStops()
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
   {
-   if(id == CHARTEVENT_OBJECT_DRAG)
+   if(id == CHARTEVENT_CLICK)
      {
-      if(sparam == PANEL_PREFIX + "ZoneLowLine" || sparam == PANEL_PREFIX + "ZoneHighLine")
-         PanelSyncZoneFieldFromLines();
+      PanelHandleChartClick((int)lparam, (int)dparam);
       return;
      }
 
    if(id != CHARTEVENT_OBJECT_CLICK)
       return;
 
-   if(sparam == PANEL_PREFIX + "BuyBtn")
+   if(sparam == PANEL_PREFIX + "PickZoneBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelStartZonePick();
+     }
+   else if(sparam == PANEL_PREFIX + "SlMinusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustSl(-5);
+     }
+   else if(sparam == PANEL_PREFIX + "SlPlusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustSl(5);
+     }
+   else if(sparam == PANEL_PREFIX + "TrailMinusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustTrail(-5);
+     }
+   else if(sparam == PANEL_PREFIX + "TrailPlusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustTrail(5);
+     }
+   else if(sparam == PANEL_PREFIX + "StepMinusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustStep(-0.1);
+     }
+   else if(sparam == PANEL_PREFIX + "StepPlusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustStep(0.1);
+     }
+   else if(sparam == PANEL_PREFIX + "BuyBtn")
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelPlaceZone("BUY");

@@ -118,18 +118,30 @@ Instalacja - te same kroki co dla `TelegramBridgeEA.mq5` (patrz sekcja
 wykres, zaznacz **"Allow live trading"**, upewnij się że **Algo Trading**
 jest włączony globalnie.
 
-Panel pokazuje cztery pola - **Strefa** (`niska-wysoka`, np. `4420-4425`),
-**SL (pips)**, **Trailing (pips)**, **Krok siatki ($)** - i przyciski
-**BUY**/**SELL**. Po kliknięciu EA liczy siatkę wejść co "Krok siatki" w
-podanej strefie, jeden wspólny SL (tyle pipsów od gorszego brzegu strefy),
-lot ze skalowaniem mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/
-`LOT_SCALING_MODE`/`LOT_MULTIPLIER` (Inputs: `PanelLotBase`/
-`PanelLotTierOrders`/`PanelLotScalingMode`/`PanelLotMultiplier`), i
-wystawia zlecenia (z fallbackiem na MARKET dla entry zbyt blisko ceny,
-tak jak bridge EA). Zlecenia z panelu nie dostają TP - wychodzą wyłącznie
-przez ten sam **stepped trailing stop** co `EXIT_MODE=trailing_stop` w
-Pythonie (BE po "Trailing (pips)" zysku, potem kolejny skok co tyle samo,
-SL nigdy nie wraca w dół), z wartością wpisaną przy danym kliknięciu.
+Panel jest **w pełni obsługiwany klikaniem** - żadnego wpisywania tekstu,
+żadnego przeciągania obiektów (oba okazały się niepewne w niektórych
+konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
+
+1. Klikasz **"Zaznacz strefe"**.
+2. Klikasz na wykresie **dwa punkty** (dowolna kolejność) - to są granice
+   strefy. Pole "Strefa" pokazuje wynik od razu po drugim kliknięciu.
+3. **SL (pips)**, **Trailing (pips)**, **Krok siatki ($)** ustawiasz
+   przyciskami `-`/`+` obok każdej wartości (SL/Trailing: co 5 pipsów,
+   Krok: co $0.10).
+4. Klikasz **BUY** albo **SELL**.
+
+EA liczy siatkę wejść co "Krok siatki" w zaznaczonej strefie, jeden
+wspólny SL (tyle pipsów od gorszego brzegu strefy), lot ze skalowaniem
+mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/`LOT_SCALING_MODE`/
+`LOT_MULTIPLIER` (Inputs: `PanelLotBase`/`PanelLotTierOrders`/
+`PanelLotScalingMode`/`PanelLotMultiplier`), i wystawia zlecenia (z
+fallbackiem na MARKET dla entry zbyt blisko ceny, tak jak bridge EA).
+Zlecenia z panelu nie dostają TP - wychodzą wyłącznie przez ten sam
+**stepped trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie (BE po
+"Trailing (pips)" zysku, potem kolejny skok co tyle samo, SL nigdy nie
+wraca w dół), z wartością ustawioną w momencie kliknięcia BUY/SELL. Po
+wystawieniu zlecenia zaznaczona strefa się czyści - kolejne zlecenie
+wymaga ponownego "Zaznacz strefe".
 
 `PanelMagicBase` (domyślnie 500000+) jest celowo poza zakresem
 `MAGIC_BASE` (990000+) używanym przez Pythona - zlecenia z panelu nigdy
@@ -142,13 +154,6 @@ od dołu do góry strefy (niebieski dla BUY, pomarańczowy dla SELL),
 przerywaną czerwoną linię na SL i etykietę z kierunkiem/cenami - dokładnie
 jak w botach "ZONES". Rysunek dla danej strefy znika automatycznie, gdy
 nie ma już dla niej żadnych zleceń oczekujących ani otwartych pozycji.
-
-Nie musisz wpisywać strefy ręcznie - na wykresie pojawiają się od razu po
-starcie EA **dwie przeciągalne linie cenowe** (niebieska i pomarańczowa,
-blisko aktualnej ceny). Złap myszką i przeciągnij każdą na poziom, który
-ma być granicą strefy - pole "Strefa" samo się uzupełnia w trakcie
-przeciągania (nieważne która linia jest akurat wyżej). Jak strefa Ci
-pasuje, klikasz tylko BUY albo SELL.
 
 Jeśli panel na starcie zasłania Ci pasek narzędzi/OHLC na górze wykresu,
 zmień `PanelY` (i/lub `PanelX`) w Inputs EA na większą wartość i
