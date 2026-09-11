@@ -20,7 +20,7 @@
 //|     zone is outlined on the chart right away (before you even    |
 //|     click BUY/SELL) so you can see exactly what you're about to  |
 //|     trade - PanelDrawPickPreview/PanelClearPickPreview.           |
-//|   - SL (pips) / Trailing (pips) / Krok trailing (pips) / Krok     |
+//|   - SL (pips) / Trailing (pips) / Blokada zysku (pips) / Krok     |
 //|     siatki ($) are each a value with "-"/"+" buttons next to it.  |
 //|   - BUY/SELL builds the same kind of order grid the Python bot's |
 //|     order_planner.py would (price levels every "Krok siatki"     |
@@ -37,15 +37,15 @@
 //|                                                                  |
 //| No TP is set on these orders. Exits happen only through a        |
 //| trailing stop (PanelUpdateTrailingStops(), run every OnTimer     |
-//| tick) - untouched below "Trailing (pips)" profit, jumps to       |
-//| breakeven at exactly that many pips, then keeps the SL trailing  |
-//| "Trailing (pips)" behind price in "Krok trailing (pips)"-sized    |
-//| jumps (the two are independent - a smaller step updates the SL   |
-//| more often and keeps it closer to the true trailing distance;    |
-//| set them equal for the old single-jump-per-Trailing(pips)        |
-//| behavior). Tightening only. This is the exact same algorithm as  |
-//| the Python bot's EXIT_MODE=trailing_stop                         |
-//| (mt5_executor.check_trailing_stops / TRAILING_STOP_STEP_PIPS).   |
+//| tick) - untouched below "Trailing (pips)" profit, then every     |
+//| "Trailing (pips)" of profit the SL jumps to lock in that many    |
+//| pips PLUS "Blokada zysku (pips)" extra - so the first jump (and  |
+//| every one after it) always leaves at least "Blokada zysku (pips)"|
+//| of profit locked in instead of exact breakeven (set it to 0 for  |
+//| the plain breakeven-ladder behavior). Tightening only. This is   |
+//| the exact same algorithm as the Python bot's                     |
+//| EXIT_MODE=trailing_stop (mt5_executor.check_trailing_stops /     |
+//| TRAILING_STOP_LOCK_PIPS).                                        |
 //|                                                                  |
 //| Which trailing_pips value belongs to which position is kept only |
 //| in memory (magic -> trailing_pips), not in a file - a terminal/  |
@@ -68,7 +68,7 @@
 
 input double PanelDefaultSlPips           = 60;    // starting value for the SL (pips) stepper
 input double PanelDefaultTrailingPips     = 36;    // starting value for the Trailing (pips) stepper
-input double PanelDefaultTrailingStepPips = 12;    // starting value for the Krok trailing (pips) stepper - how often the SL updates; defaults smaller than trailing so SL stays closer to the true distance (set equal to Trailing (pips) for the old jump-by-full-distance behavior)
+input double PanelDefaultTrailingLockPips = 12;    // starting value for the Blokada zysku (pips) stepper - extra profit always kept locked in at each trailing jump instead of exact breakeven (0 = old plain breakeven-ladder behavior)
 input double PanelDefaultStepDollars      = 0.5;   // starting value for the Krok siatki ($) stepper
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
@@ -86,7 +86,7 @@ input int    PanelY                   = 130;   // panel position from the TOP ed
 long   g_panelNextMagic = 0;
 long   g_panelMagics[];
 double g_panelTrailingPips[];
-double g_panelTrailingStepPips[];
+double g_panelTrailingLockPips[];
 
 double g_zoneLow = 0;
 double g_zoneHigh = 0;
@@ -95,7 +95,7 @@ double g_pendingFirstPrice = 0;
 
 double g_slPips = 0;
 double g_trailPips = 0;
-double g_trailStepPips = 0;
+double g_trailLockPips = 0;
 double g_stepDollars = 0;
 
 int g_panelLeft = 0, g_panelTop = 0, g_panelRight = 0, g_panelBottom = 0;
@@ -108,7 +108,7 @@ int OnInit()
       Print("WARNING: Algo Trading is currently OFF - this EA cannot place orders until it's enabled.");
    g_slPips = PanelDefaultSlPips;
    g_trailPips = PanelDefaultTrailingPips;
-   g_trailStepPips = PanelDefaultTrailingStepPips;
+   g_trailLockPips = PanelDefaultTrailingLockPips;
    g_stepDollars = PanelDefaultStepDollars;
 
    int x = PanelX;
@@ -310,10 +310,10 @@ void PanelCreate(int x, int y)
    PanelCreateButton("TrailPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblTrailStep", x, rowY, "Krok trailing (pips):");
-   PanelCreateLabel("TrailStepValueLbl", x + 150, rowY, DoubleToString(g_trailStepPips, 0));
-   PanelCreateButton("TrailStepMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("TrailStepPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblTrailLock", x, rowY, "Blokada zysku (pips):");
+   PanelCreateLabel("TrailLockValueLbl", x + 150, rowY, DoubleToString(g_trailLockPips, 0));
+   PanelCreateButton("TrailLockMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("TrailLockPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
    PanelCreateLabel("LblStep", x, rowY, "Krok siatki ($):");
@@ -483,15 +483,15 @@ void PanelAdjustTrail(double delta)
   }
 
 //+------------------------------------------------------------------+
-//| How often the SL jumps once Trailing (pips) profit is reached -   |
-//| defaults smaller than Trailing (pips) itself so the SL updates    |
-//| more often and stays closer to the true trailing distance         |
-//| (set equal to Trailing (pips) for the old single-jump behavior).  |
+//| Extra profit (pips) always kept locked in at each trailing jump,  |
+//| on top of the jump's own Trailing (pips) step - 0 reproduces the  |
+//| plain breakeven-ladder behavior (each jump lands exactly on       |
+//| breakeven/the previous checkpoint).                                |
 //+------------------------------------------------------------------+
-void PanelAdjustTrailStep(double delta)
+void PanelAdjustTrailLock(double delta)
   {
-   g_trailStepPips = MathMax(1.0, g_trailStepPips + delta);
-   ObjectSetString(0, PANEL_PREFIX + "TrailStepValueLbl", OBJPROP_TEXT, DoubleToString(g_trailStepPips, 0));
+   g_trailLockPips = MathMax(0.0, g_trailLockPips + delta);
+   ObjectSetString(0, PANEL_PREFIX + "TrailLockValueLbl", OBJPROP_TEXT, DoubleToString(g_trailLockPips, 0));
    ChartRedraw(0);
   }
 
@@ -578,7 +578,7 @@ void PanelPlaceZone(string direction)
    double zoneHigh = g_zoneHigh;
    double slPips = g_slPips;
    double trailPips = g_trailPips;
-   double trailStepPips = g_trailStepPips;
+   double trailLockPips = g_trailLockPips;
    double step = g_stepDollars;
 
    double slPrice = (direction == "BUY")
@@ -623,10 +623,10 @@ void PanelPlaceZone(string direction)
    int slot = ArraySize(g_panelMagics);
    ArrayResize(g_panelMagics, slot + 1);
    ArrayResize(g_panelTrailingPips, slot + 1);
-   ArrayResize(g_panelTrailingStepPips, slot + 1);
+   ArrayResize(g_panelTrailingLockPips, slot + 1);
    g_panelMagics[slot] = magic;
    g_panelTrailingPips[slot] = trailPips;
-   g_panelTrailingStepPips[slot] = trailStepPips;
+   g_panelTrailingLockPips[slot] = trailLockPips;
 
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
@@ -640,8 +640,8 @@ void PanelPlaceZone(string direction)
    PanelSetZoneValueLabel();
 
    PanelSetStatus(StringFormat(
-      "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f/%.0f pips (magic=%d)",
-      kept, direction, slPrice, trailPips, trailStepPips, (int)magic));
+      "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (blokada +%.0f) (magic=%d)",
+      kept, direction, slPrice, trailPips, trailLockPips, (int)magic));
   }
 
 //+------------------------------------------------------------------+
@@ -773,24 +773,22 @@ void PanelCleanupFinishedZones()
       int last = ArraySize(g_panelMagics) - 1;
       g_panelMagics[m] = g_panelMagics[last];
       g_panelTrailingPips[m] = g_panelTrailingPips[last];
-      g_panelTrailingStepPips[m] = g_panelTrailingStepPips[last];
+      g_panelTrailingLockPips[m] = g_panelTrailingLockPips[last];
       ArrayResize(g_panelMagics, last);
       ArrayResize(g_panelTrailingPips, last);
-      ArrayResize(g_panelTrailingStepPips, last);
+      ArrayResize(g_panelTrailingLockPips, last);
      }
    ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
 //| Trailing stop for panel-placed positions (matched by magic        |
-//| against g_panelMagics): untouched below trailPips profit, jumps   |
-//| to breakeven at exactly trailPips, then keeps the SL trailing     |
-//| trailPips behind price in trailStepPips-sized jumps (trailPips    |
-//| and trailStepPips are independent - a smaller step keeps the SL   |
-//| closer to the true trailPips distance at the cost of more         |
-//| frequent updates; equal values reproduce the original single-     |
-//| jump-per-trailPips behavior). Tightening only. Same algorithm as  |
-//| the Python bot's EXIT_MODE=trailing_stop                          |
+//| against g_panelMagics): untouched below trailPips profit; at      |
+//| trailPips profit SL jumps to trailLockPips profit (or exact       |
+//| breakeven when trailLockPips=0, the default), then every further  |
+//| trailPips of profit SL jumps another trailPips, keeping the same  |
+//| trailLockPips buffer on top each time. Tightening only. Same      |
+//| algorithm as the Python bot's EXIT_MODE=trailing_stop             |
 //| (mt5_executor.check_trailing_stops). Run every OnTimer tick.      |
 //+------------------------------------------------------------------+
 void PanelUpdateTrailingStops()
@@ -806,20 +804,18 @@ void PanelUpdateTrailingStops()
 
       long magic = (long)PositionGetInteger(POSITION_MAGIC);
       double trailPips = -1;
-      double trailStepPips = -1;
+      double trailLockPips = 0;
       for(int m = 0; m < ArraySize(g_panelMagics); m++)
         {
          if(g_panelMagics[m] == magic)
            {
             trailPips = g_panelTrailingPips[m];
-            trailStepPips = g_panelTrailingStepPips[m];
+            trailLockPips = g_panelTrailingLockPips[m];
             break;
            }
         }
       if(trailPips <= 0)
          continue; // not a panel-managed position
-      if(trailStepPips <= 0)
-         trailStepPips = trailPips; // defensive fallback, shouldn't happen
 
       string symbol = PositionGetString(POSITION_SYMBOL);
       double entry = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -830,14 +826,17 @@ void PanelUpdateTrailingStops()
       double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
       double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
       double trailDistance = trailPips * PanelPipSize;
-      double stepDistance = trailStepPips * PanelPipSize;
+      double lockDistance = trailLockPips * PanelPipSize;
 
       double profitDistance = isBuy ? (bid - entry) : (entry - ask);
       if(profitDistance < trailDistance)
          continue;
 
-      double extraSteps = MathFloor((profitDistance - trailDistance) / stepDistance + 0.0000001);
-      double locked = extraSteps * stepDistance;
+      // round-trip through MathFloor(... + epsilon) guards against float
+      // noise putting profitDistance one step short of an exact multiple
+      // of trailDistance, which would delay the next jump by a tick.
+      double steps = MathFloor(profitDistance / trailDistance + 0.0000001);
+      double locked = (steps - 1) * trailDistance + lockDistance;
       double candidate = NormalizeDouble(isBuy ? entry + locked : entry - locked, 2);
       bool improved = isBuy ? (candidate > sl) : (candidate < sl);
       if(!improved)
@@ -899,15 +898,15 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelAdjustTrail(5);
      }
-   else if(sparam == PANEL_PREFIX + "TrailStepMinusBtn")
+   else if(sparam == PANEL_PREFIX + "TrailLockMinusBtn")
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
-      PanelAdjustTrailStep(-1);
+      PanelAdjustTrailLock(-1);
      }
-   else if(sparam == PANEL_PREFIX + "TrailStepPlusBtn")
+   else if(sparam == PANEL_PREFIX + "TrailLockPlusBtn")
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
-      PanelAdjustTrailStep(1);
+      PanelAdjustTrailLock(1);
      }
    else if(sparam == PANEL_PREFIX + "StepMinusBtn")
      {

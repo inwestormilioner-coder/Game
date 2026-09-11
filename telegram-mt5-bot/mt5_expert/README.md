@@ -128,9 +128,9 @@ konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
    na tej cenie; po drugim - całą strefę wyrysowaną na złoto (prostokąt +
    etykieta z cenami) i pole "Strefa" uzupełnione - widzisz dokładnie co
    zamierzasz otworzyć, zanim jeszcze wybierzesz kierunek.
-3. **SL (pips)**, **Trailing (pips)**, **Krok trailing (pips)**, **Krok
+3. **SL (pips)**, **Trailing (pips)**, **Blokada zysku (pips)**, **Krok
    siatki ($)** ustawiasz przyciskami `-`/`+` obok każdej wartości
-   (SL/Trailing: co 5 pipsów, Krok trailing: co 1 pips, Krok siatki: co
+   (SL/Trailing: co 5 pipsów, Blokada zysku: co 1 pips, Krok siatki: co
    $0.10).
 4. Klikasz **BUY** albo **SELL**.
 
@@ -141,12 +141,11 @@ mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/`LOT_SCALING_MODE`/
 `PanelLotScalingMode`/`PanelLotMultiplier`), i wystawia zlecenia (z
 fallbackiem na MARKET dla entry zbyt blisko ceny, tak jak bridge EA).
 Zlecenia z panelu nie dostają TP - wychodzą wyłącznie przez ten sam
-**trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie (BE po
-"Trailing (pips)" zysku, potem SL trzymany "Trailing (pips)" za ceną,
-aktualizowany co "Krok trailing (pips)" zysku - im mniejszy krok, tym
-częstsze aktualizacje i tym bliżej SL trzyma się właściwego dystansu;
-ustaw krok równy "Trailing (pips)" dla starego zachowania - jeden skok od
-razu o cały dystans; SL nigdy nie wraca w dół), z wartościami ustawionymi
+**trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie: co "Trailing
+(pips)" zysku SL przeskakuje o kolejne "Trailing (pips)", ale zamiast
+lądować dokładnie na BE/poprzednim progu, zawsze zostawia dodatkowo
+"Blokada zysku (pips)" zablokowanego zysku (domyślnie 12 - ustaw 0 dla
+starego czysto-BE zachowania). SL nigdy nie wraca w dół. Wartości brane są
 w momencie kliknięcia BUY/SELL. Po wystawieniu zlecenia zaznaczona strefa
 się czyści (żółty podgląd znika, zastępuje go docelowy
 niebieski/pomarańczowy rysunek strefy) - kolejne zlecenie wymaga ponownego

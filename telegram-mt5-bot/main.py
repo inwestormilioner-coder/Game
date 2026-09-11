@@ -205,7 +205,7 @@ class Bot:
                     if self.config.exit_mode == "trailing_stop":
                         self.executor.check_trailing_stops(
                             campaign, self.config.trailing_stop_pips, self.config.pip_size,
-                            self.config.trailing_stop_step_pips,
+                            self.config.trailing_stop_lock_pips,
                         )
                     else:
                         applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)

@@ -182,12 +182,13 @@ def simulate_campaign(
                         o.moved_to_breakeven = True
 
         if config.exit_mode == "trailing_stop" and step_distance > 0:
+            lock_distance = config.trailing_stop_lock_pips * config.pip_size
             for o in still_open:
                 profit_distance = (bar.close - o.entry_price) if direction == "BUY" else (o.entry_price - bar.close)
                 steps = math.floor(round(profit_distance / step_distance, 6))
                 if steps < 1:
                     continue
-                locked = (steps - 1) * step_distance
+                locked = (steps - 1) * step_distance + lock_distance
                 candidate = round(o.entry_price + locked, 2) if direction == "BUY" else round(o.entry_price - locked, 2)
                 improved = candidate > o.sl_price if direction == "BUY" else candidate < o.sl_price
                 if improved:

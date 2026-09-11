@@ -78,12 +78,13 @@ class Config:
     # position and NOT combined with the basket-average-at-1:1 move.
     exit_mode: str
     trailing_stop_pips: float
-    # How often the SL jumps once trailing_stop_pips profit is reached -
-    # defaults to trailing_stop_pips itself (one jump straight to each new
-    # trailing_stop_pips checkpoint). Set smaller (e.g. distance 36, step
-    # 12) to keep SL closer to the true trailing_stop_pips distance on
-    # average, at the cost of more frequent SL updates.
-    trailing_stop_step_pips: float
+    # Profit (in pips) locked in at each trailing jump, on top of the
+    # jump's own trailing_stop_pips-sized step - defaults to 0 (the jump
+    # lands exactly on breakeven/the previous step, the original
+    # behavior). Set e.g. 12 so the first jump locks in 12 pips of profit
+    # instead of exact breakeven, and every later jump keeps that same
+    # 12-pip buffer on top.
+    trailing_stop_lock_pips: float
     deviation_points: int
     magic_base: int
     # Safety net against a misparsed/malformed zone turning into a huge
@@ -113,7 +114,6 @@ class Config:
 
 
 def load_config() -> Config:
-    trailing_stop_pips = _float("TRAILING_STOP_PIPS", 36.0)
     return Config(
         telegram_api_id=_int("TELEGRAM_API_ID", 0),
         telegram_api_hash=os.getenv("TELEGRAM_API_HASH", ""),
@@ -138,8 +138,8 @@ def load_config() -> Config:
         tp_mode=os.getenv("TP_MODE", "risk_reward"),
         tp_risk_reward_ratio=_float("TP_RISK_REWARD_RATIO", 1.0),
         exit_mode=os.getenv("EXIT_MODE", "tp"),
-        trailing_stop_pips=trailing_stop_pips,
-        trailing_stop_step_pips=_float("TRAILING_STOP_STEP_PIPS", trailing_stop_pips),
+        trailing_stop_pips=_float("TRAILING_STOP_PIPS", 36.0),
+        trailing_stop_lock_pips=_float("TRAILING_STOP_LOCK_PIPS", 0.0),
         deviation_points=_int("DEVIATION_POINTS", 20),
         magic_base=_int("MAGIC_BASE", 990000),
         max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),

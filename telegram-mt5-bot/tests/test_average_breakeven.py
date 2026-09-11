@@ -74,7 +74,7 @@ def _config(**overrides) -> Config:
         symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, lot_scaling_mode="additive", lot_multiplier=1.2,
         zone_step=0.5, zone_extend_front=0.0, zone_extend_back=0.0, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
-        exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_step_pips=36.0,
+        exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_lock_pips=0.0,
         deviation_points=20, magic_base=990000,
         max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5,
         notify_enabled=False, telegram_notify_chat="me", daily_summary_time="23:55",
@@ -233,60 +233,77 @@ def test_trailing_stop_does_not_move_mid_step_even_though_price_kept_rising(tmp_
     assert _bridge_files(fake, "trail_") == []
 
 
-def test_trailing_stop_configurable_step_activates_at_same_threshold(tmp_path):
-    # trailing_step_pips=12 (smaller than the 36-pip distance) must NOT
-    # change the activation point - still nothing until the full 36 pips
-    # of profit is reached, exactly like the default (step == distance).
+def test_trailing_stop_lock_pips_activates_at_same_threshold(tmp_path):
+    # trailing_lock_pips=12 must NOT change the activation point - still
+    # nothing until the full 36 pips of profit is reached, exactly like
+    # the default (lock=0).
     positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
     fake = FakeMt5(positions=positions, bid=4423.0, ask=4423.2, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
-    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_step_pips=12)
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_lock_pips=12)
 
     assert _bridge_files(fake, "trail_") == []
 
 
-def test_trailing_stop_configurable_step_jumps_by_step_not_by_distance(tmp_path):
-    # BUY entry 4420, distance=36 pips (3.6), step=12 pips (1.2). At 48
-    # pips profit (36 + one 12-pip step beyond activation), SL should jump
-    # only 12 pips past breakeven (4421.2), NOT a full 36 (4423.6 - that
-    # would be the old distance-sized jump).
+def test_trailing_stop_lock_pips_locks_extra_profit_at_activation(tmp_path):
+    # BUY entry 4420, distance=36 pips (3.6), lock=12 pips (1.2). Right at
+    # the 36-pip activation threshold, SL should jump straight to
+    # entry+12 pips (4421.2), not exact breakeven (4420.0 - that would be
+    # the old lock=0 behavior).
     positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
-    fake = FakeMt5(positions=positions, bid=4424.8, ask=4425.0, commondata_path=str(tmp_path))
+    fake = FakeMt5(positions=positions, bid=4423.6, ask=4423.8, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
-    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_step_pips=12)
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_lock_pips=12)
 
     files = _bridge_files(fake, "trail_")
     assert len(files) == 1
     assert "POSITION=111,4421.2,0.0" in files[0].read_text()
 
 
-def test_trailing_stop_configurable_step_does_not_move_mid_step(tmp_path):
-    # Same position, SL already trailed to 4421.2 (the 48-pip checkpoint).
-    # Profit has crept up to 53 pips - still short of the next 12-pip
-    # checkpoint (60 pips) - SL must stay exactly where it is.
+def test_trailing_stop_lock_pips_keeps_same_buffer_on_later_jumps(tmp_path):
+    # Profit reaches 72 pips (two full 36-pip steps): SL should land at
+    # entry + 36 pips + the 12-pip lock buffer (4424.8), not just
+    # entry + 36 pips (4423.6, the old lock=0 behavior).
     positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4421.2)]
-    fake = FakeMt5(positions=positions, bid=4425.3, ask=4425.5, commondata_path=str(tmp_path))
+    fake = FakeMt5(positions=positions, bid=4427.2, ask=4427.4, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
 
-    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_step_pips=12)
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_lock_pips=12)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    assert "POSITION=111,4424.8,0.0" in files[0].read_text()
+
+
+def test_trailing_stop_lock_pips_does_not_move_mid_step(tmp_path):
+    # SL already at the 72-pip checkpoint's locked value (4424.8). Profit
+    # creeps to 75 pips - still short of the next checkpoint (108 pips) -
+    # SL must stay exactly where it is.
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4424.8)]
+    fake = FakeMt5(positions=positions, bid=4427.5, ask=4427.7, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_lock_pips=12)
 
     assert _bridge_files(fake, "trail_") == []
 
 
-def test_trailing_stop_configurable_step_sell_mirrors(tmp_path):
-    # SELL entry 4430, distance=36 pips, step=12 pips. At 48 pips profit,
-    # SL jumps 12 pips below breakeven (4428.8), mirroring the BUY case.
+def test_trailing_stop_lock_pips_sell_mirrors(tmp_path):
+    # SELL entry 4430, distance=36 pips, lock=12 pips. Right at the
+    # 36-pip activation threshold, SL jumps to entry-12 pips (4428.8),
+    # mirroring the BUY case.
     positions = [FakePosition(ticket=222, magic=990000, price_open=4430.0, volume=0.01, tp=0.0, sl=4436.0)]
-    fake = FakeMt5(positions=positions, bid=4425.0, ask=4425.2, commondata_path=str(tmp_path))
+    fake = FakeMt5(positions=positions, bid=4426.2, ask=4426.4, commondata_path=str(tmp_path))
     executor = _executor_with(fake)
     campaign = Campaign(id="c1", symbol="XAUUSD", direction="SELL", magic=990000, sl_pips=60)
 
-    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_step_pips=12)
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_lock_pips=12)
 
     files = _bridge_files(fake, "trail_")
     assert len(files) == 1

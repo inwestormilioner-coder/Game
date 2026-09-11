@@ -212,7 +212,7 @@ class Mt5Executor:
         return True
 
     def check_trailing_stops(
-        self, campaign: Campaign, trailing_pips: float, pip_size: float, trailing_step_pips: float = None
+        self, campaign: Campaign, trailing_pips: float, pip_size: float, trailing_lock_pips: float = 0.0
     ) -> None:
         """EXIT_MODE=trailing_stop only: a STEPPED trailing stop - it does
         NOT continuously follow the price trailing_pips behind it. Each
@@ -220,22 +220,23 @@ class Mt5Executor:
 
           - Below trailing_pips profit: untouched, SL stays wherever it
             already is (the zone's shared initial SL) - not yet activated.
-          - At trailing_pips profit: SL jumps to breakeven (this position's
-            own entry price) - trailing "activates". Same activation point
-            regardless of trailing_step_pips below.
-          - Every further trailing_step_pips of profit beyond that: SL
-            jumps another trailing_step_pips in the profit direction. So
-            right after each jump the gap between SL and the current price
-            is exactly trailing_pips (it then widens as price keeps moving,
-            until the next jump snaps it back to trailing_pips) - it moves
-            in discrete steps, not tick-by-tick with the price.
+          - At trailing_pips profit: SL jumps to trailing_lock_pips profit
+            (this position's own entry price + trailing_lock_pips, or
+            exactly breakeven when trailing_lock_pips=0, the default) -
+            trailing "activates".
+          - Every further trailing_pips of profit beyond that: SL jumps
+            another trailing_pips in the profit direction, keeping the same
+            trailing_lock_pips buffer on top each time. So right after each
+            jump the gap between SL and the current price is exactly
+            trailing_pips - trailing_lock_pips (it then widens as price
+            keeps moving, until the next jump snaps it back) - it moves in
+            discrete steps, not tick-by-tick with the price.
 
-        trailing_step_pips defaults to trailing_pips (one jump straight to
-        each new trailing_pips-sized checkpoint, the original behavior -
-        e.g. TRAILING_STOP_PIPS=36 with no step configured). Setting it
-        smaller (e.g. 36 pips distance, updated every 12) keeps the SL
-        closer to the true trailing_pips distance on average, at the cost
-        of more frequent SL modifications.
+        trailing_lock_pips defaults to 0 (jumps land on exact breakeven /
+        each previous trailing_pips-sized checkpoint, the original
+        behavior). Set it e.g. to 12 so every jump - including the very
+        first one - always leaves at least 12 pips of profit locked in
+        instead of exact breakeven.
 
         Comparing each candidate against the position's own current live
         SL (not recomputing from scratch) is what makes this tightening-only
@@ -249,9 +250,6 @@ class Mt5Executor:
         than the single-shared-SL MODIFY_SL command check_average_breakeven
         uses.
         """
-        if trailing_step_pips is None:
-            trailing_step_pips = trailing_pips
-
         mt5 = self._mt5
         positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
         if not positions:
@@ -259,7 +257,7 @@ class Mt5Executor:
 
         bid, ask = self.current_price()
         trail_distance = trailing_pips * pip_size
-        step_distance = trailing_step_pips * pip_size
+        lock_distance = trailing_lock_pips * pip_size
 
         updates = []
         for pos in positions:
@@ -268,10 +266,10 @@ class Mt5Executor:
                 continue
             # round() before floor() guards against float noise (e.g.
             # 3.5999999999999996) putting profit_distance one step short of
-            # an exact multiple of step_distance, which would delay the
+            # an exact multiple of trail_distance, which would delay the
             # next jump by one tick's worth of price.
-            extra_steps = math.floor(round((profit_distance - trail_distance) / step_distance, 6))
-            locked_distance = extra_steps * step_distance
+            steps = math.floor(round(profit_distance / trail_distance, 6))
+            locked_distance = (steps - 1) * trail_distance + lock_distance
 
             if campaign.direction == "BUY":
                 candidate_sl = round(pos.price_open + locked_distance, 2)
