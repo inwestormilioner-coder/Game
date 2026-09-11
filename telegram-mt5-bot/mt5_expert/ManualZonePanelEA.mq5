@@ -72,6 +72,18 @@
 //| EXIT_MODE=trailing_stop (mt5_executor.check_trailing_stops /     |
 //| TRAILING_STOP_LOCK_PIPS).                                        |
 //|                                                                  |
+//| Trailing speedup by position (PanelTrailingSpeedupStepPips /     |
+//| PanelTrailingSpeedupFloorPips): "Trailing (pips)" above is only   |
+//| the value for the grid level FURTHEST from SL (the smallest lot) |
+//| - every level closer to SL (bigger lot, since lot size grows      |
+//| toward SL - see PanelLotTiers) gets that many pips LESS, down to  |
+//| a floor, so the biggest positions in a grid activate trailing     |
+//| (and start tightening) soonest. Each level's own trailing         |
+//| distance is fixed at placement time (PanelPlaceZone) and looked   |
+//| up per position by entry price (PanelTrailPipsForPosition), not   |
+//| shared across the whole zone like Blokada zysku/lock is. Set the  |
+//| step to 0 to disable (every level uses plain "Trailing (pips)").  |
+//|                                                                  |
 //| Which trailing_pips value belongs to which position is kept only |
 //| in memory (magic -> trailing_pips), not in a file - a terminal/  |
 //| EA restart loses it for positions already open from before the   |
@@ -98,6 +110,8 @@ input double PanelDefaultStepDollars      = 0.5;   // starting value for the Kro
 input double PanelDefaultExtendUpDollars   = 0.0;  // starting value for the Rozszerz gora ($) stepper - extra grid levels ABOVE the picked/market zone's top edge, SL stays anchored to the zone (unaffected)
 input double PanelDefaultExtendDownDollars = 0.0;  // starting value for the Rozszerz dol ($) stepper - extra grid levels BELOW the picked/market zone's bottom edge, SL stays anchored to the zone (unaffected)
 input double PanelMarketZoneWidthDollars  = 6.0;   // BUY MARKET/SELL MARKET: width ($) of the auto-computed zone below/above the market fill - SL(pips)/Trailing(pips)/Blokada(pips)/Krok siatki($)/Rozszerz above still apply exactly as configured, so the SL ends up PanelMarketZoneWidthDollars + SL(pips) away from the market entry
+input double PanelTrailingSpeedupStepPips  = 2.0;  // Trailing (pips) shrinks by this many pips per grid position closer to SL (bigger lot) than the previous one - 0th/furthest-from-SL position uses Trailing (pips) as-is, each one after it activates that much sooner, down to PanelTrailingSpeedupFloorPips. Set 0 to disable (every position uses the same Trailing (pips)).
+input double PanelTrailingSpeedupFloorPips = 14.0; // minimum trailing-activation distance (pips) PanelTrailingSpeedupStepPips can shrink down to, no matter how many positions/how close to SL
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
 input int    PanelLotTierOrders       = 3;     // mirrors LOT_TIER_ORDERS
@@ -115,6 +129,15 @@ long   g_panelNextMagic = 0;
 long   g_panelMagics[];
 double g_panelTrailingPips[];
 double g_panelTrailingLockPips[];
+
+// Per-GRID-LEVEL trailing distance (one entry per price level placed by
+// PanelPlaceZone, keyed by magic + that level's own entry price) - lets
+// PanelUpdateTrailingStops give each position its OWN Trailing (pips)
+// instead of one shared value per magic, for PanelTrailingSpeedupStepPips.
+// See PanelPlaceZone/PanelUpdateTrailingStops for how it's filled/read.
+long   g_panelLevelMagics[];
+double g_panelLevelPrices[];
+double g_panelLevelTrailPips[];
 
 // Last tick's snapshot of live pending-order tickets (magic>=PanelMagicBase),
 // used by PanelDetectAbandonedGrids() to notice one disappearing WITHOUT
@@ -610,9 +633,14 @@ int PanelGeneratePriceLevels(double low, double high, double step, double &out[]
 //| Mirrors order_planner._lot_tiers_by_distance_to_sl(): tier 0 is   |
 //| the PanelLotTierOrders entries FURTHEST from slPrice, each        |
 //| further group of PanelLotTierOrders one tier closer, ending with  |
-//| the entries closest to SL in the highest tier.                    |
+//| the entries closest to SL in the highest tier. Also returns the   |
+//| raw (ungrouped) 0-based distance-to-SL rank per level in `ranks`  |
+//| (0 = furthest from SL, count-1 = closest) - used by PanelPlaceZone |
+//| to compute each level's own Trailing (pips) for                  |
+//| PanelTrailingSpeedupStepPips (a finer granularity than tiers,     |
+//| which group PanelLotTierOrders levels together).                  |
 //+------------------------------------------------------------------+
-void PanelLotTiers(double &levels[], int count, double slPrice, int tierOrders, int &tiers[])
+void PanelLotTiers(double &levels[], int count, double slPrice, int tierOrders, int &tiers[], int &ranks[])
   {
    int order[];
    ArrayResize(order, count);
@@ -633,10 +661,14 @@ void PanelLotTiers(double &levels[], int count, double slPrice, int tierOrders, 
      }
 
    ArrayResize(tiers, count);
+   ArrayResize(ranks, count);
    if(tierOrders < 1)
       tierOrders = 1;
    for(int rank = 0; rank < count; rank++)
+     {
       tiers[order[rank]] = rank / tierOrders;
+      ranks[order[rank]] = rank;
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -700,7 +732,8 @@ void PanelPlaceZone(string direction)
      }
 
    int tiers[];
-   PanelLotTiers(levels, kept, slPrice, PanelLotTierOrders, tiers);
+   int ranks[];
+   PanelLotTiers(levels, kept, slPrice, PanelLotTierOrders, tiers, ranks);
 
    double lots[];
    ArrayResize(lots, kept);
@@ -712,6 +745,21 @@ void PanelPlaceZone(string direction)
          lots[i] = NormalizeDouble(PanelLotBase * (tiers[i] + 1), 2);
      }
 
+   // Trailing (pips) shrinks per rank (0 = furthest from SL/smallest lot,
+   // keeps the full trailPips) down to PanelTrailingSpeedupFloorPips - the
+   // levels closest to SL (biggest lots) activate trailing soonest, so the
+   // largest positions get protected first. Step=0 makes every level equal
+   // to trailPips, same as before this feature existed.
+   double levelTrailPips[];
+   ArrayResize(levelTrailPips, kept);
+   double minLevelTrailPips = trailPips;
+   for(int i = 0; i < kept; i++)
+     {
+      levelTrailPips[i] = MathMax(PanelTrailingSpeedupFloorPips, trailPips - PanelTrailingSpeedupStepPips * ranks[i]);
+      if(levelTrailPips[i] < minLevelTrailPips)
+         minLevelTrailPips = levelTrailPips[i];
+     }
+
    long magic = PanelMagicBase + g_panelNextMagic;
    g_panelNextMagic++;
    int slot = ArraySize(g_panelMagics);
@@ -721,6 +769,17 @@ void PanelPlaceZone(string direction)
    g_panelMagics[slot] = magic;
    g_panelTrailingPips[slot] = trailPips;
    g_panelTrailingLockPips[slot] = trailLockPips;
+
+   int levelSlot = ArraySize(g_panelLevelMagics);
+   ArrayResize(g_panelLevelMagics, levelSlot + kept);
+   ArrayResize(g_panelLevelPrices, levelSlot + kept);
+   ArrayResize(g_panelLevelTrailPips, levelSlot + kept);
+   for(int i = 0; i < kept; i++)
+     {
+      g_panelLevelMagics[levelSlot + i] = magic;
+      g_panelLevelPrices[levelSlot + i] = levels[i];
+      g_panelLevelTrailPips[levelSlot + i] = levelTrailPips[i];
+     }
 
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
@@ -737,8 +796,8 @@ void PanelPlaceZone(string direction)
    PanelSetZoneValueLabel();
 
    PanelSetStatus(StringFormat(
-      "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f pips (blokada +%.0f) (magic=%d)",
-      kept, direction, gridLow, gridHigh, slPrice, trailPips, trailLockPips, (int)magic));
+      "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f-%.0f pips (blokada +%.0f) (magic=%d)",
+      kept, direction, gridLow, gridHigh, slPrice, minLevelTrailPips, trailPips, trailLockPips, (int)magic));
   }
 
 //+------------------------------------------------------------------+
@@ -1044,8 +1103,9 @@ bool PanelHasOpenTradesForMagic(long magic)
 
 //+------------------------------------------------------------------+
 //| Removes a zone's drawing (rectangle/SL line/label) and stops      |
-//| tracking its trailing_pips once nothing is left open for it -     |
-//| same idea as the Python bot deactivating a finished campaign.     |
+//| tracking its trailing_pips (and per-level Trailing (pips) entries |
+//| - see PanelTrailPipsForPosition) once nothing is left open for it |
+//| - same idea as the Python bot deactivating a finished campaign.   |
 //+------------------------------------------------------------------+
 void PanelCleanupFinishedZones()
   {
@@ -1066,8 +1126,57 @@ void PanelCleanupFinishedZones()
       ArrayResize(g_panelMagics, last);
       ArrayResize(g_panelTrailingPips, last);
       ArrayResize(g_panelTrailingLockPips, last);
+
+      // Forward compaction (not swap-with-last) - this magic is about to
+      // drop out of g_panelMagics entirely, so any entry a swap-remove
+      // missed here would never get a later pass to catch it and would
+      // leak in g_panelLevelMagics forever.
+      int keptLevels = 0;
+      int totalLevels = ArraySize(g_panelLevelMagics);
+      for(int i = 0; i < totalLevels; i++)
+        {
+         if(g_panelLevelMagics[i] == magic)
+            continue;
+         g_panelLevelMagics[keptLevels] = g_panelLevelMagics[i];
+         g_panelLevelPrices[keptLevels] = g_panelLevelPrices[i];
+         g_panelLevelTrailPips[keptLevels] = g_panelLevelTrailPips[i];
+         keptLevels++;
+        }
+      ArrayResize(g_panelLevelMagics, keptLevels);
+      ArrayResize(g_panelLevelPrices, keptLevels);
+      ArrayResize(g_panelLevelTrailPips, keptLevels);
      }
    ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Each grid level got its own Trailing (pips) at placement time     |
+//| (PanelPlaceZone, PanelTrailingSpeedupStepPips) - positions don't   |
+//| carry that value themselves, so it's looked up here by matching   |
+//| the position's own entry price against g_panelLevelPrices for the |
+//| same magic, taking the CLOSEST match (handles a MARKET-fallback   |
+//| fill landing a few points off its requested level - grid spacing  |
+//| is always far larger than realistic slippage, so nearest-match    |
+//| can't confuse one level for another). Falls back to the magic's   |
+//| plain trailPips (no speedup) if nothing is found, e.g. leftover   |
+//| positions from before this feature existed.                       |
+//+------------------------------------------------------------------+
+double PanelTrailPipsForPosition(long magic, double entry, double fallback)
+  {
+   double best = fallback;
+   double bestDist = -1;
+   for(int i = 0; i < ArraySize(g_panelLevelMagics); i++)
+     {
+      if(g_panelLevelMagics[i] != magic)
+         continue;
+      double dist = MathAbs(g_panelLevelPrices[i] - entry);
+      if(bestDist < 0 || dist < bestDist)
+        {
+         bestDist = dist;
+         best = g_panelLevelTrailPips[i];
+        }
+     }
+   return best;
   }
 
 //+------------------------------------------------------------------+
@@ -1078,7 +1187,11 @@ void PanelCleanupFinishedZones()
 //| trailPips of profit SL jumps another trailPips, keeping the same  |
 //| trailLockPips buffer on top each time. Tightening only. Same      |
 //| algorithm as the Python bot's EXIT_MODE=trailing_stop             |
-//| (mt5_executor.check_trailing_stops). Run every OnTimer tick.      |
+//| (mt5_executor.check_trailing_stops). trailPips itself is looked   |
+//| up PER POSITION (PanelTrailPipsForPosition) rather than shared     |
+//| across the whole magic, so PanelTrailingSpeedupStepPips can make   |
+//| the grid levels closer to SL (bigger lots) activate sooner. Run    |
+//| every OnTimer tick.                                                |
 //+------------------------------------------------------------------+
 void PanelUpdateTrailingStops()
   {
@@ -1108,6 +1221,7 @@ void PanelUpdateTrailingStops()
 
       string symbol = PositionGetString(POSITION_SYMBOL);
       double entry = PositionGetDouble(POSITION_PRICE_OPEN);
+      trailPips = PanelTrailPipsForPosition(magic, entry, trailPips);
       double sl = PositionGetDouble(POSITION_SL);
       double tp = PositionGetDouble(POSITION_TP);
       bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);

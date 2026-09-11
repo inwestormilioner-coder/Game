@@ -161,6 +161,19 @@ się czyści (żółty podgląd znika, zastępuje go docelowy
 niebieski/pomarańczowy rysunek strefy) - kolejne zlecenie wymaga ponownego
 "ZAZNACZ STREFE".
 
+**Trailing przyspiesza im więcej zleceń z siatki (im bliżej SL, tym
+większy lot)**: "Trailing (pips)" na panelu to wartość dla poziomu
+NAJDALSZEGO od SL (najmniejszy lot) - każdy kolejny poziom bliżej SL
+(większy lot, bo lot rośnie w stronę SL) dostaje o
+`PanelTrailingSpeedupStepPips` mniej pipsów (domyślnie 2), aż do
+`PanelTrailingSpeedupFloorPips` (domyślnie 14) - czyli największe pozycje w
+siatce zabezpieczają się najszybciej. Np. przy Trailing=36: pierwszy
+poziom aktywuje się przy 36 pipsach, kolejny przy 34, kolejny 32, 30, 28,
+26, 24, 22, 20, 18... aż do 14 (i tyle zostaje dla wszystkich dalszych
+poziomów bliżej SL). To dwa Inputs EA (nie stepper na panelu - rzadko się
+zmienia): ustaw `PanelTrailingSpeedupStepPips=0`, żeby wyłączyć (wszystkie
+poziomy trzymają się jednego "Trailing (pips)", jak wcześniej).
+
 **"BUY MARKET"** / **"SELL MARKET"** otwierają pozycję od razu po cenie
 rynkowej, bez klikania "Zaznacz strefe" - strefa jest liczona automatycznie:
 szeroka `PanelMarketZoneWidthDollars` (domyślnie $6), zaczepiona o cenę
