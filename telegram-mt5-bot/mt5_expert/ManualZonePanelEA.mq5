@@ -91,6 +91,8 @@ double g_slPips = 0;
 double g_trailPips = 0;
 double g_stepDollars = 0;
 
+int g_panelLeft = 0, g_panelTop = 0, g_panelRight = 0, g_panelBottom = 0;
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
@@ -256,6 +258,15 @@ void PanelCreate(int x, int y)
    int labelW = 145, valW = 50, smallBtnW = 32, smallBtnH = 28, rowH = 40;
    int margin = 10;
 
+   // Remember the panel's screen rectangle so PanelHandleChartClick can
+   // ignore clicks that land on it - clicking a button also fires a plain
+   // CHARTEVENT_CLICK at the same pixel coordinates, which would otherwise
+   // get misread as a zone-picking click on the button's own position.
+   g_panelLeft = x - margin;
+   g_panelTop = y - margin;
+   g_panelRight = g_panelLeft + PANEL_WIDTH;
+   g_panelBottom = g_panelTop + PANEL_HEIGHT;
+
    ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - margin);
@@ -375,6 +386,11 @@ void PanelStartZonePick()
 void PanelHandleChartClick(int px, int py)
   {
    if(g_awaitingClick == 0)
+      return;
+
+   // Ignore clicks landing on the panel itself (buttons/labels/background)
+   // - only a click on the actual chart counts as a zone-boundary pick.
+   if(px >= g_panelLeft && px <= g_panelRight && py >= g_panelTop && py <= g_panelBottom)
       return;
 
    int sub;
