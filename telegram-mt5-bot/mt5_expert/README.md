@@ -105,6 +105,43 @@ przypadkowy inny symbol), EA musi być podpięty do wykresu tego samego
 symbolu co handluje (u nas: XAUUSD) - dokładnie tak, jak jest to opisane w
 kroku 5 powyżej.
 
+## Panel ręcznego wystawiania zleceń - `ManualZonePanelEA.mq5`
+
+Osobny, samodzielny EA (nie ma nic wspólnego z `TelegramBridgeEA.mq5` -
+inny plik, inny magic range, żadnych wspólnych folderów/plików) - wrzucasz
+go na **dowolny inny wykres** (może być na tym samym terminalu co bridge
+EA, może być na zupełnie innym), niezależnie od Pythona/Telegrama.
+
+Instalacja - te same kroki co dla `TelegramBridgeEA.mq5` (patrz sekcja
+**Install** wyżej), tylko z plikiem `ManualZonePanelEA.mq5`: skopiuj do
+`MQL5\Experts\`, otwórz w MetaEditor, **F7** (kompilacja), przeciągnij na
+wykres, zaznacz **"Allow live trading"**, upewnij się że **Algo Trading**
+jest włączony globalnie.
+
+Panel pokazuje cztery pola - **Strefa** (`niska-wysoka`, np. `4420-4425`),
+**SL (pips)**, **Trailing (pips)**, **Krok siatki ($)** - i przyciski
+**BUY**/**SELL**. Po kliknięciu EA liczy siatkę wejść co "Krok siatki" w
+podanej strefie, jeden wspólny SL (tyle pipsów od gorszego brzegu strefy),
+lot ze skalowaniem mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/
+`LOT_SCALING_MODE`/`LOT_MULTIPLIER` (Inputs: `PanelLotBase`/
+`PanelLotTierOrders`/`PanelLotScalingMode`/`PanelLotMultiplier`), i
+wystawia zlecenia (z fallbackiem na MARKET dla entry zbyt blisko ceny,
+tak jak bridge EA). Zlecenia z panelu nie dostają TP - wychodzą wyłącznie
+przez ten sam **stepped trailing stop** co `EXIT_MODE=trailing_stop` w
+Pythonie (BE po "Trailing (pips)" zysku, potem kolejny skok co tyle samo,
+SL nigdy nie wraca w dół), z wartością wpisaną przy danym kliknięciu.
+
+`PanelMagicBase` (domyślnie 500000+) jest celowo poza zakresem
+`MAGIC_BASE` (990000+) używanym przez Pythona - zlecenia z panelu nigdy
+się nie pomieszają z kampaniami sterowanymi sygnałami z kanału, nawet
+jeśli oba EA działają na tym samym koncie. `PanelPipSize` musi się
+zgadzać z `PIP_SIZE` w `.env`/Twoim brokerem.
+
+Ograniczenie: który trailing należy do której pozycji EA pamięta tylko w
+pamięci (nie w pliku) - restart EA/terminala zeruje to dla już otwartych
+pozycji z panelu (nowe kliknięcia po restarcie działają normalnie od
+razu).
+
 ## Uninstalling / going back to direct API calls
 
 Not supported as a toggle right now - the bridge is the only way
