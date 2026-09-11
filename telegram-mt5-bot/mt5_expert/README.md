@@ -129,17 +129,27 @@ konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
    etykieta z cenami) i pole "Strefa" uzupełnione - widzisz dokładnie co
    zamierzasz otworzyć, zanim jeszcze wybierzesz kierunek.
 3. **SL (pips)**, **Trailing (pips)**, **Blokada zysku (pips)**, **Krok
-   siatki ($)** ustawiasz przyciskami `-`/`+` obok każdej wartości
-   (SL/Trailing: co 5 pipsów, Blokada zysku: co 1 pips, Krok siatki: co
-   $0.10).
+   siatki ($)**, **Rozszerz gora ($)**, **Rozszerz dol ($)** ustawiasz
+   przyciskami `-`/`+` obok każdej wartości (SL/Trailing: co 5 pipsów,
+   Blokada zysku: co 1 pips, Krok siatki/Rozszerz gora/dol: co $0.50).
 4. Klikasz **BUY** albo **SELL**.
 
 EA liczy siatkę wejść co "Krok siatki" w zaznaczonej strefie, jeden
-wspólny SL (tyle pipsów od gorszego brzegu strefy), lot ze skalowaniem
-mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/`LOT_SCALING_MODE`/
-`LOT_MULTIPLIER` (Inputs: `PanelLotBase`/`PanelLotTierOrders`/
-`PanelLotScalingMode`/`PanelLotMultiplier`), i wystawia zlecenia (z
-fallbackiem na MARKET dla entry zbyt blisko ceny, tak jak bridge EA).
+wspólny SL (tyle pipsów od gorszego brzegu ORYGINALNEJ, nierozszerzonej
+strefy), lot ze skalowaniem mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/
+`LOT_SCALING_MODE`/`LOT_MULTIPLIER` (Inputs: `PanelLotBase`/
+`PanelLotTierOrders`/`PanelLotScalingMode`/`PanelLotMultiplier`), i
+wystawia zlecenia (z fallbackiem na MARKET dla entry zbyt blisko ceny,
+tak jak bridge EA).
+
+**"Rozszerz gora ($)"** / **"Rozszerz dol ($)"** dodają dodatkowe poziomy
+siatki ponad górną/pod dolną granicą zaznaczonej (lub rynkowej) strefy -
+domyślnie 0, czyli sama strefa bez rozszerzenia. SL zostaje bez zmian,
+liczony wyłącznie od oryginalnej strefy (dokładnie jak
+`ZONE_EXTEND_FRONT`/`ZONE_EXTEND_BACK` w Pythonie) - rozszerzenie zbyt duże,
+żeby sięgnąć albo minąć SL, po prostu odrzuca te poziomy. Narysowany
+prostokąt strefy po wystawieniu zleceń pokazuje już cały faktyczny zasięg
+siatki (z rozszerzeniem), nie tylko pierwotnie zaznaczoną strefę.
 Zlecenia z panelu nie dostają TP - wychodzą wyłącznie przez ten sam
 **trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie: co "Trailing
 (pips)" zysku SL przeskakuje o kolejne "Trailing (pips)", ale zamiast
@@ -161,8 +171,8 @@ zwykle od gorszej granicy strefy (czyli SL wypada `PanelMarketZoneWidthDollars`
 + "SL (pips)" od ceny wejścia - domyślnie $6 + $6 = $12), siatka poziomów
 co "Krok siatki" poniżej/powyżej wejścia zostaje wystawiona jako zlecenia
 oczekujące, a sam trailing/blokada zysku działają identycznie jak dla
-zwykłej strefy. SL/Trailing/Blokada/Krok siatki brane są z aktualnych
-wartości w panelu - nic więcej nie trzeba zmieniać.
+zwykłej strefy. SL/Trailing/Blokada/Krok siatki/Rozszerz gora/dol brane są
+z aktualnych wartości w panelu - nic więcej nie trzeba zmieniać.
 
 **"ZAMKNIJ ZLECENIA OCZEKUJACE"** anuluje od razu wszystkie jeszcze
 niewypełnione zlecenia oczekujące wystawione przez ten EA (magic

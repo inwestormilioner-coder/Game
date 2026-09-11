@@ -21,15 +21,19 @@
 //|     click BUY/SELL) so you can see exactly what you're about to  |
 //|     trade - PanelDrawPickPreview/PanelClearPickPreview.           |
 //|   - SL (pips) / Trailing (pips) / Blokada zysku (pips) / Krok     |
-//|     siatki ($) are each a value with "-"/"+" buttons next to it.  |
+//|     siatki ($) / Rozszerz gora ($) / Rozszerz dol ($) are each a  |
+//|     value with "-"/"+" buttons next to it.                        |
 //|   - BUY/SELL builds the same kind of order grid the Python bot's |
 //|     order_planner.py would (price levels every "Krok siatki"     |
-//|     across the zone, ONE shared SL "SL (pips)" from the worse    |
-//|     edge, lot size tiering mirroring LOT_SIZE/LOT_TIER_ORDERS/    |
-//|     LOT_SCALING_MODE/LOT_MULTIPLIER via the Panel* inputs below) |
-//|     and places it with native OrderSend() calls - same MARKET-   |
-//|     fallback for an entry too close to the current price as the  |
-//|     bridge EA uses.                                               |
+//|     across the zone, extended past the zone's own top/bottom edge |
+//|     by "Rozszerz gora ($)"/"Rozszerz dol ($)" - mirrors            |
+//|     zone_extend_front/zone_extend_back, SL unaffected by the      |
+//|     extension either way - ONE shared SL "SL (pips)" from the     |
+//|     worse edge of the ORIGINAL (unextended) zone, lot size         |
+//|     tiering mirroring LOT_SIZE/LOT_TIER_ORDERS/LOT_SCALING_MODE/   |
+//|     LOT_MULTIPLIER via the Panel* inputs below) and places it     |
+//|     with native OrderSend() calls - same MARKET-fallback for an   |
+//|     entry too close to the current price as the bridge EA uses.  |
 //|   - "Zamknij zlecenia oczekujace" cancels every still-pending     |
 //|     order this EA has placed (magic >= PanelMagicBase) - open      |
 //|     positions are left alone, only unfilled pending orders are    |
@@ -84,14 +88,16 @@
 #property strict
 
 #define PANEL_WIDTH  380
-#define PANEL_HEIGHT 440
+#define PANEL_HEIGHT 520
 #define PANEL_PREFIX "TgManualPanel_"
 
 input double PanelDefaultSlPips           = 60;    // starting value for the SL (pips) stepper
 input double PanelDefaultTrailingPips     = 36;    // starting value for the Trailing (pips) stepper
 input double PanelDefaultTrailingLockPips = 12;    // starting value for the Blokada zysku (pips) stepper - extra profit always kept locked in at each trailing jump instead of exact breakeven (0 = old plain breakeven-ladder behavior)
 input double PanelDefaultStepDollars      = 0.5;   // starting value for the Krok siatki ($) stepper
-input double PanelMarketZoneWidthDollars  = 6.0;   // BUY MARKET/SELL MARKET: width ($) of the auto-computed zone below/above the market fill - SL(pips)/Trailing(pips)/Blokada(pips)/Krok siatki($) above still apply exactly as configured, so the SL ends up PanelMarketZoneWidthDollars + SL(pips) away from the market entry
+input double PanelDefaultExtendUpDollars   = 0.0;  // starting value for the Rozszerz gora ($) stepper - extra grid levels ABOVE the picked/market zone's top edge, SL stays anchored to the zone (unaffected)
+input double PanelDefaultExtendDownDollars = 0.0;  // starting value for the Rozszerz dol ($) stepper - extra grid levels BELOW the picked/market zone's bottom edge, SL stays anchored to the zone (unaffected)
+input double PanelMarketZoneWidthDollars  = 6.0;   // BUY MARKET/SELL MARKET: width ($) of the auto-computed zone below/above the market fill - SL(pips)/Trailing(pips)/Blokada(pips)/Krok siatki($)/Rozszerz above still apply exactly as configured, so the SL ends up PanelMarketZoneWidthDollars + SL(pips) away from the market entry
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
 input int    PanelLotTierOrders       = 3;     // mirrors LOT_TIER_ORDERS
@@ -125,6 +131,8 @@ double g_slPips = 0;
 double g_trailPips = 0;
 double g_trailLockPips = 0;
 double g_stepDollars = 0;
+double g_extendUpDollars = 0;
+double g_extendDownDollars = 0;
 
 int g_panelLeft = 0, g_panelTop = 0, g_panelRight = 0, g_panelBottom = 0;
 
@@ -138,6 +146,8 @@ int OnInit()
    g_trailPips = PanelDefaultTrailingPips;
    g_trailLockPips = PanelDefaultTrailingLockPips;
    g_stepDollars = PanelDefaultStepDollars;
+   g_extendUpDollars = PanelDefaultExtendUpDollars;
+   g_extendDownDollars = PanelDefaultExtendDownDollars;
 
    int x = PanelX;
    if(PanelOnRight)
@@ -349,6 +359,18 @@ void PanelCreate(int x, int y)
    PanelCreateLabel("StepValueLbl", x + 150, rowY, DoubleToString(g_stepDollars, 2));
    PanelCreateButton("StepMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
    PanelCreateButton("StepPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   rowY += rowH;
+
+   PanelCreateLabel("LblExtendUp", x, rowY, "Rozszerz gora ($):");
+   PanelCreateLabel("ExtendUpValueLbl", x + 150, rowY, DoubleToString(g_extendUpDollars, 2));
+   PanelCreateButton("ExtendUpMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("ExtendUpPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   rowY += rowH;
+
+   PanelCreateLabel("LblExtendDown", x, rowY, "Rozszerz dol ($):");
+   PanelCreateLabel("ExtendDownValueLbl", x + 150, rowY, DoubleToString(g_extendDownDollars, 2));
+   PanelCreateButton("ExtendDownMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("ExtendDownPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH + 6;
 
    int tradeBtnW = (PANEL_WIDTH - 2 * margin - 10) / 2;
@@ -537,6 +559,31 @@ void PanelAdjustStep(double delta)
   }
 
 //+------------------------------------------------------------------+
+//| Extra grid levels ($) ABOVE the picked/market zone's top edge -   |
+//| SL stays anchored to the zone itself (unaffected), only the entry |
+//| grid widens. 0 = no extension (exactly the picked/market zone).   |
+//+------------------------------------------------------------------+
+void PanelAdjustExtendUp(double delta)
+  {
+   g_extendUpDollars = MathMax(0.0, NormalizeDouble(g_extendUpDollars + delta, 2));
+   ObjectSetString(0, PANEL_PREFIX + "ExtendUpValueLbl", OBJPROP_TEXT, DoubleToString(g_extendUpDollars, 2));
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Extra grid levels ($) BELOW the picked/market zone's bottom edge  |
+//| - SL stays anchored to the zone itself (unaffected), only the     |
+//| entry grid widens. 0 = no extension (exactly the picked/market    |
+//| zone).                                                              |
+//+------------------------------------------------------------------+
+void PanelAdjustExtendDown(double delta)
+  {
+   g_extendDownDollars = MathMax(0.0, NormalizeDouble(g_extendDownDollars + delta, 2));
+   ObjectSetString(0, PANEL_PREFIX + "ExtendDownValueLbl", OBJPROP_TEXT, DoubleToString(g_extendDownDollars, 2));
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
 //| Prices from low to high (inclusive) spaced `step` apart - mirrors |
 //| order_planner.generate_price_levels(). Computed from an index     |
 //| rather than repeated addition to avoid float drift over many      |
@@ -598,6 +645,15 @@ void PanelLotTiers(double &levels[], int count, double slPrice, int tierOrders, 
 //| (EXIT_MODE=trailing_stop shape - no TP), and places it via         |
 //| PlaceOrders() - MARKET-fallback for an entry too close to price    |
 //| applies here too.                                                  |
+//|                                                                     |
+//| "Rozszerz gora/dol ($)" widen the ENTRY GRID past the picked/     |
+//| market zone's top/bottom edge - literal chart up/down, same for   |
+//| BUY and SELL - without moving SL, which stays anchored to the      |
+//| zone's own zoneLow/zoneHigh (computed below, before extension is   |
+//| applied) - mirrors order_planner.plan_orders's                   |
+//| zone_extend_front/zone_extend_back (SL unaffected by extension).  |
+//| An extension large enough to reach/pass SL just drops those       |
+//| entries via the usual valid-entry filter below.                   |
 //+------------------------------------------------------------------+
 void PanelPlaceZone(string direction)
   {
@@ -613,13 +669,18 @@ void PanelPlaceZone(string direction)
    double trailPips = g_trailPips;
    double trailLockPips = g_trailLockPips;
    double step = g_stepDollars;
+   double extendUp = g_extendUpDollars;
+   double extendDown = g_extendDownDollars;
 
    double slPrice = (direction == "BUY")
       ? NormalizeDouble(zoneLow - slPips * PanelPipSize, 2)
       : NormalizeDouble(zoneHigh + slPips * PanelPipSize, 2);
 
+   double gridLow = NormalizeDouble(zoneLow - extendDown, 2);
+   double gridHigh = NormalizeDouble(zoneHigh + extendUp, 2);
+
    double levels[];
-   int levelCount = PanelGeneratePriceLevels(zoneLow, zoneHigh, step, levels);
+   int levelCount = PanelGeneratePriceLevels(gridLow, gridHigh, step, levels);
 
    int kept = 0;
    for(int i = 0; i < levelCount; i++)
@@ -664,7 +725,10 @@ void PanelPlaceZone(string direction)
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
    PanelClearPickPreview();
-   PanelDrawZone(magic, direction, zoneLow, zoneHigh, slPrice);
+   // Draws the actual grid extent (including any Rozszerz gora/dol) rather
+   // than just the raw picked/market zone, so the rectangle always shows
+   // exactly where the orders sit.
+   PanelDrawZone(magic, direction, gridLow, gridHigh, slPrice);
 
    // Clear the picked zone so the next click on BUY/SELL can't accidentally
    // reuse a stale zone - a fresh "Zaznacz strefe" is required each time.
@@ -673,8 +737,8 @@ void PanelPlaceZone(string direction)
    PanelSetZoneValueLabel();
 
    PanelSetStatus(StringFormat(
-      "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (blokada +%.0f) (magic=%d)",
-      kept, direction, slPrice, trailPips, trailLockPips, (int)magic));
+      "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f pips (blokada +%.0f) (magic=%d)",
+      kept, direction, gridLow, gridHigh, slPrice, trailPips, trailLockPips, (int)magic));
   }
 
 //+------------------------------------------------------------------+
@@ -1142,6 +1206,26 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelAdjustStep(0.1);
+     }
+   else if(sparam == PANEL_PREFIX + "ExtendUpMinusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustExtendUp(-0.5);
+     }
+   else if(sparam == PANEL_PREFIX + "ExtendUpPlusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustExtendUp(0.5);
+     }
+   else if(sparam == PANEL_PREFIX + "ExtendDownMinusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustExtendDown(-0.5);
+     }
+   else if(sparam == PANEL_PREFIX + "ExtendDownPlusBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelAdjustExtendDown(0.5);
      }
    else if(sparam == PANEL_PREFIX + "BuyBtn")
      {
