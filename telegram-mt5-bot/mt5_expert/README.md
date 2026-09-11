@@ -105,39 +105,6 @@ przypadkowy inny symbol), EA musi być podpięty do wykresu tego samego
 symbolu co handluje (u nas: XAUUSD) - dokładnie tak, jak jest to opisane w
 kroku 5 powyżej.
 
-## Panel ręcznego wystawiania zleceń (bez Pythona)
-
-Ten EA ma też swój własny panel na wykresie (włączony domyślnie, input
-`ShowPanel=true`) - całkowicie niezależny od Pythona/Telegrama. Cztery pola:
-**Strefa** (format `niska-wysoka`, np. `4420-4425`), **SL (pips)**,
-**Trailing (pips)** i **Krok siatki ($)**, oraz dwa przyciski **BUY**/**SELL**.
-
-Po kliknięciu EA sam liczy siatkę wejść co `Krok siatki` w podanej strefie,
-jeden wspólny SL (tyle pipsów od gorszego brzegu strefy, tak jak w
-Pythonie), lot z tym samym skalowaniem co bot (`PanelLotBase`/
-`PanelLotTierOrders`/`PanelLotScalingMode`/`PanelLotMultiplier` w Inputs -
-domyślnie te same wartości co `LOT_SIZE`/`LOT_TIER_ORDERS`/
-`LOT_SCALING_MODE`/`LOT_MULTIPLIER` w `.env`, zmień jeśli chcesz inne),
-i wystawia zlecenia tą samą drogą co komendy z Pythona (`HandleOpenOrders`
-- łącznie z fallbackiem na MARKET dla entry zbyt blisko ceny). Zlecenia z
-panelu nie dostają żadnego TP - wychodzą wyłącznie przez ten sam **stepped
-trailing stop** co `EXIT_MODE=trailing_stop` (aktywacja na BE po
-`Trailing (pips)` zysku, potem kolejny skok co tyle samo, tylko w dopięciu
-- SL nigdy nie wraca w dół), z wartością `Trailing (pips)` wpisaną przy
-tym konkretnym kliknięciu.
-
-Zlecenia z panelu dostają magic z zakresu `PanelMagicBase` (domyślnie
-500000+) - **celowo osobny od `MAGIC_BASE`** (990000+) używanego przez
-Pythona, żeby się nigdy nie pomieszały z kampaniami sterowanymi sygnałami
-z kanału. `PanelPipSize` musi się zgadzać z `PIP_SIZE` w `.env`/Twoim
-brokerem, tak jak wszędzie indziej.
-
-Ograniczenie: które pozycje mają jaki trailing EA pamięta tylko w pamięci
-(nie w pliku) - restart EA/terminala zeruje tę pamięć dla już otwartych
-pozycji z panelu (nowe kliknięcia działają normalnie od razu). Zostaw
-`ShowPanel=false` w Inputs, jeśli nie chcesz panelu na danym wykresie
-(np. na koncie, gdzie EA obsługuje tylko sygnały z Pythona).
-
 ## Uninstalling / going back to direct API calls
 
 Not supported as a toggle right now - the bridge is the only way
