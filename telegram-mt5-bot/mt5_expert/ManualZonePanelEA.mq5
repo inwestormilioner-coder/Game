@@ -190,6 +190,7 @@ void PanelCreateLabel(string name, int x, int y, string text)
    ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 9);
    ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
   }
 
 //+------------------------------------------------------------------+
@@ -201,16 +202,19 @@ void PanelCreateEdit(string name, int x, int y, int w, string text)
    ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, full, OBJPROP_YDISTANCE, y);
    ObjectSetInteger(0, full, OBJPROP_XSIZE, w);
-   ObjectSetInteger(0, full, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(0, full, OBJPROP_YSIZE, 22);
    ObjectSetString(0, full, OBJPROP_TEXT, text);
    ObjectSetInteger(0, full, OBJPROP_ALIGN, ALIGN_CENTER);
+   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 9);
    ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clrWhite);
-   // Must stay selectable and NOT hidden - OBJPROP_HIDDEN blocks normal
-   // (non-Ctrl) mouse selection, which is what let you click into the box
-   // and type in the first place.
+   ObjectSetInteger(0, full, OBJPROP_BORDER_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, true);
    ObjectSetInteger(0, full, OBJPROP_READONLY, false);
+   // High z-order so this sits above the background panel for click/hit
+   // testing - without it, a foreground background rectangle behind it
+   // (or drawn in the wrong order) can swallow clicks meant for the box.
+   ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
   }
 
 //+------------------------------------------------------------------+
@@ -224,27 +228,35 @@ void PanelCreateButton(string name, int x, int y, int w, int h, string text, col
    ObjectSetInteger(0, full, OBJPROP_XSIZE, w);
    ObjectSetInteger(0, full, OBJPROP_YSIZE, h);
    ObjectSetString(0, full, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 10);
    ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clr);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
   }
 
 //+------------------------------------------------------------------+
 void PanelCreate()
   {
-   int x = PanelX, y = PanelY, rowH = 24, labelW = 130, editW = 90;
-   int panelW = labelW + editW + 20;
+   int x = PanelX, y = PanelY, rowH = 28, labelW = 175, editW = 100;
+   int panelW = labelW + editW + 25;
+   int panelH = rowH * 4 + 90;
 
    ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - 5);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YDISTANCE, y - 5);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - 8);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YDISTANCE, y - 8);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XSIZE, panelW);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, rowH * 4 + 70);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, panelH);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BGCOLOR, clrWhiteSmoke);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_COLOR, clrSilver);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BORDER_TYPE, BORDER_FLAT);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BACK, false);
+   // BACK=true is essential: it draws (and hit-tests) this rectangle
+   // BEHIND every other object, so it never swallows clicks meant for the
+   // edit boxes/buttons drawn on top of it. BACK=false (the earlier bug
+   // here) put it in the foreground, right where mouse clicks land first.
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BACK, true);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_ZORDER, 0);
 
    PanelCreateLabel("LblZone", x, y, "Strefa (niska-wysoka):");
    PanelCreateEdit("ZoneEdit", x + labelW + 5, y, editW, "");
@@ -260,12 +272,12 @@ void PanelCreate()
 
    PanelCreateLabel("LblStep", x, y, "Krok siatki ($):");
    PanelCreateEdit("StepEdit", x + labelW + 5, y, editW, DoubleToString(PanelDefaultStepDollars, 2));
-   y += rowH + 6;
+   y += rowH + 8;
 
-   int btnW = (panelW - 15) / 2;
-   PanelCreateButton("BuyBtn", x, y, btnW, 26, "BUY", clrLimeGreen);
-   PanelCreateButton("SellBtn", x + btnW + 5, y, btnW, 26, "SELL", clrTomato);
-   y += 32;
+   int btnW = (labelW + editW - 5) / 2;
+   PanelCreateButton("BuyBtn", x, y, btnW, 28, "BUY", clrLimeGreen);
+   PanelCreateButton("SellBtn", x + btnW + 5, y, btnW, 28, "SELL", clrTomato);
+   y += 36;
 
    PanelCreateLabel("Status", x, y, "Gotowy.");
    ChartRedraw(0);
@@ -295,6 +307,7 @@ void PanelCreateZoneLines()
    ObjectSetInteger(0, lowName, OBJPROP_STYLE, STYLE_DASHDOT);
    ObjectSetInteger(0, lowName, OBJPROP_WIDTH, 2);
    ObjectSetInteger(0, lowName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, lowName, OBJPROP_ZORDER, 5);
    ObjectSetString(0, lowName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
 
    string highName = PANEL_PREFIX + "ZoneHighLine";
@@ -303,6 +316,7 @@ void PanelCreateZoneLines()
    ObjectSetInteger(0, highName, OBJPROP_STYLE, STYLE_DASHDOT);
    ObjectSetInteger(0, highName, OBJPROP_WIDTH, 2);
    ObjectSetInteger(0, highName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, highName, OBJPROP_ZORDER, 5);
    ObjectSetString(0, highName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
 
    PanelSyncZoneFieldFromLines();
