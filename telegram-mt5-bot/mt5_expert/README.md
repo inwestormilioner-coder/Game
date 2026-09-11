@@ -122,9 +122,12 @@ Panel jest **w pełni obsługiwany klikaniem** - żadnego wpisywania tekstu,
 żadnego przeciągania obiektów (oba okazały się niepewne w niektórych
 konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
 
-1. Klikasz **"Zaznacz strefe"**.
+1. Klikasz **"ZAZNACZ STREFE"**.
 2. Klikasz na wykresie **dwa punkty** (dowolna kolejność) - to są granice
-   strefy. Pole "Strefa" pokazuje wynik od razu po drugim kliknięciu.
+   strefy. Po pierwszym kliknięciu widzisz od razu szarą kropkowaną linię
+   na tej cenie; po drugim - całą strefę wyrysowaną na złoto (prostokąt +
+   etykieta z cenami) i pole "Strefa" uzupełnione - widzisz dokładnie co
+   zamierzasz otworzyć, zanim jeszcze wybierzesz kierunek.
 3. **SL (pips)**, **Trailing (pips)**, **Krok siatki ($)** ustawiasz
    przyciskami `-`/`+` obok każdej wartości (SL/Trailing: co 5 pipsów,
    Krok: co $0.10).
@@ -140,8 +143,14 @@ Zlecenia z panelu nie dostają TP - wychodzą wyłącznie przez ten sam
 **stepped trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie (BE po
 "Trailing (pips)" zysku, potem kolejny skok co tyle samo, SL nigdy nie
 wraca w dół), z wartością ustawioną w momencie kliknięcia BUY/SELL. Po
-wystawieniu zlecenia zaznaczona strefa się czyści - kolejne zlecenie
-wymaga ponownego "Zaznacz strefe".
+wystawieniu zlecenia zaznaczona strefa się czyści (żółty podgląd znika,
+zastępuje go docelowy niebieski/pomarańczowy rysunek strefy) - kolejne
+zlecenie wymaga ponownego "ZAZNACZ STREFE".
+
+**"ZAMKNIJ ZLECENIA OCZEKUJACE"** anuluje od razu wszystkie jeszcze
+niewypełnione zlecenia oczekujące wystawione przez ten EA (magic
+`>= PanelMagicBase`) - otwartych już pozycji nie rusza, tylko czyści
+"zawieszone" zlecenia z siatki, które jeszcze się nie złapały.
 
 `PanelMagicBase` (domyślnie 500000+) jest celowo poza zakresem
 `MAGIC_BASE` (990000+) używanym przez Pythona - zlecenia z panelu nigdy
@@ -155,10 +164,16 @@ przerywaną czerwoną linię na SL i etykietę z kierunkiem/cenami - dokładnie
 jak w botach "ZONES". Rysunek dla danej strefy znika automatycznie, gdy
 nie ma już dla niej żadnych zleceń oczekujących ani otwartych pozycji.
 
-Jeśli panel na starcie zasłania Ci pasek narzędzi/OHLC na górze wykresu,
-zmień `PanelY` (i/lub `PanelX`) w Inputs EA na większą wartość i
-przeciągnij EA na wykres ponownie (albo zmień Inputs w już podpiętym EA:
-prawy klik na wykres → Właściwości → Wejścia).
+Panel jest teraz większy i domyślnie doku­je się w **prawym górnym rogu**
+wykresu (`PanelOnRight=true`, odległość od prawej krawędzi liczona z
+`PanelRightMargin`, domyślnie 20px - pozycja liczona automatycznie z
+szerokości wykresu, więc działa niezależnie od rozdzielczości). Żeby
+wrócić do starego zachowania (lewy górny róg, ręczne `PanelX`/`PanelY`),
+ustaw `PanelOnRight=false` w Inputs. Jeśli mimo to panel zasłania Ci
+pasek narzędzi/OHLC, dostrój `PanelRightMargin`/`PanelY` (albo
+`PanelX`/`PanelY` gdy `PanelOnRight=false`) i przeciągnij EA na wykres
+ponownie (albo zmień Inputs w już podpiętym EA: prawy klik na wykres →
+Właściwości → Wejścia).
 
 Ograniczenie: który trailing należy do której pozycji EA pamięta tylko w
 pamięci (nie w pliku) - restart EA/terminala zeruje to dla już otwartych

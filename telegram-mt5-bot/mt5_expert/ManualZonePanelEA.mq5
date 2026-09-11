@@ -9,10 +9,17 @@
 //|                                                                  |
 //| Fully click-driven - no typing, no dragging objects (both proved |
 //| unreliable in some MT5 setups/themes, so this avoids them        |
-//| entirely):                                                        |
+//| entirely). Panel sits in the top-right corner by default          |
+//| (PanelOnRight/PanelRightMargin), sized to comfortably fit every   |
+//| control (PANEL_WIDTH/PANEL_HEIGHT below).                         |
+//|                                                                  |
 //|   - Click "Zaznacz strefe", then click two points on the chart - |
 //|     those become the zone's low/high price (order doesn't        |
-//|     matter, sorted automatically).                                |
+//|     matter, sorted automatically). A dotted line marks the first |
+//|     point as soon as you place it; once both are set, the whole  |
+//|     zone is outlined on the chart right away (before you even    |
+//|     click BUY/SELL) so you can see exactly what you're about to  |
+//|     trade - PanelDrawPickPreview/PanelClearPickPreview.           |
 //|   - SL (pips) / Trailing (pips) / Krok siatki ($) are each a      |
 //|     value with "-"/"+" buttons next to it.                        |
 //|   - BUY/SELL builds the same kind of order grid the Python bot's |
@@ -23,6 +30,10 @@
 //|     and places it with native OrderSend() calls - same MARKET-   |
 //|     fallback for an entry too close to the current price as the  |
 //|     bridge EA uses.                                               |
+//|   - "Zamknij zlecenia oczekujace" cancels every still-pending     |
+//|     order this EA has placed (magic >= PanelMagicBase) - open      |
+//|     positions are left alone, only unfilled pending orders are    |
+//|     removed (PanelCloseAllPending).                                |
 //|                                                                  |
 //| No TP is set on these orders. Exits happen only through a        |
 //| STEPPED trailing stop (PanelUpdateTrailingStops(), run every     |
@@ -37,14 +48,19 @@
 //| EA restart loses it for positions already open from before the   |
 //| restart (a fresh panel click always works immediately).          |
 //|                                                                  |
-//| Zone visibility: each click also draws the zone (rectangle), its |
-//| shared SL (dashed horizontal line) and a text label on the chart |
+//| Zone visibility: each placed order also draws the zone            |
+//| (rectangle), its shared SL (dashed horizontal line) and a text   |
+//| label on the chart, named per magic so several zones can coexist |
 //| - removed automatically once nothing is left open for that       |
 //| zone's magic (PanelCleanupFinishedZones, checked every timer     |
 //| tick).                                                            |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
+
+#define PANEL_WIDTH  380
+#define PANEL_HEIGHT 330
+#define PANEL_PREFIX "TgManualPanel_"
 
 input double PanelDefaultSlPips       = 60;    // starting value for the SL (pips) stepper
 input double PanelDefaultTrailingPips = 36;    // starting value for the Trailing (pips) stepper
@@ -57,8 +73,10 @@ input double PanelLotMultiplier       = 1.2;   // mirrors LOT_MULTIPLIER
 input long   PanelMagicBase           = 500000; // panel orders get PanelMagicBase+N, N incrementing per click
 input int    PanelDeviationPoints     = 20;
 input int    PollSeconds              = 1;     // how often the trailing-stop loop runs
-input int    PanelX                   = 10;    // panel position (pixels from the corner) - nudge here if it overlaps the chart's own toolbar/OHLC info
-input int    PanelY                   = 130;
+input bool   PanelOnRight             = true;  // true: panel docks to the top-right corner (PanelRightMargin); false: uses PanelX/PanelY from the top-left
+input int    PanelRightMargin         = 20;    // pixels from the chart's right edge, only used when PanelOnRight=true
+input int    PanelX                   = 10;    // panel position from the LEFT edge - only used when PanelOnRight=false
+input int    PanelY                   = 130;   // panel position from the TOP edge (nudge if it overlaps the chart's own toolbar/OHLC info)
 
 long   g_panelNextMagic = 0;
 long   g_panelMagics[];
@@ -73,8 +91,6 @@ double g_slPips = 0;
 double g_trailPips = 0;
 double g_stepDollars = 0;
 
-#define PANEL_PREFIX "TgManualPanel_"
-
 //+------------------------------------------------------------------+
 int OnInit()
   {
@@ -84,7 +100,16 @@ int OnInit()
    g_slPips = PanelDefaultSlPips;
    g_trailPips = PanelDefaultTrailingPips;
    g_stepDollars = PanelDefaultStepDollars;
-   PanelCreate();
+
+   int x = PanelX;
+   if(PanelOnRight)
+     {
+      long chartWidth = ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+      x = (int)(chartWidth - PANEL_WIDTH - PanelRightMargin);
+      if(x < 5)
+         x = 5;
+     }
+   PanelCreate(x, PanelY);
    PrintFormat("ManualZonePanelEA started on %s", Symbol());
    return(INIT_SUCCEEDED);
   }
@@ -190,7 +215,7 @@ void PlaceOrders(long magic, string symbol, string comment, int deviation,
   }
 
 //+------------------------------------------------------------------+
-void PanelCreateLabel(string name, int x, int y, string text)
+void PanelCreateLabel(string name, int x, int y, string text, int fontSize = 10)
   {
    string full = PANEL_PREFIX + name;
    ObjectCreate(0, full, OBJ_LABEL, 0, 0, 0);
@@ -198,14 +223,14 @@ void PanelCreateLabel(string name, int x, int y, string text)
    ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, full, OBJPROP_YDISTANCE, y);
    ObjectSetString(0, full, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, fontSize);
    ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
   }
 
 //+------------------------------------------------------------------+
-void PanelCreateButton(string name, int x, int y, int w, int h, string text, color clr)
+void PanelCreateButton(string name, int x, int y, int w, int h, string text, color clr, int fontSize = 10)
   {
    string full = PANEL_PREFIX + name;
    ObjectCreate(0, full, OBJ_BUTTON, 0, 0, 0);
@@ -215,26 +240,28 @@ void PanelCreateButton(string name, int x, int y, int w, int h, string text, col
    ObjectSetInteger(0, full, OBJPROP_XSIZE, w);
    ObjectSetInteger(0, full, OBJPROP_YSIZE, h);
    ObjectSetString(0, full, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 10);
+   ObjectSetInteger(0, full, OBJPROP_FONTSIZE, fontSize);
    ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clr);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, full, OBJPROP_ZORDER, 10);
   }
 
 //+------------------------------------------------------------------+
-void PanelCreate()
+//| Lays out every control top-to-bottom, each on its own row so      |
+//| nothing overlaps regardless of label text length. (x,y) is the    |
+//| panel's top-left corner, computed in OnInit from PanelOnRight.    |
+//+------------------------------------------------------------------+
+void PanelCreate(int x, int y)
   {
-   int x = PanelX, y = PanelY;
-   int rowH = 32;
-   int panelW = 330;
-   int panelH = rowH * 4 + 100;
+   int labelW = 145, valW = 50, smallBtnW = 32, smallBtnH = 28, rowH = 40;
+   int margin = 10;
 
    ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - 8);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YDISTANCE, y - 8);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XSIZE, panelW);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, panelH);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - margin);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YDISTANCE, y - margin);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XSIZE, PANEL_WIDTH);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, PANEL_HEIGHT);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BGCOLOR, clrWhiteSmoke);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_COLOR, clrSilver);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BORDER_TYPE, BORDER_FLAT);
@@ -242,35 +269,43 @@ void PanelCreate()
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_ZORDER, 0);
 
-   int rowY = y;
+   PanelCreateLabel("Title", x, y, "STREFA MANUALNA", 11);
+   int rowY = y + 26;
+
    PanelCreateLabel("LblZone", x, rowY, "Strefa:");
-   PanelCreateLabel("ZoneValueLbl", x + 65, rowY, "-- brak, kliknij Zaznacz --");
-   PanelCreateButton("PickZoneBtn", x + 220, rowY - 3, 100, 24, "Zaznacz strefe", clrKhaki);
-
+   PanelCreateLabel("ZoneValueLbl", x + 150, rowY, "-- brak, kliknij Zaznacz --");
    rowY += rowH;
+
+   PanelCreateButton("PickZoneBtn", x, rowY, PANEL_WIDTH - 2 * margin, 32, "ZAZNACZ STREFE (2 kliknieca na wykresie)", clrKhaki);
+   rowY += 38;
+
    PanelCreateLabel("LblSl", x, rowY, "SL (pips):");
-   PanelCreateLabel("SlValueLbl", x + 100, rowY, DoubleToString(g_slPips, 0));
-   PanelCreateButton("SlMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
-   PanelCreateButton("SlPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
-
+   PanelCreateLabel("SlValueLbl", x + 150, rowY, DoubleToString(g_slPips, 0));
+   PanelCreateButton("SlMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("SlPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
+
    PanelCreateLabel("LblTrail", x, rowY, "Trailing (pips):");
-   PanelCreateLabel("TrailValueLbl", x + 100, rowY, DoubleToString(g_trailPips, 0));
-   PanelCreateButton("TrailMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
-   PanelCreateButton("TrailPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
-
+   PanelCreateLabel("TrailValueLbl", x + 150, rowY, DoubleToString(g_trailPips, 0));
+   PanelCreateButton("TrailMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("TrailPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
+
    PanelCreateLabel("LblStep", x, rowY, "Krok siatki ($):");
-   PanelCreateLabel("StepValueLbl", x + 100, rowY, DoubleToString(g_stepDollars, 2));
-   PanelCreateButton("StepMinusBtn", x + 220, rowY - 3, 26, 24, "-", clrLightGray);
-   PanelCreateButton("StepPlusBtn", x + 250, rowY - 3, 26, 24, "+", clrLightGray);
+   PanelCreateLabel("StepValueLbl", x + 150, rowY, DoubleToString(g_stepDollars, 2));
+   PanelCreateButton("StepMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("StepPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   rowY += rowH + 6;
 
-   rowY += rowH + 8;
-   PanelCreateButton("BuyBtn", x, rowY, 150, 28, "BUY", clrLimeGreen);
-   PanelCreateButton("SellBtn", x + 160, rowY, 150, 28, "SELL", clrTomato);
+   int tradeBtnW = (PANEL_WIDTH - 2 * margin - 10) / 2;
+   PanelCreateButton("BuyBtn", x, rowY, tradeBtnW, 36, "BUY", clrLimeGreen, 12);
+   PanelCreateButton("SellBtn", x + tradeBtnW + 10, rowY, tradeBtnW, 36, "SELL", clrTomato, 12);
+   rowY += 46;
 
-   rowY += 36;
-   PanelCreateLabel("Status", x, rowY, "Gotowy - kliknij 'Zaznacz strefe'.");
+   PanelCreateButton("ClosePendingBtn", x, rowY, PANEL_WIDTH - 2 * margin, 30, "ZAMKNIJ ZLECENIA OCZEKUJACE", clrGold);
+   rowY += 38;
+
+   PanelCreateLabel("Status", x, rowY, "Gotowy - kliknij 'Zaznacz strefe'.", 9);
    ChartRedraw(0);
   }
 
@@ -301,11 +336,26 @@ void PanelSetZoneValueLabel()
   }
 
 //+------------------------------------------------------------------+
+//| Removes the live picking-preview objects (first-point marker      |
+//| and/or the zone outline drawn once both points are set) - called  |
+//| before starting a fresh pick and again once an order is actually  |
+//| placed (PanelDrawZone then draws the real, magic-specific one).   |
+//+------------------------------------------------------------------+
+void PanelClearPickPreview()
+  {
+   ObjectDelete(0, PANEL_PREFIX + "PickPoint1");
+   ObjectDelete(0, PANEL_PREFIX + "PreviewZone");
+   ObjectDelete(0, PANEL_PREFIX + "PreviewLabel");
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
 //| Arms two-click zone picking - PanelHandleChartClick below reads   |
 //| the next two plain chart clicks as the zone's two price bounds.   |
 //+------------------------------------------------------------------+
 void PanelStartZonePick()
   {
+   PanelClearPickPreview();
    g_zoneLow = 0;
    g_zoneHigh = 0;
    g_pendingFirstPrice = 0;
@@ -318,6 +368,9 @@ void PanelStartZonePick()
 //| Converts a plain chart click's pixel coordinates to a price and,  |
 //| while zone-picking is armed, records it as the first or second    |
 //| zone boundary. No-op otherwise (ignores ordinary chart clicks).   |
+//| Draws a dotted marker line after the first click, and the full    |
+//| zone outline (rectangle + label) after the second - so the zone   |
+//| is clearly visible on the chart before you even click BUY/SELL.   |
 //+------------------------------------------------------------------+
 void PanelHandleChartClick(int px, int py)
   {
@@ -334,6 +387,13 @@ void PanelHandleChartClick(int px, int py)
      {
       g_pendingFirstPrice = price;
       g_awaitingClick = 2;
+
+      ObjectCreate(0, PANEL_PREFIX + "PickPoint1", OBJ_HLINE, 0, 0, price);
+      ObjectSetInteger(0, PANEL_PREFIX + "PickPoint1", OBJPROP_COLOR, clrGray);
+      ObjectSetInteger(0, PANEL_PREFIX + "PickPoint1", OBJPROP_STYLE, STYLE_DOT);
+      ObjectSetInteger(0, PANEL_PREFIX + "PickPoint1", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, PANEL_PREFIX + "PickPoint1", OBJPROP_BACK, true);
+
       PanelSetStatus(StringFormat("Pierwsza granica: %.2f. Kliknij DRUGA granice strefy.", price));
       return;
      }
@@ -341,8 +401,39 @@ void PanelHandleChartClick(int px, int py)
    g_zoneLow = NormalizeDouble(MathMin(g_pendingFirstPrice, price), 2);
    g_zoneHigh = NormalizeDouble(MathMax(g_pendingFirstPrice, price), 2);
    g_awaitingClick = 0;
+   ObjectDelete(0, PANEL_PREFIX + "PickPoint1");
+   PanelDrawPickPreview();
    PanelSetZoneValueLabel();
    PanelSetStatus(StringFormat("Strefa ustawiona: %.2f - %.2f. Kliknij BUY albo SELL.", g_zoneLow, g_zoneHigh));
+  }
+
+//+------------------------------------------------------------------+
+//| Outlines the currently-picked (not yet placed) zone on the chart  |
+//| - neutral gold color since direction (BUY/SELL) isn't chosen yet. |
+//+------------------------------------------------------------------+
+void PanelDrawPickPreview()
+  {
+   datetime t1 = TimeCurrent();
+   datetime t2 = t1 + PeriodSeconds() * 50;
+
+   string zoneName = PANEL_PREFIX + "PreviewZone";
+   ObjectCreate(0, zoneName, OBJ_RECTANGLE, 0, t1, g_zoneHigh, t2, g_zoneLow);
+   ObjectSetInteger(0, zoneName, OBJPROP_COLOR, clrGoldenrod);
+   ObjectSetInteger(0, zoneName, OBJPROP_FILL, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_BACK, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, zoneName, OBJPROP_HIDDEN, true);
+
+   string labelName = PANEL_PREFIX + "PreviewLabel";
+   ObjectCreate(0, labelName, OBJ_TEXT, 0, t1, g_zoneHigh);
+   ObjectSetString(0, labelName, OBJPROP_TEXT, StringFormat(" strefa %.2f-%.2f (wybierz BUY/SELL)", g_zoneLow, g_zoneHigh));
+   ObjectSetInteger(0, labelName, OBJPROP_COLOR, clrDarkGoldenrod);
+   ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, labelName, OBJPROP_HIDDEN, true);
+
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -493,6 +584,7 @@ void PanelPlaceZone(string direction)
 
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
+   PanelClearPickPreview();
    PanelDrawZone(magic, direction, zoneLow, zoneHigh, slPrice);
 
    // Clear the picked zone so the next click on BUY/SELL can't accidentally
@@ -504,6 +596,53 @@ void PanelPlaceZone(string direction)
    PanelSetStatus(StringFormat(
       "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (magic=%d)",
       kept, direction, slPrice, trailPips, (int)magic));
+  }
+
+//+------------------------------------------------------------------+
+//| Cancels every still-pending order this EA placed (magic >=        |
+//| PanelMagicBase) - open positions are left alone, only unfilled    |
+//| pending orders are removed. Zone drawings/trailing tracking for   |
+//| any magic left with nothing open clean themselves up on the next  |
+//| timer tick (PanelCleanupFinishedZones).                            |
+//+------------------------------------------------------------------+
+void PanelCloseAllPending()
+  {
+   int closedCount = 0;
+   int failedCount = 0;
+
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      long magic = OrderGetInteger(ORDER_MAGIC);
+      if(magic < PanelMagicBase)
+         continue;
+
+      MqlTradeRequest request;
+      MqlTradeResult  result;
+      ZeroMemory(request);
+      ZeroMemory(result);
+      request.action = TRADE_ACTION_REMOVE;
+      request.order = ticket;
+
+      bool ok = OrderSend(request, result);
+      if(ok && result.retcode == TRADE_RETCODE_DONE)
+        {
+         closedCount++;
+        }
+      else
+        {
+         failedCount++;
+         PrintFormat("Panel: nie udalo sie usunac zlecenia oczekujacego %d retcode=%d comment='%s'",
+                     (int)ticket, result.retcode, result.comment);
+        }
+     }
+
+   string msg = StringFormat("Zamknieto %d zlecen oczekujacych.", closedCount);
+   if(failedCount > 0)
+      msg += StringFormat(" %d bledow - zobacz log Eksperci.", failedCount);
+   PanelSetStatus(msg);
   }
 
 //+------------------------------------------------------------------+
@@ -722,6 +861,11 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelPlaceZone("SELL");
+     }
+   else if(sparam == PANEL_PREFIX + "ClosePendingBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelCloseAllPending();
      }
   }
 //+------------------------------------------------------------------+
