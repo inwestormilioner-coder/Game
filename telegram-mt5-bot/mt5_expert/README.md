@@ -143,6 +143,18 @@ przerywaną czerwoną linię na SL i etykietę z kierunkiem/cenami - dokładnie
 jak w botach "ZONES". Rysunek dla danej strefy znika automatycznie, gdy
 nie ma już dla niej żadnych zleceń oczekujących ani otwartych pozycji.
 
+Nie musisz wpisywać strefy ręcznie - na wykresie pojawiają się od razu po
+starcie EA **dwie przeciągalne linie cenowe** (niebieska i pomarańczowa,
+blisko aktualnej ceny). Złap myszką i przeciągnij każdą na poziom, który
+ma być granicą strefy - pole "Strefa" samo się uzupełnia w trakcie
+przeciągania (nieważne która linia jest akurat wyżej). Jak strefa Ci
+pasuje, klikasz tylko BUY albo SELL.
+
+Jeśli panel na starcie zasłania Ci pasek narzędzi/OHLC na górze wykresu,
+zmień `PanelY` (i/lub `PanelX`) w Inputs EA na większą wartość i
+przeciągnij EA na wykres ponownie (albo zmień Inputs w już podpiętym EA:
+prawy klik na wykres → Właściwości → Wejścia).
+
 Ograniczenie: który trailing należy do której pozycji EA pamięta tylko w
 pamięci (nie w pliku) - restart EA/terminala zeruje to dla już otwartych
 pozycji z panelu (nowe kliknięcia po restarcie działają normalnie od

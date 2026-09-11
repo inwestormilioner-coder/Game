@@ -36,6 +36,12 @@
 //| - removed automatically once nothing is left open for that       |
 //| zone's magic (PanelCleanupFinishedZones, checked every timer     |
 //| tick).                                                            |
+//|                                                                  |
+//| Two draggable price lines (ZoneLowLine/ZoneHighLine) let you set |
+//| the zone by dragging on the chart instead of typing - the        |
+//| "Strefa" field updates live to match their prices as you drag    |
+//| (PanelSyncZoneFieldFromLines, fired on CHARTEVENT_OBJECT_DRAG).  |
+//| You can still type into the field directly too.                  |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
@@ -51,6 +57,8 @@ input double PanelLotMultiplier       = 1.2;   // mirrors LOT_MULTIPLIER
 input long   PanelMagicBase           = 500000; // panel orders get PanelMagicBase+N, N incrementing per click
 input int    PanelDeviationPoints     = 20;
 input int    PollSeconds              = 1;     // how often the trailing-stop loop runs
+input int    PanelX                   = 10;    // panel position (pixels from the corner) - nudge here if it overlaps the chart's own toolbar/OHLC info
+input int    PanelY                   = 130;
 
 long   g_panelNextMagic = 0;
 long   g_panelMagics[];
@@ -65,6 +73,7 @@ int OnInit()
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       Print("WARNING: Algo Trading is currently OFF - this EA cannot place orders until it's enabled.");
    PanelCreate();
+   PanelCreateZoneLines();
    PrintFormat("ManualZonePanelEA started on %s", Symbol());
    return(INIT_SUCCEEDED);
   }
@@ -181,7 +190,6 @@ void PanelCreateLabel(string name, int x, int y, string text)
    ObjectSetInteger(0, full, OBJPROP_FONTSIZE, 9);
    ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, full, OBJPROP_HIDDEN, true);
   }
 
 //+------------------------------------------------------------------+
@@ -198,8 +206,11 @@ void PanelCreateEdit(string name, int x, int y, int w, string text)
    ObjectSetInteger(0, full, OBJPROP_ALIGN, ALIGN_CENTER);
    ObjectSetInteger(0, full, OBJPROP_COLOR, clrBlack);
    ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clrWhite);
+   // Must stay selectable and NOT hidden - OBJPROP_HIDDEN blocks normal
+   // (non-Ctrl) mouse selection, which is what let you click into the box
+   // and type in the first place.
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, full, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, full, OBJPROP_READONLY, false);
   }
 
 //+------------------------------------------------------------------+
@@ -215,13 +226,12 @@ void PanelCreateButton(string name, int x, int y, int w, int h, string text, col
    ObjectSetString(0, full, OBJPROP_TEXT, text);
    ObjectSetInteger(0, full, OBJPROP_BGCOLOR, clr);
    ObjectSetInteger(0, full, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, full, OBJPROP_HIDDEN, true);
   }
 
 //+------------------------------------------------------------------+
 void PanelCreate()
   {
-   int x = 10, y = 20, rowH = 24, labelW = 130, editW = 90;
+   int x = PanelX, y = PanelY, rowH = 24, labelW = 130, editW = 90;
    int panelW = labelW + editW + 20;
 
    ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
@@ -265,6 +275,56 @@ void PanelCreate()
 void PanelDestroy()
   {
    ObjectsDeleteAll(0, PANEL_PREFIX);
+  }
+
+//+------------------------------------------------------------------+
+//| Two draggable horizontal price lines - drag them to set the zone |
+//| on the chart instead of typing prices by hand. Placed near the   |
+//| current Bid on start-up so they're visible without scrolling.    |
+//| The "Strefa" field is kept in sync with their prices live (see   |
+//| PanelSyncZoneFieldFromLines, called from OnChartEvent on drag).  |
+//+------------------------------------------------------------------+
+void PanelCreateZoneLines()
+  {
+   double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   double halfWidth = 2.5;
+
+   string lowName = PANEL_PREFIX + "ZoneLowLine";
+   ObjectCreate(0, lowName, OBJ_HLINE, 0, 0, NormalizeDouble(bid - halfWidth, 2));
+   ObjectSetInteger(0, lowName, OBJPROP_COLOR, clrDodgerBlue);
+   ObjectSetInteger(0, lowName, OBJPROP_STYLE, STYLE_DASHDOT);
+   ObjectSetInteger(0, lowName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, lowName, OBJPROP_SELECTABLE, true);
+   ObjectSetString(0, lowName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
+
+   string highName = PANEL_PREFIX + "ZoneHighLine";
+   ObjectCreate(0, highName, OBJ_HLINE, 0, 0, NormalizeDouble(bid + halfWidth, 2));
+   ObjectSetInteger(0, highName, OBJPROP_COLOR, clrOrange);
+   ObjectSetInteger(0, highName, OBJPROP_STYLE, STYLE_DASHDOT);
+   ObjectSetInteger(0, highName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, highName, OBJPROP_SELECTABLE, true);
+   ObjectSetString(0, highName, OBJPROP_TOOLTIP, "Przeciagnij - granica strefy (dolna lub gorna)");
+
+   PanelSyncZoneFieldFromLines();
+  }
+
+//+------------------------------------------------------------------+
+//| Reads both zone lines' current prices and writes them into the    |
+//| "Strefa" field as "niska-wysoka" - sorted, so it doesn't matter   |
+//| which line is physically above the other at any given moment.     |
+//+------------------------------------------------------------------+
+void PanelSyncZoneFieldFromLines()
+  {
+   double lowPrice = ObjectGetDouble(0, PANEL_PREFIX + "ZoneLowLine", OBJPROP_PRICE);
+   double highPrice = ObjectGetDouble(0, PANEL_PREFIX + "ZoneHighLine", OBJPROP_PRICE);
+   if(lowPrice > highPrice)
+     {
+      double tmp = lowPrice;
+      lowPrice = highPrice;
+      highPrice = tmp;
+     }
+   ObjectSetString(0, PANEL_PREFIX + "ZoneEdit", OBJPROP_TEXT, StringFormat("%.2f-%.2f", lowPrice, highPrice));
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -590,6 +650,13 @@ void PanelUpdateTrailingStops()
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
   {
+   if(id == CHARTEVENT_OBJECT_DRAG)
+     {
+      if(sparam == PANEL_PREFIX + "ZoneLowLine" || sparam == PANEL_PREFIX + "ZoneHighLine")
+         PanelSyncZoneFieldFromLines();
+      return;
+     }
+
    if(id != CHARTEVENT_OBJECT_CLICK)
       return;
 
