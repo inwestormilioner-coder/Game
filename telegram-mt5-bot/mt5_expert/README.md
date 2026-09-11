@@ -137,6 +137,12 @@ się nie pomieszają z kampaniami sterowanymi sygnałami z kanału, nawet
 jeśli oba EA działają na tym samym koncie. `PanelPipSize` musi się
 zgadzać z `PIP_SIZE` w `.env`/Twoim brokerem.
 
+Każde kliknięcie BUY/SELL rysuje też samą strefę na wykresie - prostokąt
+od dołu do góry strefy (niebieski dla BUY, pomarańczowy dla SELL),
+przerywaną czerwoną linię na SL i etykietę z kierunkiem/cenami - dokładnie
+jak w botach "ZONES". Rysunek dla danej strefy znika automatycznie, gdy
+nie ma już dla niej żadnych zleceń oczekujących ani otwartych pozycji.
+
 Ograniczenie: który trailing należy do której pozycji EA pamięta tylko w
 pamięci (nie w pliku) - restart EA/terminala zeruje to dla już otwartych
 pozycji z panelu (nowe kliknięcia po restarcie działają normalnie od

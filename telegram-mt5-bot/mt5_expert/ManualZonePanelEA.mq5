@@ -30,6 +30,12 @@
 //| in memory (magic -> trailing_pips), not in a file - a terminal/  |
 //| EA restart loses it for positions already open from before the   |
 //| restart (a fresh panel click always works immediately).          |
+//|                                                                  |
+//| Zone visibility: each click also draws the zone (rectangle), its |
+//| shared SL (dashed horizontal line) and a text label on the chart |
+//| - removed automatically once nothing is left open for that       |
+//| zone's magic (PanelCleanupFinishedZones, checked every timer     |
+//| tick).                                                            |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
@@ -74,6 +80,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    PanelUpdateTrailingStops();
+   PanelCleanupFinishedZones();
   }
 
 //+------------------------------------------------------------------+
@@ -413,10 +420,99 @@ void PanelPlaceZone(string direction)
 
    string comment = "panel-" + (string)magic;
    PlaceOrders(magic, Symbol(), comment, PanelDeviationPoints, direction, levels, lots, slPrice, kept);
+   PanelDrawZone(magic, direction, zoneLow, zoneHigh, slPrice);
 
    PanelSetStatus(StringFormat(
       "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (magic=%d)",
       kept, direction, slPrice, trailPips, (int)magic));
+  }
+
+//+------------------------------------------------------------------+
+//| Draws the zone (rectangle, entry area), its shared SL (dashed     |
+//| horizontal line) and a text label on the chart, named per magic   |
+//| so several zones can coexist - cleaned up automatically once no   |
+//| pending orders/positions are left for that magic (see             |
+//| PanelCleanupFinishedZones).                                       |
+//+------------------------------------------------------------------+
+void PanelDrawZone(long magic, string direction, double zoneLow, double zoneHigh, double slPrice)
+  {
+   color zoneColor = (direction == "BUY") ? clrDodgerBlue : clrOrange;
+   datetime t1 = TimeCurrent();
+   datetime t2 = t1 + PeriodSeconds() * 50;
+
+   string zoneName = PANEL_PREFIX + "Zone_" + (string)magic;
+   ObjectCreate(0, zoneName, OBJ_RECTANGLE, 0, t1, zoneHigh, t2, zoneLow);
+   ObjectSetInteger(0, zoneName, OBJPROP_COLOR, zoneColor);
+   ObjectSetInteger(0, zoneName, OBJPROP_FILL, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_BACK, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, zoneName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, zoneName, OBJPROP_HIDDEN, true);
+
+   string slName = PANEL_PREFIX + "SL_" + (string)magic;
+   ObjectCreate(0, slName, OBJ_HLINE, 0, 0, slPrice);
+   ObjectSetInteger(0, slName, OBJPROP_COLOR, clrRed);
+   ObjectSetInteger(0, slName, OBJPROP_STYLE, STYLE_DASH);
+   ObjectSetInteger(0, slName, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, slName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, slName, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, slName, OBJPROP_BACK, true);
+
+   string labelName = PANEL_PREFIX + "Label_" + (string)magic;
+   ObjectCreate(0, labelName, OBJ_TEXT, 0, t1, zoneHigh);
+   ObjectSetString(0, labelName, OBJPROP_TEXT, StringFormat(" %s %.2f-%.2f", direction, zoneLow, zoneHigh));
+   ObjectSetInteger(0, labelName, OBJPROP_COLOR, zoneColor);
+   ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, labelName, OBJPROP_HIDDEN, true);
+
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| True while magic still has a pending order or open position.     |
+//+------------------------------------------------------------------+
+bool PanelHasOpenTradesForMagic(long magic)
+  {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket != 0 && OrderGetInteger(ORDER_MAGIC) == magic)
+         return true;
+     }
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket != 0 && PositionSelectByTicket(ticket) && PositionGetInteger(POSITION_MAGIC) == magic)
+         return true;
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Removes a zone's drawing (rectangle/SL line/label) and stops      |
+//| tracking its trailing_pips once nothing is left open for it -     |
+//| same idea as the Python bot deactivating a finished campaign.     |
+//+------------------------------------------------------------------+
+void PanelCleanupFinishedZones()
+  {
+   for(int m = ArraySize(g_panelMagics) - 1; m >= 0; m--)
+     {
+      long magic = g_panelMagics[m];
+      if(PanelHasOpenTradesForMagic(magic))
+         continue;
+
+      ObjectDelete(0, PANEL_PREFIX + "Zone_" + (string)magic);
+      ObjectDelete(0, PANEL_PREFIX + "SL_" + (string)magic);
+      ObjectDelete(0, PANEL_PREFIX + "Label_" + (string)magic);
+
+      int last = ArraySize(g_panelMagics) - 1;
+      g_panelMagics[m] = g_panelMagics[last];
+      g_panelTrailingPips[m] = g_panelTrailingPips[last];
+      ArrayResize(g_panelMagics, last);
+      ArrayResize(g_panelTrailingPips, last);
+     }
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
