@@ -35,6 +35,17 @@
 //|     positions are left alone, only unfilled pending orders are    |
 //|     removed (PanelCloseAllPending).                                |
 //|                                                                  |
+//| All-or-nothing grids: if one pending order from a grid disappears |
+//| WITHOUT having filled (cancelled/expired/rejected - e.g. removed  |
+//| by hand in the terminal), the rest of that same grid's still-     |
+//| pending orders are cancelled too automatically, every OnTimer     |
+//| tick (PanelDetectAbandonedGrids) - a grid missing one of its      |
+//| entries no longer represents the position size/risk the zone was |
+//| meant to have. Already-open positions are never touched by this - |
+//| only still-pending orders from the same magic. A ticket that      |
+//| disappeared because it FILLED (one grid entry caught, the normal  |
+//| case) is left alone, along with the rest of that grid.            |
+//|                                                                  |
 //| No TP is set on these orders. Exits happen only through a        |
 //| trailing stop (PanelUpdateTrailingStops(), run every OnTimer     |
 //| tick) - untouched below "Trailing (pips)" profit, then every     |
@@ -88,6 +99,12 @@ long   g_panelMagics[];
 double g_panelTrailingPips[];
 double g_panelTrailingLockPips[];
 
+// Last tick's snapshot of live pending-order tickets (magic>=PanelMagicBase),
+// used by PanelDetectAbandonedGrids() to notice one disappearing WITHOUT
+// having filled - see that function for why.
+long   g_panelKnownPendingTickets[];
+long   g_panelKnownPendingMagics[];
+
 double g_zoneLow = 0;
 double g_zoneHigh = 0;
 int    g_awaitingClick = 0;   // 0 = idle, 1 = waiting for the first point, 2 = waiting for the second
@@ -135,6 +152,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    PanelUpdateTrailingStops();
+   PanelDetectAbandonedGrids();
    PanelCleanupFinishedZones();
   }
 
@@ -689,6 +707,158 @@ void PanelCloseAllPending()
    if(failedCount > 0)
       msg += StringFormat(" %d bledow - zobacz log Eksperci.", failedCount);
    PanelSetStatus(msg);
+  }
+
+//+------------------------------------------------------------------+
+//| Cancels every still-pending order for exactly one magic (unlike   |
+//| PanelCloseAllPending, which cancels every magic >= PanelMagicBase |
+//| at once) - used by PanelDetectAbandonedGrids() when one grid's    |
+//| entries need to come down together.                                |
+//+------------------------------------------------------------------+
+void PanelCancelPendingForMagic(long magic)
+  {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(OrderGetInteger(ORDER_MAGIC) != magic)
+         continue;
+
+      MqlTradeRequest request;
+      MqlTradeResult  result;
+      ZeroMemory(request);
+      ZeroMemory(result);
+      request.action = TRADE_ACTION_REMOVE;
+      request.order = ticket;
+
+      bool ok = OrderSend(request, result);
+      if(!ok || result.retcode != TRADE_RETCODE_DONE)
+         PrintFormat("Panel: nie udalo sie usunac zlecenia %d z niekompletnej siatki (magic=%d) retcode=%d comment='%s'",
+                     (int)ticket, (int)magic, result.retcode, result.comment);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| If one pending order from a grid disappears WITHOUT having filled |
+//| (cancelled/expired/rejected - e.g. removed by hand in the         |
+//| terminal), the rest of that grid's still-pending orders are      |
+//| cancelled too - a grid missing one of its entries no longer       |
+//| represents the position size/risk the zone was meant to have.     |
+//| Already-open positions from that same grid are left untouched -   |
+//| only still-pending orders are affected. A ticket that disappeared |
+//| because it FILLED (the expected, common case - one grid entry     |
+//| caught) is left alone, along with the rest of that grid.          |
+//|                                                                     |
+//| Works by diffing this tick's live pending tickets (magic >=       |
+//| PanelMagicBase) against g_panelKnownPendingTickets from the        |
+//| previous tick; any ticket present before but missing now is        |
+//| looked up in the order history to tell "filled" from "removed".   |
+//| Run every OnTimer tick, before PanelCleanupFinishedZones.          |
+//+------------------------------------------------------------------+
+void PanelDetectAbandonedGrids()
+  {
+   long liveTickets[];
+   long liveMagics[];
+   int liveCount = 0;
+   for(int i = 0; i < OrdersTotal(); i++)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      long magic = OrderGetInteger(ORDER_MAGIC);
+      if(magic < PanelMagicBase)
+         continue;
+      ArrayResize(liveTickets, liveCount + 1);
+      ArrayResize(liveMagics, liveCount + 1);
+      liveTickets[liveCount] = (long)ticket;
+      liveMagics[liveCount] = magic;
+      liveCount++;
+     }
+
+   long handledMagics[];
+   int handledCount = 0;
+
+   for(int k = 0; k < ArraySize(g_panelKnownPendingTickets); k++)
+     {
+      long ticket = g_panelKnownPendingTickets[k];
+
+      bool stillPending = false;
+      for(int i = 0; i < liveCount; i++)
+        {
+         if(liveTickets[i] == ticket)
+           {
+            stillPending = true;
+            break;
+           }
+        }
+      if(stillPending)
+         continue;
+
+      long magic = g_panelKnownPendingMagics[k];
+
+      bool alreadyHandled = false;
+      for(int h = 0; h < handledCount; h++)
+        {
+         if(handledMagics[h] == magic)
+           {
+            alreadyHandled = true;
+            break;
+           }
+        }
+      if(alreadyHandled)
+         continue;
+
+      HistorySelect(0, TimeCurrent());
+      if(!HistoryOrderSelect(ticket))
+         continue; // can't tell what happened to it - be conservative, don't cancel
+
+      long state = HistoryOrderGetInteger(ticket, ORDER_STATE);
+      if(state == ORDER_STATE_FILLED)
+         continue; // expected - one grid entry just filled, rest is fine
+
+      PanelCancelPendingForMagic(magic);
+      PanelSetStatus(StringFormat(
+         "Zlecenie %d z siatki (magic=%d) zniknelo bez fillu - usunieto reszte siatki.", (int)ticket, (int)magic));
+
+      ArrayResize(handledMagics, handledCount + 1);
+      handledMagics[handledCount] = magic;
+      handledCount++;
+     }
+
+   // Save this tick's snapshot for the next diff - but drop any ticket
+   // belonging to a magic just handled above: PanelCancelPendingForMagic()
+   // is about to remove those too, and letting them into next tick's
+   // "known" set would make them look like another abandoned-order event
+   // (they'd vanish "without filling" again) and re-fire the same message
+   // for orders we ourselves already cancelled as a consequence.
+   int savedCount = 0;
+   for(int i = 0; i < liveCount; i++)
+     {
+      bool dropIt = false;
+      for(int h = 0; h < handledCount; h++)
+        {
+         if(handledMagics[h] == liveMagics[i])
+           {
+            dropIt = true;
+            break;
+           }
+        }
+      if(dropIt)
+         continue;
+
+      liveTickets[savedCount] = liveTickets[i];
+      liveMagics[savedCount] = liveMagics[i];
+      savedCount++;
+     }
+
+   ArrayResize(g_panelKnownPendingTickets, savedCount);
+   ArrayResize(g_panelKnownPendingMagics, savedCount);
+   for(int i = 0; i < savedCount; i++)
+     {
+      g_panelKnownPendingTickets[i] = liveTickets[i];
+      g_panelKnownPendingMagics[i] = liveMagics[i];
+     }
   }
 
 //+------------------------------------------------------------------+

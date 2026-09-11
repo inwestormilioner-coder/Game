@@ -156,6 +156,16 @@ niewypełnione zlecenia oczekujące wystawione przez ten EA (magic
 `>= PanelMagicBase`) - otwartych już pozycji nie rusza, tylko czyści
 "zawieszone" zlecenia z siatki, które jeszcze się nie złapały.
 
+**Siatka wszystko-albo-nic**: jeśli jedno zlecenie oczekujące z danej
+siatki zniknie BEZ fillu (np. ręcznie usunięte w terminalu, wygasłe,
+odrzucone), EA automatycznie usuwa resztę jeszcze niewypełnionych zleceń
+z tej samej siatki (magic) - sprawdzane co tick timera
+(`PanelDetectAbandonedGrids`). Już otwartych pozycji to nie dotyka, tylko
+pozostałych zleceń oczekujących - niekompletna siatka przestaje
+reprezentować zakładaną wielkość/ryzyko strefy. Zlecenie, które zniknęło
+bo się wypełniło (normalny przypadek - jeden poziom siatki złapał cenę),
+zostaje bez zmian, razem z resztą siatki.
+
 `PanelMagicBase` (domyślnie 500000+) jest celowo poza zakresem
 `MAGIC_BASE` (990000+) używanym przez Pythona - zlecenia z panelu nigdy
 się nie pomieszają z kampaniami sterowanymi sygnałami z kanału, nawet
