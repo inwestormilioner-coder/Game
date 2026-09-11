@@ -128,9 +128,10 @@ konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
    na tej cenie; po drugim - całą strefę wyrysowaną na złoto (prostokąt +
    etykieta z cenami) i pole "Strefa" uzupełnione - widzisz dokładnie co
    zamierzasz otworzyć, zanim jeszcze wybierzesz kierunek.
-3. **SL (pips)**, **Trailing (pips)**, **Krok siatki ($)** ustawiasz
-   przyciskami `-`/`+` obok każdej wartości (SL/Trailing: co 5 pipsów,
-   Krok: co $0.10).
+3. **SL (pips)**, **Trailing (pips)**, **Krok trailing (pips)**, **Krok
+   siatki ($)** ustawiasz przyciskami `-`/`+` obok każdej wartości
+   (SL/Trailing: co 5 pipsów, Krok trailing: co 1 pips, Krok siatki: co
+   $0.10).
 4. Klikasz **BUY** albo **SELL**.
 
 EA liczy siatkę wejść co "Krok siatki" w zaznaczonej strefie, jeden
@@ -140,12 +141,16 @@ mirrorującym `LOT_SIZE`/`LOT_TIER_ORDERS`/`LOT_SCALING_MODE`/
 `PanelLotScalingMode`/`PanelLotMultiplier`), i wystawia zlecenia (z
 fallbackiem na MARKET dla entry zbyt blisko ceny, tak jak bridge EA).
 Zlecenia z panelu nie dostają TP - wychodzą wyłącznie przez ten sam
-**stepped trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie (BE po
-"Trailing (pips)" zysku, potem kolejny skok co tyle samo, SL nigdy nie
-wraca w dół), z wartością ustawioną w momencie kliknięcia BUY/SELL. Po
-wystawieniu zlecenia zaznaczona strefa się czyści (żółty podgląd znika,
-zastępuje go docelowy niebieski/pomarańczowy rysunek strefy) - kolejne
-zlecenie wymaga ponownego "ZAZNACZ STREFE".
+**trailing stop** co `EXIT_MODE=trailing_stop` w Pythonie (BE po
+"Trailing (pips)" zysku, potem SL trzymany "Trailing (pips)" za ceną,
+aktualizowany co "Krok trailing (pips)" zysku - im mniejszy krok, tym
+częstsze aktualizacje i tym bliżej SL trzyma się właściwego dystansu;
+ustaw krok równy "Trailing (pips)" dla starego zachowania - jeden skok od
+razu o cały dystans; SL nigdy nie wraca w dół), z wartościami ustawionymi
+w momencie kliknięcia BUY/SELL. Po wystawieniu zlecenia zaznaczona strefa
+się czyści (żółty podgląd znika, zastępuje go docelowy
+niebieski/pomarańczowy rysunek strefy) - kolejne zlecenie wymaga ponownego
+"ZAZNACZ STREFE".
 
 **"ZAMKNIJ ZLECENIA OCZEKUJACE"** anuluje od razu wszystkie jeszcze
 niewypełnione zlecenia oczekujące wystawione przez ten EA (magic
