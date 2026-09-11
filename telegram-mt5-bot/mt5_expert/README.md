@@ -151,6 +151,19 @@ się czyści (żółty podgląd znika, zastępuje go docelowy
 niebieski/pomarańczowy rysunek strefy) - kolejne zlecenie wymaga ponownego
 "ZAZNACZ STREFE".
 
+**"BUY MARKET"** / **"SELL MARKET"** otwierają pozycję od razu po cenie
+rynkowej, bez klikania "Zaznacz strefe" - strefa jest liczona automatycznie:
+szeroka `PanelMarketZoneWidthDollars` (domyślnie $6), zaczepiona o cenę
+wejścia (dla BUY: górna granica = ask, dolna = ask - szerokość; dla SELL:
+dolna granica = bid, górna = bid + szerokość). Resztę robi dokładnie ten
+sam mechanizm co normalne "Zaznacz strefe" + BUY/SELL: SL liczony jak
+zwykle od gorszej granicy strefy (czyli SL wypada `PanelMarketZoneWidthDollars`
++ "SL (pips)" od ceny wejścia - domyślnie $6 + $6 = $12), siatka poziomów
+co "Krok siatki" poniżej/powyżej wejścia zostaje wystawiona jako zlecenia
+oczekujące, a sam trailing/blokada zysku działają identycznie jak dla
+zwykłej strefy. SL/Trailing/Blokada/Krok siatki brane są z aktualnych
+wartości w panelu - nic więcej nie trzeba zmieniać.
+
 **"ZAMKNIJ ZLECENIA OCZEKUJACE"** anuluje od razu wszystkie jeszcze
 niewypełnione zlecenia oczekujące wystawione przez ten EA (magic
 `>= PanelMagicBase`) - otwartych już pozycji nie rusza, tylko czyści

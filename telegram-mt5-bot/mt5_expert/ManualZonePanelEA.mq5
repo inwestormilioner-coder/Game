@@ -34,6 +34,16 @@
 //|     order this EA has placed (magic >= PanelMagicBase) - open      |
 //|     positions are left alone, only unfilled pending orders are    |
 //|     removed (PanelCloseAllPending).                                |
+//|   - "BUY MARKET" / "SELL MARKET" (PanelPlaceMarketZone) skip the   |
+//|     manual "Zaznacz strefe" click-picking - the zone is computed   |
+//|     automatically as PanelMarketZoneWidthDollars wide, anchored at |
+//|     the current market price, then handled by the exact same      |
+//|     grid/SL/trailing pipeline as a normal BUY/SELL: the level      |
+//|     right at the market price opens immediately (via the same     |
+//|     MARKET-fallback PlaceOrders always used for an entry too      |
+//|     close to price), the rest of the grid below/above it stays     |
+//|     pending as usual. SL(pips)/Trailing(pips)/Blokada(pips)/Krok   |
+//|     siatki($) keep whatever the panel currently has configured.   |
 //|                                                                  |
 //| All-or-nothing grids: if one pending order from a grid disappears |
 //| WITHOUT having filled (cancelled/expired/rejected - e.g. removed  |
@@ -74,13 +84,14 @@
 #property strict
 
 #define PANEL_WIDTH  380
-#define PANEL_HEIGHT 390
+#define PANEL_HEIGHT 440
 #define PANEL_PREFIX "TgManualPanel_"
 
 input double PanelDefaultSlPips           = 60;    // starting value for the SL (pips) stepper
 input double PanelDefaultTrailingPips     = 36;    // starting value for the Trailing (pips) stepper
 input double PanelDefaultTrailingLockPips = 12;    // starting value for the Blokada zysku (pips) stepper - extra profit always kept locked in at each trailing jump instead of exact breakeven (0 = old plain breakeven-ladder behavior)
 input double PanelDefaultStepDollars      = 0.5;   // starting value for the Krok siatki ($) stepper
+input double PanelMarketZoneWidthDollars  = 6.0;   // BUY MARKET/SELL MARKET: width ($) of the auto-computed zone below/above the market fill - SL(pips)/Trailing(pips)/Blokada(pips)/Krok siatki($) above still apply exactly as configured, so the SL ends up PanelMarketZoneWidthDollars + SL(pips) away from the market entry
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
 input int    PanelLotTierOrders       = 3;     // mirrors LOT_TIER_ORDERS
@@ -344,6 +355,10 @@ void PanelCreate(int x, int y)
    PanelCreateButton("BuyBtn", x, rowY, tradeBtnW, 36, "BUY", clrLimeGreen, 12);
    PanelCreateButton("SellBtn", x + tradeBtnW + 10, rowY, tradeBtnW, 36, "SELL", clrTomato, 12);
    rowY += 46;
+
+   PanelCreateButton("BuyMarketBtn", x, rowY, tradeBtnW, 32, "BUY MARKET", clrSeaGreen, 10);
+   PanelCreateButton("SellMarketBtn", x + tradeBtnW + 10, rowY, tradeBtnW, 32, "SELL MARKET", clrIndianRed, 10);
+   rowY += 42;
 
    PanelCreateButton("ClosePendingBtn", x, rowY, PANEL_WIDTH - 2 * margin, 30, "ZAMKNIJ ZLECENIA OCZEKUJACE", clrGold);
    rowY += 38;
@@ -660,6 +675,46 @@ void PanelPlaceZone(string direction)
    PanelSetStatus(StringFormat(
       "Wystawiono %d zlec. %s, SL=%.2f, trailing=%.0f pips (blokada +%.0f) (magic=%d)",
       kept, direction, slPrice, trailPips, trailLockPips, (int)magic));
+  }
+
+//+------------------------------------------------------------------+
+//| BUY MARKET / SELL MARKET: same grid/SL/trailing as a normal        |
+//| "Zaznacz strefe" + BUY/SELL, except the zone is computed           |
+//| automatically from the current market price instead of two chart  |
+//| clicks - PanelMarketZoneWidthDollars wide, anchored at the market  |
+//| fill (for BUY: zoneHigh = ask, zoneLow = ask - width; for SELL:     |
+//| zoneLow = bid, zoneHigh = bid + width). SL(pips)/Trailing(pips)/    |
+//| Blokada(pips)/Krok siatki($) all keep whatever the panel currently |
+//| has configured - only the zone bounds are auto-computed here.      |
+//| Delegates the entire rest (SL calc, grid, lot tiers, drawing,      |
+//| status) to PanelPlaceZone(), which already places the level        |
+//| nearest the current price at MARKET instead of pending (see        |
+//| PlaceOrders's atMarket check) - since the zone's near edge is set  |
+//| to the market price exactly, that's automatically the entry that   |
+//| opens immediately, with the rest of the grid below/above it as     |
+//| pending orders like any other zone.                                |
+//+------------------------------------------------------------------+
+void PanelPlaceMarketZone(string direction)
+  {
+   double bid = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   double ask = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+   double entryPrice = (direction == "BUY") ? ask : bid;
+
+   if(direction == "BUY")
+     {
+      g_zoneHigh = NormalizeDouble(entryPrice, 2);
+      g_zoneLow  = NormalizeDouble(entryPrice - PanelMarketZoneWidthDollars, 2);
+     }
+   else
+     {
+      g_zoneLow  = NormalizeDouble(entryPrice, 2);
+      g_zoneHigh = NormalizeDouble(entryPrice + PanelMarketZoneWidthDollars, 2);
+     }
+
+   g_awaitingClick = 0; // cancel any manual zone-pick in progress
+   PanelClearPickPreview();
+   PanelSetZoneValueLabel();
+   PanelPlaceZone(direction);
   }
 
 //+------------------------------------------------------------------+
@@ -1097,6 +1152,16 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelPlaceZone("SELL");
+     }
+   else if(sparam == PANEL_PREFIX + "BuyMarketBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelPlaceMarketZone("BUY");
+     }
+   else if(sparam == PANEL_PREFIX + "SellMarketBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelPlaceMarketZone("SELL");
      }
    else if(sparam == PANEL_PREFIX + "ClosePendingBtn")
      {
