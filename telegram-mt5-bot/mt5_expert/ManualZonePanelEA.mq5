@@ -16,9 +16,11 @@
 //| The panel itself IS draggable and minimizable, unlike the zone/   |
 //| trade controls inside it:                                         |
 //|   - Grab the title bar (top strip, not the "-"/"+" button on it)  |
-//|     and drop it anywhere - native MT5 object dragging             |
-//|     (OBJPROP_SELECTABLE on TitleBar only), handled in              |
-//|     OnChartEvent's CHARTEVENT_OBJECT_DRAG (PanelMoveTo).           |
+//|     and drop it anywhere - dragged MANUALLY via CHARTEVENT_MOUSE_ |
+//|     MOVE (PanelHandleMouseMove/g_titleDragging), not native MT5    |
+//|     object dragging (OBJPROP_SELECTABLE + CHARTEVENT_OBJECT_DRAG   |
+//|     proved unreliable for this object type in this EA's testing,   |
+//|     the same way OBJ_EDIT/OBJ_HLINE dragging did earlier).         |
 //|   - The "-"/"+" button in the title bar (PanelToggleMinimize)      |
 //|     collapses the panel to just that title strip - every other     |
 //|     control is parked off-screen (PanelBodyY), not deleted, so     |
@@ -30,8 +32,7 @@
 //|     through to the chart underneath (which is what made clicking  |
 //|     the panel feel like clicking the chart before this existed).  |
 //|     Bg stays BACK=true as before (a back object can't be selected/ |
-//|     dragged in MT5, which is why TitleBar/BodyCatcher exist as     |
-//|     separate objects rather than just flipping Bg itself).        |
+//|     dragged in MT5 either way).                                    |
 //|                                                                  |
 //|   - Click "Zaznacz strefe", then click two points on the chart - |
 //|     those become the zone's low/high price (order doesn't        |
@@ -189,10 +190,22 @@ bool g_panelMinimized = false;
 
 int g_panelLeft = 0, g_panelTop = 0, g_panelRight = 0, g_panelBottom = 0;
 
+// Manual title-bar dragging (CHARTEVENT_MOUSE_MOVE-driven, see
+// OnChartEvent) - native MT5 object dragging (OBJPROP_SELECTABLE +
+// CHARTEVENT_OBJECT_DRAG) proved unreliable for a corner-anchored
+// OBJ_RECTANGLE_LABEL in this EA's testing, the same way OBJ_EDIT and
+// OBJ_HLINE dragging did earlier in this file's history - tracking the
+// raw mouse position/button state ourselves doesn't depend on MT5
+// recognizing/dragging the object natively at all.
+bool g_titleDragging = false;
+int  g_titleDragOffsetX = 0;
+int  g_titleDragOffsetY = 0;
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
    EventSetTimer(PollSeconds);
+   ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       Print("WARNING: Algo Trading is currently OFF - this EA cannot place orders until it's enabled.");
    g_slPips = PanelDefaultSlPips;
@@ -425,15 +438,15 @@ void PanelCreate(int x, int y)
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XSIZE, PANEL_WIDTH);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, panelHeight);
 
-   // TitleBar: the only draggable part of the panel (OBJPROP_SELECTABLE,
-   // unlike everything else here) - grab anywhere on it (except the
-   // MinimizeBtn sitting on top of it) and drop it elsewhere; see
-   // OnChartEvent's CHARTEVENT_OBJECT_DRAG handling. It's a foreground
-   // (BACK=false) object specifically so it - and the panel as a whole -
-   // actually catches clicks instead of leaking them through to the
-   // chart underneath, unlike Bg which stays BACK=true (a background
-   // object can never be selected/dragged in MT5, which is why dragging
-   // needs this separate strip rather than Bg itself).
+   // TitleBar: the draggable strip (grab anywhere on it except the
+   // MinimizeBtn sitting on top of it) - dragging is handled manually via
+   // CHARTEVENT_MOUSE_MOVE in OnChartEvent (g_titleDragging), NOT native
+   // MT5 object dragging, which proved unreliable for this object type in
+   // this EA's testing. SELECTABLE stays false so a click never leaves it
+   // visibly "selected" (anchor squares) - our own mouse tracking doesn't
+   // need that. It's still a foreground (BACK=false) object so it - and
+   // the panel as a whole - catches clicks instead of leaking them
+   // through to the chart underneath, unlike Bg which stays BACK=true.
    if(ObjectFind(0, PANEL_PREFIX + "TitleBar") < 0)
      {
       ObjectCreate(0, PANEL_PREFIX + "TitleBar", OBJ_RECTANGLE_LABEL, 0, 0, 0);
@@ -442,7 +455,7 @@ void PanelCreate(int x, int y)
       ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_COLOR, clrGray);
       ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_BORDER_TYPE, BORDER_FLAT);
       ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_BACK, false);
-      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_SELECTABLE, true);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_ZORDER, 5);
      }
    ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_XDISTANCE, x - margin);
@@ -1417,6 +1430,54 @@ void PanelUpdateTrailingStops()
   }
 
 //+------------------------------------------------------------------+
+//| Manual title-bar dragging (CHARTEVENT_MOUSE_MOVE, enabled in       |
+//| OnInit via CHART_EVENT_MOUSE_MOVE) - tracks the raw mouse position |
+//| and left-button state ourselves rather than relying on native MT5 |
+//| object dragging (see g_titleDragging's comment for why). mx/my are |
+//| the mouse's chart-pixel coordinates; buttonState is MT5's string   |
+//| encoding of which mouse buttons are currently held (bit 0 = left   |
+//| button, matching the standard Win32 MK_LBUTTON flag).             |
+//|                                                                     |
+//| Starts a drag the moment it sees the left button held AND the      |
+//| cursor over the title bar (excluding the MinimizeBtn's own         |
+//| footprint, so clicking it never starts a drag) while not already   |
+//| dragging; keeps repositioning the whole panel (PanelMoveTo) for     |
+//| every further move while the button stays held, regardless of      |
+//| where the cursor drifts to; stops the instant the button is        |
+//| released.                                                           |
+//+------------------------------------------------------------------+
+void PanelHandleMouseMove(int mx, int my, string buttonState)
+  {
+   bool leftDown = ((int)StringToInteger(buttonState) & 1) == 1;
+
+   if(!leftDown)
+     {
+      g_titleDragging = false;
+      return;
+     }
+
+   if(!g_titleDragging)
+     {
+      int titleLeft = g_panelOriginX - PANEL_MARGIN;
+      int titleTop = g_panelOriginY - PANEL_MARGIN;
+      int titleRight = titleLeft + PANEL_WIDTH;
+      int titleBottom = titleTop + PANEL_HEADER_HEIGHT;
+      int minBtnLeft = g_panelOriginX + PANEL_WIDTH - 2 * PANEL_MARGIN - 24;
+
+      bool overTitle = (mx >= titleLeft && mx <= titleRight && my >= titleTop && my <= titleBottom);
+      bool overMinimizeBtn = (mx >= minBtnLeft);
+      if(!overTitle || overMinimizeBtn)
+         return;
+
+      g_titleDragging = true;
+      g_titleDragOffsetX = mx - g_panelOriginX;
+      g_titleDragOffsetY = my - g_panelOriginY;
+     }
+
+   PanelMoveTo(mx - g_titleDragOffsetX, my - g_titleDragOffsetY);
+  }
+
+//+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
   {
    if(id == CHARTEVENT_CLICK)
@@ -1425,16 +1486,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       return;
      }
 
-   if(id == CHARTEVENT_OBJECT_DRAG && sparam == PANEL_PREFIX + "TitleBar")
+   if(id == CHARTEVENT_MOUSE_MOVE)
      {
-      // MT5 already moved TitleBar itself (native drag, since it's the
-      // only OBJPROP_SELECTABLE panel object) - read where it landed and
-      // bring the rest of the panel along to match.
-      int newX = (int)ObjectGetInteger(0, sparam, OBJPROP_XDISTANCE) + PANEL_MARGIN;
-      int newY = (int)ObjectGetInteger(0, sparam, OBJPROP_YDISTANCE) + PANEL_MARGIN;
-      PanelMoveTo(newX, newY);
-      ObjectSetInteger(0, sparam, OBJPROP_SELECTED, false);
-      ChartRedraw(0);
+      PanelHandleMouseMove((int)lparam, (int)dparam, sparam);
       return;
      }
 
