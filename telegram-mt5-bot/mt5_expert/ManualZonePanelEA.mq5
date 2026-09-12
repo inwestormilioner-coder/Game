@@ -7,11 +7,31 @@
 //| manual BUY/SELL zone panel without touching the Python-driven    |
 //| bridge EA at all.                                                 |
 //|                                                                  |
-//| Fully click-driven - no typing, no dragging objects (both proved |
-//| unreliable in some MT5 setups/themes, so this avoids them        |
-//| entirely). Panel sits in the top-right corner by default          |
-//| (PanelOnRight/PanelRightMargin), sized to comfortably fit every   |
-//| control (PANEL_WIDTH/PANEL_HEIGHT below).                         |
+//| Fully click-driven for everything zone/trade-related - no typing  |
+//| (OBJ_EDIT text boxes proved unreliable in some MT5 setups/themes, |
+//| so this avoids them entirely). Panel sits in the top-right corner |
+//| by default (PanelOnRight/PanelRightMargin), sized to comfortably  |
+//| fit every control (PANEL_WIDTH/PANEL_HEIGHT below).                |
+//|                                                                  |
+//| The panel itself IS draggable and minimizable, unlike the zone/   |
+//| trade controls inside it:                                         |
+//|   - Grab the title bar (top strip, not the "-"/"+" button on it)  |
+//|     and drop it anywhere - native MT5 object dragging             |
+//|     (OBJPROP_SELECTABLE on TitleBar only), handled in              |
+//|     OnChartEvent's CHARTEVENT_OBJECT_DRAG (PanelMoveTo).           |
+//|   - The "-"/"+" button in the title bar (PanelToggleMinimize)      |
+//|     collapses the panel to just that title strip - every other     |
+//|     control is parked off-screen (PanelBodyY), not deleted, so     |
+//|     restoring is instant and never resets a value.                |
+//|   - TitleBar and BodyCatcher are the panel's only two foreground   |
+//|     (OBJPROP_BACK=false) objects, sitting at a lower ZORDER than   |
+//|     every button/label (10) - a click on empty panel space (not   |
+//|     on a button) now lands on the panel itself instead of leaking  |
+//|     through to the chart underneath (which is what made clicking  |
+//|     the panel feel like clicking the chart before this existed).  |
+//|     Bg stays BACK=true as before (a back object can't be selected/ |
+//|     dragged in MT5, which is why TitleBar/BodyCatcher exist as     |
+//|     separate objects rather than just flipping Bg itself).        |
 //|                                                                  |
 //|   - Click "Zaznacz strefe", then click two points on the chart - |
 //|     those become the zone's low/high price (order doesn't        |
@@ -101,6 +121,9 @@
 
 #define PANEL_WIDTH  380
 #define PANEL_HEIGHT 520
+#define PANEL_MARGIN 10
+#define PANEL_HEADER_HEIGHT 30
+#define PANEL_HIDDEN_Y (-3000)   // parks minimized/off body controls well above the visible chart
 #define PANEL_PREFIX "TgManualPanel_"
 
 input double PanelDefaultSlPips           = 60;    // starting value for the SL (pips) stepper
@@ -156,6 +179,13 @@ double g_trailLockPips = 0;
 double g_stepDollars = 0;
 double g_extendUpDollars = 0;
 double g_extendDownDollars = 0;
+
+// Current panel content origin (top-left, same meaning as the x,y PanelCreate
+// takes) - kept so the panel can be dragged (PanelMoveTo) and minimized
+// (g_panelMinimized) without losing track of where it currently is.
+int  g_panelOriginX = 0;
+int  g_panelOriginY = 0;
+bool g_panelMinimized = false;
 
 int g_panelLeft = 0, g_panelTop = 0, g_panelRight = 0, g_panelBottom = 0;
 
@@ -287,9 +317,20 @@ void PlaceOrders(long magic, string symbol, string comment, int deviation,
   }
 
 //+------------------------------------------------------------------+
+//| Creates the object on first call; on any later call (panel drag/  |
+//| minimize/restore re-invoking PanelCreate) just repositions the    |
+//| existing object instead of recreating it, so its current text/    |
+//| state (e.g. a value label mid zone-pick) is never reset.          |
+//+------------------------------------------------------------------+
 void PanelCreateLabel(string name, int x, int y, string text, int fontSize = 10)
   {
    string full = PANEL_PREFIX + name;
+   if(ObjectFind(0, full) >= 0)
+     {
+      ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, full, OBJPROP_YDISTANCE, y);
+      return;
+     }
    ObjectCreate(0, full, OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, full, OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
@@ -302,9 +343,21 @@ void PanelCreateLabel(string name, int x, int y, string text, int fontSize = 10)
   }
 
 //+------------------------------------------------------------------+
+//| Same create-once/reposition-after pattern as PanelCreateLabel.    |
+//+------------------------------------------------------------------+
 void PanelCreateButton(string name, int x, int y, int w, int h, string text, color clr, int fontSize = 10)
   {
    string full = PANEL_PREFIX + name;
+   if(ObjectFind(0, full) >= 0)
+     {
+      ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
+      ObjectSetInteger(0, full, OBJPROP_YDISTANCE, y);
+      // Buttons (unlike value labels) never carry runtime-changed text
+      // other than what's passed in here - MinimizeBtn's "-"/"+" needs
+      // this to actually flip when re-laid-out after a toggle.
+      ObjectSetString(0, full, OBJPROP_TEXT, text);
+      return;
+     }
    ObjectCreate(0, full, OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, full, OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, full, OBJPROP_XDISTANCE, x);
@@ -319,97 +372,196 @@ void PanelCreateButton(string name, int x, int y, int w, int h, string text, col
   }
 
 //+------------------------------------------------------------------+
+//| Returns y normally, or PANEL_HIDDEN_Y (well above the visible      |
+//| chart) while the panel is minimized - used for every "body" row    |
+//| below the title bar, so minimizing just parks them off-screen      |
+//| instead of deleting/recreating them (PanelCreateLabel/Button's     |
+//| reposition-only path keeps their current text/state either way).  |
+//+------------------------------------------------------------------+
+int PanelBodyY(int y)
+  {
+   return g_panelMinimized ? PANEL_HIDDEN_Y : y;
+  }
+
+//+------------------------------------------------------------------+
 //| Lays out every control top-to-bottom, each on its own row so      |
 //| nothing overlaps regardless of label text length. (x,y) is the    |
-//| panel's top-left corner, computed in OnInit from PanelOnRight.    |
+//| panel's top-left corner. Safe to call again at any time (drag,     |
+//| minimize/restore) - PanelCreateLabel/Button reposition existing    |
+//| objects rather than recreating them.                               |
 //+------------------------------------------------------------------+
 void PanelCreate(int x, int y)
   {
    int labelW = 145, valW = 50, smallBtnW = 32, smallBtnH = 28, rowH = 40;
-   int margin = 10;
+   int margin = PANEL_MARGIN;
+
+   g_panelOriginX = x;
+   g_panelOriginY = y;
 
    // Remember the panel's screen rectangle so PanelHandleChartClick can
    // ignore clicks that land on it - clicking a button also fires a plain
    // CHARTEVENT_CLICK at the same pixel coordinates, which would otherwise
    // get misread as a zone-picking click on the button's own position.
+   // Shrinks to just the header while minimized.
+   int panelHeight = g_panelMinimized ? PANEL_HEADER_HEIGHT : PANEL_HEIGHT;
    g_panelLeft = x - margin;
    g_panelTop = y - margin;
    g_panelRight = g_panelLeft + PANEL_WIDTH;
-   g_panelBottom = g_panelTop + PANEL_HEIGHT;
+   g_panelBottom = g_panelTop + panelHeight;
 
-   ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   if(ObjectFind(0, PANEL_PREFIX + "Bg") < 0)
+     {
+      ObjectCreate(0, PANEL_PREFIX + "Bg", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BGCOLOR, clrWhiteSmoke);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_COLOR, clrSilver);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BACK, true);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_ZORDER, 0);
+     }
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XDISTANCE, x - margin);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YDISTANCE, y - margin);
    ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_XSIZE, PANEL_WIDTH);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, PANEL_HEIGHT);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BGCOLOR, clrWhiteSmoke);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_COLOR, clrSilver);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BORDER_TYPE, BORDER_FLAT);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_BACK, true);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_ZORDER, 0);
+   ObjectSetInteger(0, PANEL_PREFIX + "Bg", OBJPROP_YSIZE, panelHeight);
+
+   // TitleBar: the only draggable part of the panel (OBJPROP_SELECTABLE,
+   // unlike everything else here) - grab anywhere on it (except the
+   // MinimizeBtn sitting on top of it) and drop it elsewhere; see
+   // OnChartEvent's CHARTEVENT_OBJECT_DRAG handling. It's a foreground
+   // (BACK=false) object specifically so it - and the panel as a whole -
+   // actually catches clicks instead of leaking them through to the
+   // chart underneath, unlike Bg which stays BACK=true (a background
+   // object can never be selected/dragged in MT5, which is why dragging
+   // needs this separate strip rather than Bg itself).
+   if(ObjectFind(0, PANEL_PREFIX + "TitleBar") < 0)
+     {
+      ObjectCreate(0, PANEL_PREFIX + "TitleBar", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_BGCOLOR, clrSilver);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_COLOR, clrGray);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_BACK, false);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_SELECTABLE, true);
+      ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_ZORDER, 5);
+     }
+   ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_XDISTANCE, x - margin);
+   ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_YDISTANCE, y - margin);
+   ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_XSIZE, PANEL_WIDTH);
+   ObjectSetInteger(0, PANEL_PREFIX + "TitleBar", OBJPROP_YSIZE, PANEL_HEADER_HEIGHT);
+
+   // BodyCatcher: covers the rest of the panel below the title bar - same
+   // idea as TitleBar (a foreground/BACK=false object so clicks on it
+   // land on the panel, not the chart underneath) but NOT selectable, so
+   // it doesn't compete with TitleBar for dragging. Its low ZORDER (below
+   // every button/label's 10) means a click still resolves to whichever
+   // button sits on top of it, exactly like Bg always has - this just
+   // catches the gaps BETWEEN controls that Bg (BACK=true, non-
+   // interactive) was letting straight through to the chart. Parked
+   // off-screen while minimized, same as the body controls themselves.
+   if(ObjectFind(0, PANEL_PREFIX + "BodyCatcher") < 0)
+     {
+      ObjectCreate(0, PANEL_PREFIX + "BodyCatcher", OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_BGCOLOR, clrWhiteSmoke);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_COLOR, clrWhiteSmoke);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_BACK, false);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_ZORDER, 1);
+     }
+   ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_XDISTANCE, x - margin);
+   ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_YDISTANCE,
+                     g_panelMinimized ? PANEL_HIDDEN_Y : y - margin + PANEL_HEADER_HEIGHT);
+   ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_XSIZE, PANEL_WIDTH);
+   ObjectSetInteger(0, PANEL_PREFIX + "BodyCatcher", OBJPROP_YSIZE, PANEL_HEIGHT - PANEL_HEADER_HEIGHT);
 
    PanelCreateLabel("Title", x, y, "STREFA MANUALNA", 11);
+   PanelCreateButton("MinimizeBtn", x + PANEL_WIDTH - 2 * margin - 24, y - 6, 24, 22,
+                      g_panelMinimized ? "+" : "-", clrLightGray, 12);
    int rowY = y + 26;
 
-   PanelCreateLabel("LblZone", x, rowY, "Strefa:");
-   PanelCreateLabel("ZoneValueLbl", x + 150, rowY, "-- brak, kliknij Zaznacz --");
+   PanelCreateLabel("LblZone", x, PanelBodyY(rowY), "Strefa:");
+   PanelCreateLabel("ZoneValueLbl", x + 150, PanelBodyY(rowY), "-- brak, kliknij Zaznacz --");
    rowY += rowH;
 
-   PanelCreateButton("PickZoneBtn", x, rowY, PANEL_WIDTH - 2 * margin, 32, "ZAZNACZ STREFE (2 kliknieca na wykresie)", clrKhaki);
+   PanelCreateButton("PickZoneBtn", x, PanelBodyY(rowY), PANEL_WIDTH - 2 * margin, 32, "ZAZNACZ STREFE (2 kliknieca na wykresie)", clrKhaki);
    rowY += 38;
 
-   PanelCreateLabel("LblSl", x, rowY, "SL (pips):");
-   PanelCreateLabel("SlValueLbl", x + 150, rowY, DoubleToString(g_slPips, 0));
-   PanelCreateButton("SlMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("SlPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblSl", x, PanelBodyY(rowY), "SL (pips):");
+   PanelCreateLabel("SlValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_slPips, 0));
+   PanelCreateButton("SlMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("SlPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblTrail", x, rowY, "Trailing (pips):");
-   PanelCreateLabel("TrailValueLbl", x + 150, rowY, DoubleToString(g_trailPips, 0));
-   PanelCreateButton("TrailMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("TrailPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblTrail", x, PanelBodyY(rowY), "Trailing (pips):");
+   PanelCreateLabel("TrailValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_trailPips, 0));
+   PanelCreateButton("TrailMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("TrailPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblTrailLock", x, rowY, "Blokada zysku (pips):");
-   PanelCreateLabel("TrailLockValueLbl", x + 150, rowY, DoubleToString(g_trailLockPips, 0));
-   PanelCreateButton("TrailLockMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("TrailLockPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblTrailLock", x, PanelBodyY(rowY), "Blokada zysku (pips):");
+   PanelCreateLabel("TrailLockValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_trailLockPips, 0));
+   PanelCreateButton("TrailLockMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("TrailLockPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblStep", x, rowY, "Krok siatki ($):");
-   PanelCreateLabel("StepValueLbl", x + 150, rowY, DoubleToString(g_stepDollars, 2));
-   PanelCreateButton("StepMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("StepPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblStep", x, PanelBodyY(rowY), "Krok siatki ($):");
+   PanelCreateLabel("StepValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_stepDollars, 2));
+   PanelCreateButton("StepMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("StepPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblExtendUp", x, rowY, "Rozszerz gora ($):");
-   PanelCreateLabel("ExtendUpValueLbl", x + 150, rowY, DoubleToString(g_extendUpDollars, 2));
-   PanelCreateButton("ExtendUpMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("ExtendUpPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblExtendUp", x, PanelBodyY(rowY), "Rozszerz gora ($):");
+   PanelCreateLabel("ExtendUpValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_extendUpDollars, 2));
+   PanelCreateButton("ExtendUpMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("ExtendUpPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
-   PanelCreateLabel("LblExtendDown", x, rowY, "Rozszerz dol ($):");
-   PanelCreateLabel("ExtendDownValueLbl", x + 150, rowY, DoubleToString(g_extendDownDollars, 2));
-   PanelCreateButton("ExtendDownMinusBtn", x + 215, rowY - 4, smallBtnW, smallBtnH, "-", clrLightGray);
-   PanelCreateButton("ExtendDownPlusBtn", x + 215 + smallBtnW + 6, rowY - 4, smallBtnW, smallBtnH, "+", clrLightGray);
+   PanelCreateLabel("LblExtendDown", x, PanelBodyY(rowY), "Rozszerz dol ($):");
+   PanelCreateLabel("ExtendDownValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_extendDownDollars, 2));
+   PanelCreateButton("ExtendDownMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
+   PanelCreateButton("ExtendDownPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH + 6;
 
    int tradeBtnW = (PANEL_WIDTH - 2 * margin - 10) / 2;
-   PanelCreateButton("BuyBtn", x, rowY, tradeBtnW, 36, "BUY", clrLimeGreen, 12);
-   PanelCreateButton("SellBtn", x + tradeBtnW + 10, rowY, tradeBtnW, 36, "SELL", clrTomato, 12);
+   PanelCreateButton("BuyBtn", x, PanelBodyY(rowY), tradeBtnW, 36, "BUY", clrLimeGreen, 12);
+   PanelCreateButton("SellBtn", x + tradeBtnW + 10, PanelBodyY(rowY), tradeBtnW, 36, "SELL", clrTomato, 12);
    rowY += 46;
 
-   PanelCreateButton("BuyMarketBtn", x, rowY, tradeBtnW, 32, "BUY MARKET", clrSeaGreen, 10);
-   PanelCreateButton("SellMarketBtn", x + tradeBtnW + 10, rowY, tradeBtnW, 32, "SELL MARKET", clrIndianRed, 10);
+   PanelCreateButton("BuyMarketBtn", x, PanelBodyY(rowY), tradeBtnW, 32, "BUY MARKET", clrSeaGreen, 10);
+   PanelCreateButton("SellMarketBtn", x + tradeBtnW + 10, PanelBodyY(rowY), tradeBtnW, 32, "SELL MARKET", clrIndianRed, 10);
    rowY += 42;
 
-   PanelCreateButton("ClosePendingBtn", x, rowY, PANEL_WIDTH - 2 * margin, 30, "ZAMKNIJ ZLECENIA OCZEKUJACE", clrGold);
+   PanelCreateButton("ClosePendingBtn", x, PanelBodyY(rowY), PANEL_WIDTH - 2 * margin, 30, "ZAMKNIJ ZLECENIA OCZEKUJACE", clrGold);
    rowY += 38;
 
-   PanelCreateLabel("Status", x, rowY, "Gotowy - kliknij 'Zaznacz strefe'.", 9);
+   PanelCreateLabel("Status", x, PanelBodyY(rowY), "Gotowy - kliknij 'Zaznacz strefe'.", 9);
    ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Moves the whole panel to a new top-left content origin - just     |
+//| calls PanelCreate again, which repositions every existing object   |
+//| (create-once/reposition-after, see PanelCreateLabel/Button)        |
+//| instead of recreating them. Used by the TitleBar's native MT5      |
+//| object-drag handling in OnChartEvent.                              |
+//+------------------------------------------------------------------+
+void PanelMoveTo(int newX, int newY)
+  {
+   PanelCreate(newX, newY);
+  }
+
+//+------------------------------------------------------------------+
+//| Toggles the panel between its normal layout and a header-only      |
+//| strip (title bar + this same button, now showing "+") - everything |
+//| else just gets parked off-screen (PanelBodyY), not deleted, so      |
+//| restoring is instant and never resets any value.                   |
+//+------------------------------------------------------------------+
+void PanelToggleMinimize()
+  {
+   g_panelMinimized = !g_panelMinimized;
+   PanelCreate(g_panelOriginX, g_panelOriginY);
   }
 
 //+------------------------------------------------------------------+
@@ -1273,10 +1425,28 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       return;
      }
 
+   if(id == CHARTEVENT_OBJECT_DRAG && sparam == PANEL_PREFIX + "TitleBar")
+     {
+      // MT5 already moved TitleBar itself (native drag, since it's the
+      // only OBJPROP_SELECTABLE panel object) - read where it landed and
+      // bring the rest of the panel along to match.
+      int newX = (int)ObjectGetInteger(0, sparam, OBJPROP_XDISTANCE) + PANEL_MARGIN;
+      int newY = (int)ObjectGetInteger(0, sparam, OBJPROP_YDISTANCE) + PANEL_MARGIN;
+      PanelMoveTo(newX, newY);
+      ObjectSetInteger(0, sparam, OBJPROP_SELECTED, false);
+      ChartRedraw(0);
+      return;
+     }
+
    if(id != CHARTEVENT_OBJECT_CLICK)
       return;
 
-   if(sparam == PANEL_PREFIX + "PickZoneBtn")
+   if(sparam == PANEL_PREFIX + "MinimizeBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelToggleMinimize();
+     }
+   else if(sparam == PANEL_PREFIX + "PickZoneBtn")
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelStartZonePick();

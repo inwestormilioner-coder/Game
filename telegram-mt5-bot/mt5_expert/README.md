@@ -118,9 +118,18 @@ Instalacja - te same kroki co dla `TelegramBridgeEA.mq5` (patrz sekcja
 wykres, zaznacz **"Allow live trading"**, upewnij się że **Algo Trading**
 jest włączony globalnie.
 
-Panel jest **w pełni obsługiwany klikaniem** - żadnego wpisywania tekstu,
-żadnego przeciągania obiektów (oba okazały się niepewne w niektórych
-konfiguracjach/motywach MT5, więc panel ich w ogóle nie używa):
+Panel można **przesuwać myszką i minimalizować**: złap za **pasek tytułu**
+("STREFA MANUALNA" na górze, nie za sam przycisk "-"/"+") i przeciągnij w
+inne miejsce wykresu; przycisk **"-"/"+"** w pasku tytułu zwija panel do
+samego paska (wszystkie kontrolki chowają się, żadna wartość się nie
+resetuje) i przywraca go z powrotem. Kliknięcie gdziekolwiek na panelu
+(nawet w puste miejsce między przyciskami) zostaje na panelu i już nie
+"przebija się" do wykresu pod spodem, jak to bywało wcześniej.
+
+Poza samym przesuwaniem/minimalizowaniem panel jest **w pełni obsługiwany
+klikaniem** - żadnego wpisywania tekstu do pól zony/SL/trailingu (OBJ_EDIT
+okazało się niepewne w niektórych konfiguracjach/motywach MT5, więc panel
+go w ogóle nie używa):
 
 1. Klikasz **"ZAZNACZ STREFE"**.
 2. Klikasz na wykresie **dwa punkty** (dowolna kolejność) - to są granice
