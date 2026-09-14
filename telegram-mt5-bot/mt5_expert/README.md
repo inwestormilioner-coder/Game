@@ -141,6 +141,8 @@ go w ogóle nie używa):
    siatki ($)**, **Rozszerz gora ($)**, **Rozszerz dol ($)** ustawiasz
    przyciskami `-`/`+` obok każdej wartości (SL/Trailing: co 5 pipsów,
    Blokada zysku: co 1 pips, Krok siatki/Rozszerz gora/dol: co $0.50).
+   Przycisk **"Trailing: KAZDA POZYCJA OSOBNO/CALY KOSZYK"** przełącza
+   tryb liczenia trailingu - patrz "Trailing koszykiem" niżej.
 4. Klikasz **BUY** albo **SELL**.
 
 EA liczy siatkę wejść co "Krok siatki" w zaznaczonej strefie, jeden
@@ -182,6 +184,20 @@ poziom aktywuje się przy 36 pipsach, kolejny przy 34, kolejny 32, 30, 28,
 poziomów bliżej SL). To dwa Inputs EA (nie stepper na panelu - rzadko się
 zmienia): ustaw `PanelTrailingSpeedupStepPips=0`, żeby wyłączyć (wszystkie
 poziomy trzymają się jednego "Trailing (pips)", jak wcześniej).
+
+**Trailing koszykiem** - przycisk **"Trailing: KAZDA POZYCJA OSOBNO" /
+"Trailing: CALY KOSZYK (razem)"** przełącza, jak liczony jest trailing dla
+KOLEJNEJ wystawianej strefy (jak każdy inny stepper na panelu - zmiana nie
+dotyka już otwartych zleceń). W trybie koszyka wszystkie pozycje z danej
+strefy trailują RAZEM, liczone od średniej ważonej wolumenem ceny wejścia
+całego koszyka (nie każda pozycja od swojej własnej) - gdy łączny zysk
+koszyka przekroczy "Trailing (pips)", WSZYSTKIE pozycje w tej strefie
+dostają ten sam docelowy SL (każda tylko jeśli to dla niej ciaśniej niż
+ma teraz). Przydatne gdy w strefie masz dużo mniejszych zleceń, które
+osobno ciężko żeby same osiągnęły próg trailingu - w koszyku "jadą" na
+łącznym zysku całości. Tryb koszyka ignoruje przyspieszenie z poprzedniego
+akapitu (`PanelTrailingSpeedupStepPips`) - używa wprost "Trailing (pips)"/
+"Blokada zysku (pips)" strefy.
 
 **"BUY MARKET"** / **"SELL MARKET"** otwierają pozycję od razu po cenie
 rynkowej, bez klikania "Zaznacz strefe" - strefa jest liczona automatycznie:

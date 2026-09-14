@@ -105,6 +105,22 @@
 //| shared across the whole zone like Blokada zysku/lock is. Set the  |
 //| step to 0 to disable (every level uses plain "Trailing (pips)").  |
 //|                                                                  |
+//| Koszyk (basket) trailing mode - the "Trailing: KOSZYK/POZYCJA"    |
+//| toggle button (PanelToggleBasketMode/g_basketTrailing, captured    |
+//| per zone at placement time like every other stepper): instead of   |
+//| each position needing to reach its OWN profit threshold, the WHOLE |
+//| zone's positions share one trailing calculation measured from the  |
+//| basket's combined volume-weighted average entry                   |
+//| (PanelBasketAvgEntry) - once the basket's combined profit crosses  |
+//| "Trailing (pips)", every position in it gets pulled to the SAME    |
+//| candidate SL (each only actually modified if that's tighter than   |
+//| its own current SL). Useful when a zone has a lot of small grid    |
+//| entries that individually struggle to reach their own trailing     |
+//| threshold - they ride along with the basket's combined profit      |
+//| instead. Mutually exclusive with the per-position speedup above    |
+//| (a basket-mode zone ignores PanelTrailingSpeedupStepPips entirely, |
+//| using the zone's plain "Trailing (pips)"/"Blokada zysku (pips)").  |
+//|                                                                  |
 //| Which trailing_pips value belongs to which position is kept only |
 //| in memory (magic -> trailing_pips), not in a file - a terminal/  |
 //| EA restart loses it for positions already open from before the   |
@@ -121,7 +137,7 @@
 #property strict
 
 #define PANEL_WIDTH  380
-#define PANEL_HEIGHT 520
+#define PANEL_HEIGHT 560
 #define PANEL_MARGIN 10
 #define PANEL_HEADER_HEIGHT 30
 #define PANEL_HIDDEN_Y (-3000)   // parks minimized/off body controls well above the visible chart
@@ -134,8 +150,9 @@ input double PanelDefaultStepDollars      = 0.5;   // starting value for the Kro
 input double PanelDefaultExtendUpDollars   = 0.0;  // starting value for the Rozszerz gora ($) stepper - extra grid levels ABOVE the picked/market zone's top edge, SL stays anchored to the zone (unaffected)
 input double PanelDefaultExtendDownDollars = 0.0;  // starting value for the Rozszerz dol ($) stepper - extra grid levels BELOW the picked/market zone's bottom edge, SL stays anchored to the zone (unaffected)
 input double PanelMarketZoneWidthDollars  = 6.0;   // BUY MARKET/SELL MARKET: width ($) of the auto-computed zone below/above the market fill - SL(pips)/Trailing(pips)/Blokada(pips)/Krok siatki($)/Rozszerz above still apply exactly as configured, so the SL ends up PanelMarketZoneWidthDollars + SL(pips) away from the market entry
-input double PanelTrailingSpeedupStepPips  = 2.0;  // Trailing (pips) shrinks by this many pips per grid position closer to SL (bigger lot) than the previous one - 0th/furthest-from-SL position uses Trailing (pips) as-is, each one after it activates that much sooner, down to PanelTrailingSpeedupFloorPips. Set 0 to disable (every position uses the same Trailing (pips)).
+input double PanelTrailingSpeedupStepPips  = 2.0;  // Trailing (pips) shrinks by this many pips per grid position closer to SL (bigger lot) than the previous one - 0th/furthest-from-SL position uses Trailing (pips) as-is, each one after it activates that much sooner, down to PanelTrailingSpeedupFloorPips. Set 0 to disable (every position uses the same Trailing (pips)). Ignored for a zone placed in Koszyk (basket) trailing mode - see PanelDefaultBasketTrailing.
 input double PanelTrailingSpeedupFloorPips = 14.0; // minimum trailing-activation distance (pips) PanelTrailingSpeedupStepPips can shrink down to, no matter how many positions/how close to SL
+input bool   PanelDefaultBasketTrailing    = false; // starting value for the "Trailing: KOSZYK/POZYCJA" toggle - KOSZYK (basket) trails every position in a zone TOGETHER off the whole basket's own combined average-entry profit, instead of each position needing to reach ITS OWN profit threshold - helps smaller entries in a big grid ride along with the profitable ones instead of sitting stuck below their own solo activation point
 input double PanelPipSize             = 0.1;   // price value of 1 pip - must match PIP_SIZE in .env / your broker's gold quoting
 input double PanelLotBase             = 0.01;  // base lot for the panel's own order grid (mirrors LOT_SIZE)
 input int    PanelLotTierOrders       = 3;     // mirrors LOT_TIER_ORDERS
@@ -153,6 +170,7 @@ long   g_panelNextMagic = 0;
 long   g_panelMagics[];
 double g_panelTrailingPips[];
 double g_panelTrailingLockPips[];
+bool   g_panelBasketMode[];   // per-magic: true = Koszyk (basket) trailing, see PanelUpdateTrailingStops
 
 // Per-GRID-LEVEL trailing distance (one entry per price level placed by
 // PanelPlaceZone, keyed by magic + that level's own entry price) - lets
@@ -180,6 +198,7 @@ double g_trailLockPips = 0;
 double g_stepDollars = 0;
 double g_extendUpDollars = 0;
 double g_extendDownDollars = 0;
+bool   g_basketTrailing = false;
 
 // Current panel content origin (top-left, same meaning as the x,y PanelCreate
 // takes) - kept so the panel can be dragged (PanelMoveTo) and minimized
@@ -214,6 +233,7 @@ int OnInit()
    g_stepDollars = PanelDefaultStepDollars;
    g_extendUpDollars = PanelDefaultExtendUpDollars;
    g_extendDownDollars = PanelDefaultExtendDownDollars;
+   g_basketTrailing = PanelDefaultBasketTrailing;
 
    int x = PanelX;
    if(PanelOnRight)
@@ -519,6 +539,11 @@ void PanelCreate(int x, int y)
    PanelCreateButton("TrailLockPlusBtn", x + 215 + smallBtnW + 6, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "+", clrLightGray);
    rowY += rowH;
 
+   PanelCreateButton("BasketModeBtn", x, PanelBodyY(rowY), PANEL_WIDTH - 2 * margin, 30,
+                      g_basketTrailing ? "Trailing: CALY KOSZYK (razem)" : "Trailing: KAZDA POZYCJA OSOBNO",
+                      g_basketTrailing ? clrLightSkyBlue : clrLightGray);
+   rowY += 38;
+
    PanelCreateLabel("LblStep", x, PanelBodyY(rowY), "Krok siatki ($):");
    PanelCreateLabel("StepValueLbl", x + 150, PanelBodyY(rowY), DoubleToString(g_stepDollars, 2));
    PanelCreateButton("StepMinusBtn", x + 215, PanelBodyY(rowY - 4), smallBtnW, smallBtnH, "-", clrLightGray);
@@ -772,6 +797,27 @@ void PanelAdjustExtendDown(double delta)
   }
 
 //+------------------------------------------------------------------+
+//| Toggles whether the NEXT placed zone trails as one basket (every   |
+//| position sharing one SL driven by the whole zone's combined        |
+//| average-entry profit - PanelUpdateTrailingStops/PanelBasketAvgEntry|
+//| when g_panelBasketMode is true for its magic) or each position      |
+//| trailing on its own (the original behavior, with                   |
+//| PanelTrailingSpeedupStepPips still applying per level). Captured   |
+//| into the zone's own magic at placement time (PanelPlaceZone), like |
+//| every other stepper on the panel - flipping it later doesn't       |
+//| change already-placed zones.                                       |
+//+------------------------------------------------------------------+
+void PanelToggleBasketMode()
+  {
+   g_basketTrailing = !g_basketTrailing;
+   ObjectSetString(0, PANEL_PREFIX + "BasketModeBtn", OBJPROP_TEXT,
+                    g_basketTrailing ? "Trailing: CALY KOSZYK (razem)" : "Trailing: KAZDA POZYCJA OSOBNO");
+   ObjectSetInteger(0, PANEL_PREFIX + "BasketModeBtn", OBJPROP_BGCOLOR,
+                     g_basketTrailing ? clrLightSkyBlue : clrLightGray);
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
 //| Prices from low to high (inclusive) spaced `step` apart - mirrors |
 //| order_planner.generate_price_levels(). Computed from an index     |
 //| rather than repeated addition to avoid float drift over many      |
@@ -868,6 +914,7 @@ void PanelPlaceZone(string direction)
    double step = g_stepDollars;
    double extendUp = g_extendUpDollars;
    double extendDown = g_extendDownDollars;
+   bool basketMode = g_basketTrailing;
 
    double slPrice = (direction == "BUY")
       ? NormalizeDouble(zoneLow - slPips * PanelPipSize, 2)
@@ -931,9 +978,11 @@ void PanelPlaceZone(string direction)
    ArrayResize(g_panelMagics, slot + 1);
    ArrayResize(g_panelTrailingPips, slot + 1);
    ArrayResize(g_panelTrailingLockPips, slot + 1);
+   ArrayResize(g_panelBasketMode, slot + 1);
    g_panelMagics[slot] = magic;
    g_panelTrailingPips[slot] = trailPips;
    g_panelTrailingLockPips[slot] = trailLockPips;
+   g_panelBasketMode[slot] = basketMode;
 
    int levelSlot = ArraySize(g_panelLevelMagics);
    ArrayResize(g_panelLevelMagics, levelSlot + kept);
@@ -960,9 +1009,14 @@ void PanelPlaceZone(string direction)
    g_zoneHigh = 0;
    PanelSetZoneValueLabel();
 
-   PanelSetStatus(StringFormat(
-      "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f-%.0f pips (blokada +%.0f) (magic=%d)",
-      kept, direction, gridLow, gridHigh, slPrice, minLevelTrailPips, trailPips, trailLockPips, (int)magic));
+   if(basketMode)
+      PanelSetStatus(StringFormat(
+         "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f pips KOSZYKIEM (blokada +%.0f) (magic=%d)",
+         kept, direction, gridLow, gridHigh, slPrice, trailPips, trailLockPips, (int)magic));
+   else
+      PanelSetStatus(StringFormat(
+         "Wystawiono %d zlec. %s %.2f-%.2f, SL=%.2f, trailing=%.0f-%.0f pips (blokada +%.0f) (magic=%d)",
+         kept, direction, gridLow, gridHigh, slPrice, minLevelTrailPips, trailPips, trailLockPips, (int)magic));
   }
 
 //+------------------------------------------------------------------+
@@ -1288,9 +1342,11 @@ void PanelCleanupFinishedZones()
       g_panelMagics[m] = g_panelMagics[last];
       g_panelTrailingPips[m] = g_panelTrailingPips[last];
       g_panelTrailingLockPips[m] = g_panelTrailingLockPips[last];
+      g_panelBasketMode[m] = g_panelBasketMode[last];
       ArrayResize(g_panelMagics, last);
       ArrayResize(g_panelTrailingPips, last);
       ArrayResize(g_panelTrailingLockPips, last);
+      ArrayResize(g_panelBasketMode, last);
 
       // Forward compaction (not swap-with-last) - this magic is about to
       // drop out of g_panelMagics entirely, so any entry a swap-remove
@@ -1345,6 +1401,39 @@ double PanelTrailPipsForPosition(long magic, double entry, double fallback)
   }
 
 //+------------------------------------------------------------------+
+//| Volume-weighted average entry price across every currently OPEN   |
+//| position for one magic - the "whole basket" reference point       |
+//| PanelUpdateTrailingStops trails off of in Koszyk (basket) mode,    |
+//| mirroring the Python bot's check_average_breakeven. Reselects      |
+//| positions internally (PositionSelectByTicket) same as every other  |
+//| position-iterating loop in this file - safe to call mid-loop from  |
+//| PanelUpdateTrailingStops because that loop already captured        |
+//| everything it needs about ITS OWN current position (entry/sl/tp/   |
+//| symbol/isBuy) into local variables before calling this. Returns 0  |
+//| if the magic has no open positions (shouldn't happen - the caller  |
+//| is iterating one of them - but a defensive 0 is easy to guard on). |
+//+------------------------------------------------------------------+
+double PanelBasketAvgEntry(long magic)
+  {
+   double totalVolume = 0;
+   double weighted = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong t = PositionGetTicket(i);
+      if(t == 0 || !PositionSelectByTicket(t))
+         continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != magic)
+         continue;
+      double vol = PositionGetDouble(POSITION_VOLUME);
+      weighted += PositionGetDouble(POSITION_PRICE_OPEN) * vol;
+      totalVolume += vol;
+     }
+   if(totalVolume <= 0)
+      return 0;
+   return weighted / totalVolume;
+  }
+
+//+------------------------------------------------------------------+
 //| Trailing stop for panel-placed positions (matched by magic        |
 //| against g_panelMagics): untouched below trailPips profit; at      |
 //| trailPips profit SL jumps to trailLockPips profit (or exact       |
@@ -1352,11 +1441,21 @@ double PanelTrailPipsForPosition(long magic, double entry, double fallback)
 //| trailPips of profit SL jumps another trailPips, keeping the same  |
 //| trailLockPips buffer on top each time. Tightening only. Same      |
 //| algorithm as the Python bot's EXIT_MODE=trailing_stop             |
-//| (mt5_executor.check_trailing_stops). trailPips itself is looked   |
-//| up PER POSITION (PanelTrailPipsForPosition) rather than shared     |
-//| across the whole magic, so PanelTrailingSpeedupStepPips can make   |
-//| the grid levels closer to SL (bigger lots) activate sooner. Run    |
-//| every OnTimer tick.                                                |
+//| (mt5_executor.check_trailing_stops). Run every OnTimer tick.      |
+//|                                                                     |
+//| Two modes, chosen per zone at placement time (g_panelBasketMode):  |
+//|   - Per-position (default): trailPips is looked up PER POSITION    |
+//|     (PanelTrailPipsForPosition) and measured from THAT position's  |
+//|     own entry, so PanelTrailingSpeedupStepPips can make the grid    |
+//|     levels closer to SL (bigger lots) activate sooner.             |
+//|   - Koszyk (basket): trailPips stays the zone's plain value (no    |
+//|     per-level speedup), but measured from the WHOLE basket's        |
+//|     volume-weighted average entry (PanelBasketAvgEntry) instead of  |
+//|     each position's own - every position in the zone gets the SAME  |
+//|     candidate SL, so smaller entries ride along with the basket's   |
+//|     combined profit rather than needing to reach their own solo     |
+//|     threshold. Each position still only actually gets a MODIFY sent |
+//|     if that shared candidate is tighter than ITS OWN current SL.    |
 //+------------------------------------------------------------------+
 void PanelUpdateTrailingStops()
   {
@@ -1372,12 +1471,14 @@ void PanelUpdateTrailingStops()
       long magic = (long)PositionGetInteger(POSITION_MAGIC);
       double trailPips = -1;
       double trailLockPips = 0;
+      bool basketMode = false;
       for(int m = 0; m < ArraySize(g_panelMagics); m++)
         {
          if(g_panelMagics[m] == magic)
            {
             trailPips = g_panelTrailingPips[m];
             trailLockPips = g_panelTrailingLockPips[m];
+            basketMode = g_panelBasketMode[m];
             break;
            }
         }
@@ -1386,17 +1487,29 @@ void PanelUpdateTrailingStops()
 
       string symbol = PositionGetString(POSITION_SYMBOL);
       double entry = PositionGetDouble(POSITION_PRICE_OPEN);
-      trailPips = PanelTrailPipsForPosition(magic, entry, trailPips);
       double sl = PositionGetDouble(POSITION_SL);
       double tp = PositionGetDouble(POSITION_TP);
       bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+
+      double basePrice = entry;
+      if(basketMode)
+        {
+         double avgEntry = PanelBasketAvgEntry(magic);
+         if(avgEntry <= 0)
+            continue;
+         basePrice = avgEntry;
+        }
+      else
+        {
+         trailPips = PanelTrailPipsForPosition(magic, entry, trailPips);
+        }
 
       double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
       double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
       double trailDistance = trailPips * PanelPipSize;
       double lockDistance = trailLockPips * PanelPipSize;
 
-      double profitDistance = isBuy ? (bid - entry) : (entry - ask);
+      double profitDistance = isBuy ? (bid - basePrice) : (basePrice - ask);
       if(profitDistance < trailDistance)
          continue;
 
@@ -1405,7 +1518,7 @@ void PanelUpdateTrailingStops()
       // of trailDistance, which would delay the next jump by a tick.
       double steps = MathFloor(profitDistance / trailDistance + 0.0000001);
       double locked = (steps - 1) * trailDistance + lockDistance;
-      double candidate = NormalizeDouble(isBuy ? entry + locked : entry - locked, 2);
+      double candidate = NormalizeDouble(isBuy ? basePrice + locked : basePrice - locked, 2);
       bool improved = isBuy ? (candidate > sl) : (candidate < sl);
       if(!improved)
          continue;
@@ -1564,6 +1677,11 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
      {
       ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
       PanelAdjustExtendDown(0.5);
+     }
+   else if(sparam == PANEL_PREFIX + "BasketModeBtn")
+     {
+      ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+      PanelToggleBasketMode();
      }
    else if(sparam == PANEL_PREFIX + "BuyBtn")
      {
