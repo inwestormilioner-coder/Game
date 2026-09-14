@@ -110,6 +110,18 @@ class Config:
     # Local time (24h "HH:MM") the daily pips/profit summary is sent.
     daily_summary_time: str
 
+    # Manual zone signals: lets you paste your own "Kierunek/Strefa/SL"
+    # message (same grammar as the channel, see signal_parser.py) into a
+    # second, personal Telegram chat - handy for firing off a zone from
+    # your phone without needing the channel to post one. Goes through the
+    # EXACT same handle_text() pipeline as the channel (zone/add-to-zone/
+    # breakeven-ignore/close-all-ignore all behave identically) - see
+    # telegram_listener.run_listener. Defaults to "me" (your own Saved
+    # Messages) so it works with zero extra setup: open Saved Messages on
+    # your phone, paste the zone text, done.
+    manual_signals_enabled: bool
+    telegram_manual_chat: str
+
     dry_run: bool
 
 
@@ -148,5 +160,7 @@ def load_config() -> Config:
         notify_enabled=_bool("NOTIFY_ENABLED", True),
         telegram_notify_chat=os.getenv("TELEGRAM_NOTIFY_CHAT", "me"),
         daily_summary_time=os.getenv("DAILY_SUMMARY_TIME", "23:55"),
+        manual_signals_enabled=_bool("MANUAL_SIGNALS_ENABLED", True),
+        telegram_manual_chat=os.getenv("TELEGRAM_MANUAL_CHAT", "me"),
         dry_run=_bool("DRY_RUN", True),
     )

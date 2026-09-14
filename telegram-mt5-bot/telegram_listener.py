@@ -38,21 +38,44 @@ def build_client(config: Config) -> TelegramClient:
     return TelegramClient(config.telegram_session_name, config.telegram_api_id, config.telegram_api_hash)
 
 
-async def run_listener(client: TelegramClient, config: Config, on_message: MessageHandler) -> None:
-    """Assumes `client` is already started (see build_client) - blocks
-    forever listening on config.telegram_channel."""
-    channel = resolve_chat_identifier(config.telegram_channel)
+def _register(client: TelegramClient, chat: Union[int, str], on_message: MessageHandler, label: str) -> None:
+    """Wires one chat's NewMessage events to on_message - shared by the
+    main channel and the manual-signal chat in run_listener below, so a
+    zone/add-to-zone/etc. pasted into either goes through the exact same
+    handling."""
 
-    @client.on(events.NewMessage(chats=channel))
+    @client.on(events.NewMessage(chats=chat))
     async def _handler(event: events.NewMessage.Event) -> None:
         text = event.raw_text or ""
         if not text.strip():
             return
-        log.info("new message: %s", text.replace("\n", " | "))
+        log.info("new message (%s): %s", label, text.replace("\n", " | "))
         try:
             await on_message(text)
         except Exception:
             log.exception("error handling message")
 
+
+async def run_listener(client: TelegramClient, config: Config, on_message: MessageHandler) -> None:
+    """Assumes `client` is already started (see build_client) - blocks
+    forever listening on config.telegram_channel, plus
+    config.telegram_manual_chat when config.manual_signals_enabled (see
+    config.py) - lets you paste your own zone signal from your phone into
+    a personal chat (defaults to "me", your own Saved Messages) and have
+    it go through the exact same parsing/order pipeline as the channel."""
+    channel = resolve_chat_identifier(config.telegram_channel)
+    _register(client, channel, on_message, "channel")
     log.info("listening on channel %s", channel)
+
+    if config.manual_signals_enabled:
+        manual_chat = resolve_chat_identifier(config.telegram_manual_chat)
+        if manual_chat == channel:
+            log.warning(
+                "TELEGRAM_MANUAL_CHAT is the same as TELEGRAM_CHANNEL - not registering a second "
+                "listener (would double-handle every channel message)."
+            )
+        else:
+            _register(client, manual_chat, on_message, "manual")
+            log.info("also listening for manual zone pastes on %s", config.telegram_manual_chat)
+
     await client.run_until_disconnected()

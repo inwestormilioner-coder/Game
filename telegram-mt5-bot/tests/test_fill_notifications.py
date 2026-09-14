@@ -79,6 +79,7 @@ def _config(**overrides) -> Config:
         deviation_points=20, magic_base=990000,
         max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5,
         notify_enabled=True, telegram_notify_chat="me", daily_summary_time="23:55",
+        manual_signals_enabled=True, telegram_manual_chat="me",
         dry_run=False,
     )
     base.update(overrides)

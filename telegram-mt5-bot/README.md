@@ -73,6 +73,17 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   liczone z historii transakcji MT5, niezależnie od tego kiedy sygnał
   przyszedł. Zobacz **`mt5_expert/README.md`** sekcję "Powiadomienia..." -
   wymaga zaktualizowanego EA.
+- **Ręczne strefy z telefonu** (`MANUAL_SIGNALS_ENABLED=true`, domyślnie
+  włączone): możesz sam wysłać sygnał strefy - np. z telefonu - wklejając
+  wiadomość w DOKŁADNIE tej samej postaci co kanał ("Kierunek: Buy/Sell
+  Gold" / "Strefa: xxxx-xx" / "SL: nn pips", działa też "Dołóż do
+  pozycji") do drugiego, prywatnego czatu (`TELEGRAM_MANUAL_CHAT`,
+  domyślnie "me" czyli Twoje własne Zapisane Wiadomości - otwierasz je na
+  telefonie, wklejasz tekst strefy, gotowe, zero dodatkowej konfiguracji).
+  Wiadomość przechodzi przez dokładnie ten sam pipeline parsowania/
+  wystawiania zleceń co kanał - te same ustawienia SL/TP/trailing/siatki z
+  `.env` powyżej, ten sam limit `MAX_ZONE_WIDTH`. Działa tą samą sesją
+  Telegrama co czytanie kanału - nie trzeba osobnego bota/tokena.
 
 ## Instalacja (na Windows, obok MT5)
 
