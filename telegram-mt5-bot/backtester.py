@@ -183,13 +183,18 @@ def simulate_campaign(
 
         if config.exit_mode == "trailing_stop" and step_distance > 0:
             lock_distance = config.trailing_stop_lock_pips * config.pip_size
+            basket_reference_price = None
+            if config.trailing_stop_basket:
+                total_volume = sum(o.lot for o in still_open)
+                basket_reference_price = sum(o.entry_price * o.lot for o in still_open) / total_volume
             for o in still_open:
-                profit_distance = (bar.close - o.entry_price) if direction == "BUY" else (o.entry_price - bar.close)
+                reference_price = basket_reference_price if config.trailing_stop_basket else o.entry_price
+                profit_distance = (bar.close - reference_price) if direction == "BUY" else (reference_price - bar.close)
                 steps = math.floor(round(profit_distance / step_distance, 6))
                 if steps < 1:
                     continue
                 locked = (steps - 1) * step_distance + lock_distance
-                candidate = round(o.entry_price + locked, 2) if direction == "BUY" else round(o.entry_price - locked, 2)
+                candidate = round(reference_price + locked, 2) if direction == "BUY" else round(reference_price - locked, 2)
                 improved = candidate > o.sl_price if direction == "BUY" else candidate < o.sl_price
                 if improved:
                     o.sl_price = candidate

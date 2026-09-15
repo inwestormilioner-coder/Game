@@ -74,7 +74,7 @@ def _config(**overrides) -> Config:
         symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, lot_scaling_mode="additive", lot_multiplier=1.2,
         zone_step=0.5, zone_extend_front=0.0, zone_extend_back=0.0, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
-        exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_lock_pips=0.0,
+        exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_lock_pips=0.0, trailing_stop_basket=False,
         deviation_points=20, magic_base=990000,
         max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5,
         notify_enabled=False, telegram_notify_chat="me", daily_summary_time="23:55",
@@ -364,6 +364,120 @@ def test_trailing_stop_handles_each_position_independently(tmp_path):
     content = files[0].read_text()
     assert "POSITION=1,4456.0,0.0" in content
     assert "POSITION=2" not in content
+
+
+def test_trailing_stop_basket_activates_from_combined_average_not_individual_entry(tmp_path):
+    # BUY basket: entry1=4420 (further from price), entry2=4424 (closer),
+    # equal volumes -> avg entry 4422.0. bid=4425.6 puts the BASKET
+    # exactly at 36 pips profit (one step, lock=0 -> candidate = avg =
+    # 4422.0). Ticket 2's OWN profit is only 4425.6-4424=1.6 (16 pips) -
+    # nowhere near 36 - it would NEVER activate on its own in per-position
+    # mode, but basket mode still pulls it to the shared candidate SL
+    # since the combined basket has crossed the threshold.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4425.6, ask=4425.8, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_basket=True)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "POSITION=1,4422.0,0.0" in content
+    assert "POSITION=2,4422.0,0.0" in content
+
+
+def test_trailing_stop_basket_weights_by_volume_not_a_plain_average(tmp_path):
+    # entry1=4400 vol=0.01, entry2=4430 vol=0.02 -> volume-weighted average
+    # is 4420.0 ((4400*0.01 + 4430*0.02) / 0.03) - a PLAIN average would be
+    # 4415.0. bid=4423.7 is just over 36 pips above the correct weighted
+    # average (one completed step, lock=0 -> candidate = 4420.0 either
+    # way; kept a hair past the exact 36-pip boundary rather than exactly
+    # on it so the weighted average's own float rounding - 4420.000000001
+    # from the /0.03 division - can't knife-edge the activation check),
+    # which only matches if the weighting is actually applied.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4400.0, volume=0.01, tp=0.0, sl=4390.0),
+        FakePosition(ticket=2, magic=990000, price_open=4430.0, volume=0.02, tp=0.0, sl=4390.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4423.7, ask=4423.9, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_basket=True)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "POSITION=1,4420.0,0.0" in content
+    assert "POSITION=2,4420.0,0.0" in content
+
+
+def test_trailing_stop_basket_not_yet_activated_below_threshold(tmp_path):
+    # entry1=4400 (huge individual profit if it activated per-position),
+    # entry2=4430 (barely any) -> avg entry 4415.0. bid=4418.0 is only 30
+    # pips above the basket average - BELOW the 36-pip threshold - so
+    # nothing moves, even though ticket 1's own profit (180 pips) would
+    # have activated it long ago in per-position mode. This is the
+    # trade-off of basket mode: a big winner can get held back by a
+    # laggard until the COMBINED average catches up.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4400.0, volume=0.01, tp=0.0, sl=4390.0),
+        FakePosition(ticket=2, magic=990000, price_open=4430.0, volume=0.01, tp=0.0, sl=4390.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4418.0, ask=4418.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_basket=True)
+
+    assert _bridge_files(fake, "trail_") == []
+
+
+def test_trailing_stop_basket_sell_direction_mirrors(tmp_path):
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4430.0, volume=0.01, tp=0.0, sl=4436.0),
+        FakePosition(ticket=2, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4436.0),
+    ]
+    # avg entry 4425.0, ask=4421.4 -> basket profit exactly 36 pips ->
+    # candidate = 4425.0 for both (SELL: lower SL is tighter).
+    fake = FakeMt5(positions=positions, bid=4421.2, ask=4421.4, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="SELL", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_basket=True)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "POSITION=1,4425.0,0.0" in content
+    assert "POSITION=2,4425.0,0.0" in content
+
+
+def test_trailing_stop_basket_does_not_loosen_an_already_tighter_sl(tmp_path):
+    # Same setup as the "combined average" test above (candidate=4422.0),
+    # but ticket 1 already has a tighter SL (4424.0, e.g. from before
+    # basket mode was turned on) - must be left alone; ticket 2 (looser
+    # current SL) still gets pulled to the shared candidate.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4424.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4425.6, ask=4425.8, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1, trailing_basket=True)
+
+    files = _bridge_files(fake, "trail_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "POSITION=1" not in content
+    assert "POSITION=2,4422.0,0.0" in content
 
 
 def test_place_zone_orders_writes_one_command_file(tmp_path):

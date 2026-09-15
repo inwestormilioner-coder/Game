@@ -85,6 +85,16 @@ class Config:
     # instead of exact breakeven, and every later jump keeps that same
     # 12-pip buffer on top.
     trailing_stop_lock_pips: float
+    # False (default) - each position trails off ITS OWN entry price.
+    # True - every open position in a campaign trails TOGETHER off the
+    # campaign's own volume-weighted average entry price instead (see
+    # Mt5Executor.check_trailing_stops) - every position gets pulled
+    # toward the same candidate SL once the BASKET's combined profit
+    # crosses trailing_stop_pips, so smaller entries that would
+    # individually struggle to reach their own threshold ride along with
+    # the combined result. Continuous version of the tp mode's one-time
+    # basket-average move at risk_reward_trigger.
+    trailing_stop_basket: bool
     deviation_points: int
     magic_base: int
     # Safety net against a misparsed/malformed zone turning into a huge
@@ -152,6 +162,7 @@ def load_config() -> Config:
         exit_mode=os.getenv("EXIT_MODE", "tp"),
         trailing_stop_pips=_float("TRAILING_STOP_PIPS", 36.0),
         trailing_stop_lock_pips=_float("TRAILING_STOP_LOCK_PIPS", 0.0),
+        trailing_stop_basket=_bool("TRAILING_STOP_BASKET", False),
         deviation_points=_int("DEVIATION_POINTS", 20),
         magic_base=_int("MAGIC_BASE", 990000),
         max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),

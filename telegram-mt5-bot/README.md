@@ -84,6 +84,17 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   wystawiania zleceń co kanał - te same ustawienia SL/TP/trailing/siatki z
   `.env` powyżej, ten sam limit `MAX_ZONE_WIDTH`. Działa tą samą sesją
   Telegrama co czytanie kanału - nie trzeba osobnego bota/tokena.
+- **Trailing koszykiem** (`TRAILING_STOP_BASKET=true`, domyślnie wyłączone,
+  działa tylko przy `EXIT_MODE=trailing_stop`): zamiast każdej pozycji
+  trailującej od WŁASNEGO entry, wszystkie otwarte pozycje danej strefy
+  trailują RAZEM od wspólnej, ważonej wolumenem średniej ceny wejścia całej
+  strefy - gdy łączny zysk koszyka przekroczy `TRAILING_STOP_PIPS`,
+  wszystkie pozycje dostają ten sam docelowy SL. Przydatne gdy strefa ma
+  dużo małych wejść, które pojedynczo długo dochodziłyby do własnego progu
+  trailingu - w trybie koszyka "jadą" razem z łącznym wynikiem. Ten sam
+  mechanizm co "Trailing: CALY KOSZYK" w panelu ręcznym
+  (`mt5_expert/ManualZonePanelEA.mq5`), tu zastosowany do sygnałów z kanału/
+  ręcznego czatu.
 
 ## Instalacja (na Windows, obok MT5)
 

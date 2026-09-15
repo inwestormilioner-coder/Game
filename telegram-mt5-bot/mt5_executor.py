@@ -212,18 +212,41 @@ class Mt5Executor:
         return True
 
     def check_trailing_stops(
-        self, campaign: Campaign, trailing_pips: float, pip_size: float, trailing_lock_pips: float = 0.0
+        self,
+        campaign: Campaign,
+        trailing_pips: float,
+        pip_size: float,
+        trailing_lock_pips: float = 0.0,
+        trailing_basket: bool = False,
     ) -> None:
         """EXIT_MODE=trailing_stop only: a STEPPED trailing stop - it does
-        NOT continuously follow the price trailing_pips behind it. Each
-        open position trails independently, based on ITS OWN entry price:
+        NOT continuously follow the price trailing_pips behind it.
+
+        Two modes:
+          - Per-position (trailing_basket=False, default): each open
+            position trails independently, based on ITS OWN entry price.
+          - Basket (trailing_basket=True): every open position in the
+            campaign trails TOGETHER off the whole basket's own volume-
+            weighted average entry price instead - once the basket's
+            combined profit crosses trailing_pips, every position gets
+            pulled toward the SAME candidate SL (each only actually
+            queued for a MODIFY if that's tighter than its own current
+            SL). Mirrors check_average_breakeven's avg_entry, but as
+            continuous stepped trailing instead of a one-time move -
+            useful when a campaign has many small entries that
+            individually struggle to reach their own trailing threshold;
+            in basket mode they ride along with the combined result.
+
+        Either way, the stepping itself works the same, measured from
+        whichever reference price (each position's own entry, or the
+        basket average) applies:
 
           - Below trailing_pips profit: untouched, SL stays wherever it
             already is (the zone's shared initial SL) - not yet activated.
           - At trailing_pips profit: SL jumps to trailing_lock_pips profit
-            (this position's own entry price + trailing_lock_pips, or
-            exactly breakeven when trailing_lock_pips=0, the default) -
-            trailing "activates".
+            (the reference price + trailing_lock_pips, or exactly
+            breakeven when trailing_lock_pips=0, the default) - trailing
+            "activates".
           - Every further trailing_pips of profit beyond that: SL jumps
             another trailing_pips in the profit direction, keeping the same
             trailing_lock_pips buffer on top each time. So right after each
@@ -259,9 +282,17 @@ class Mt5Executor:
         trail_distance = trailing_pips * pip_size
         lock_distance = trailing_lock_pips * pip_size
 
+        basket_reference_price = None
+        if trailing_basket:
+            total_volume = sum(p.volume for p in positions)
+            if total_volume <= 0:
+                return
+            basket_reference_price = sum(p.price_open * p.volume for p in positions) / total_volume
+
         updates = []
         for pos in positions:
-            profit_distance = (bid - pos.price_open) if campaign.direction == "BUY" else (pos.price_open - ask)
+            reference_price = basket_reference_price if trailing_basket else pos.price_open
+            profit_distance = (bid - reference_price) if campaign.direction == "BUY" else (reference_price - ask)
             if profit_distance < trail_distance:
                 continue
             # round() before floor() guards against float noise (e.g.
@@ -272,10 +303,10 @@ class Mt5Executor:
             locked_distance = (steps - 1) * trail_distance + lock_distance
 
             if campaign.direction == "BUY":
-                candidate_sl = round(pos.price_open + locked_distance, 2)
+                candidate_sl = round(reference_price + locked_distance, 2)
                 improved = candidate_sl > pos.sl
             else:
-                candidate_sl = round(pos.price_open - locked_distance, 2)
+                candidate_sl = round(reference_price - locked_distance, 2)
                 improved = candidate_sl < pos.sl
             if improved:
                 updates.append((pos.ticket, candidate_sl, pos.tp))
