@@ -480,6 +480,101 @@ def test_trailing_stop_basket_does_not_loosen_an_already_tighter_sl(tmp_path):
     assert "POSITION=2,4422.0,0.0" in content
 
 
+def test_sync_manual_sl_first_tick_only_learns_baseline_no_propagation(tmp_path):
+    # No prior _last_known_sl yet for this magic - sync_manual_sl can't yet
+    # tell "manual edit" from "this is just what the SL has always been",
+    # so the very first call for a campaign must never propagate anything.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4425.0, ask=4425.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.sync_manual_sl(campaign)
+
+    assert _bridge_files(fake, "slsync_") == []
+
+
+def test_sync_manual_sl_propagates_manual_change_to_whole_basket(tmp_path):
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=4426.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=4430.0, sl=4414.0),
+        FakePosition(ticket=3, magic=990000, price_open=4428.0, volume=0.01, tp=4434.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4429.0, ask=4429.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.sync_manual_sl(campaign)  # establishes the baseline (all at 4414.0)
+
+    # Simulate the user manually dragging ticket 1's SL to 4420.0 in the terminal.
+    positions[0].sl = 4420.0
+    executor.sync_manual_sl(campaign)
+
+    files = _bridge_files(fake, "slsync_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "TYPE=MODIFY_POSITIONS" in content
+    assert "POSITION=1" not in content  # already at the target, left out
+    assert "POSITION=2,4420.0,4430.0" in content
+    assert "POSITION=3,4420.0,4434.0" in content
+
+
+def test_sync_manual_sl_ignores_its_own_previously_commanded_change(tmp_path):
+    # avg entry 4422.0, shared SL 4414.0 -> risk = 8.0, bid 4430.0 reaches 1:1.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4430.0, ask=4430.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.sync_manual_sl(campaign)  # baseline: both at 4414.0
+    applied = executor.check_average_breakeven(campaign, risk_reward_trigger=1.0)
+    assert applied is True
+
+    # Simulate TelegramBridgeEA having applied the bot's own queued MODIFY_SL.
+    positions[0].sl = 4422.0
+    positions[1].sl = 4422.0
+
+    executor.sync_manual_sl(campaign)
+
+    # Both positions changed since the baseline, but to exactly what THIS
+    # bot itself just commanded - must not be mistaken for a manual edit.
+    assert _bridge_files(fake, "slsync_") == []
+
+
+def test_sync_manual_sl_noop_with_only_one_open_position(tmp_path):
+    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    fake = FakeMt5(positions=positions, bid=4425.0, ask=4425.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.sync_manual_sl(campaign)
+    positions[0].sl = 4420.0
+    executor.sync_manual_sl(campaign)  # nothing to propagate TO - must not error or write anything
+
+    assert _bridge_files(fake, "slsync_") == []
+
+
+def test_sync_manual_sl_noop_when_nothing_changed(tmp_path):
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4414.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4425.0, ask=4425.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.sync_manual_sl(campaign)
+    executor.sync_manual_sl(campaign)
+
+    assert _bridge_files(fake, "slsync_") == []
+
+
 def test_place_zone_orders_writes_one_command_file(tmp_path):
     fake = FakeMt5(positions=[], bid=4419.0, ask=4419.2, commondata_path=str(tmp_path))
     executor = _executor_with(fake)

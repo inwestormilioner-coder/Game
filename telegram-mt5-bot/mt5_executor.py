@@ -70,6 +70,13 @@ class Mt5Executor:
     def __init__(self, config: Config):
         self.config = config
         self._mt5 = None
+        # manual-SL-sync state (see sync_manual_sl): last SL observed per
+        # ticket, grouped by campaign magic, and the last SL THIS bot itself
+        # commanded per ticket (breakeven/trailing) - the latter is what
+        # lets sync_manual_sl tell "I moved this" from "the user moved this"
+        # without mistaking its own not-yet-applied commands for a manual edit.
+        self._last_known_sl: dict[int, dict[int, float]] = {}
+        self._last_commanded_sl: dict[int, float] = {}
 
     def connect(self) -> None:
         import MetaTrader5 as mt5  # noqa: N814 - package name
@@ -209,7 +216,60 @@ class Mt5Executor:
         ]
         path = self._write_command(f"modify_{campaign.id}", lines)
         log.info("queued SL update to basket average %.2f for campaign %s -> %s", avg_entry, campaign.id, path.name)
+        for p in positions:
+            self._last_commanded_sl[p.ticket] = avg_entry
         return True
+
+    def sync_manual_sl(self, campaign: Campaign) -> None:
+        """If you manually move the SL on ANY ONE open position of a
+        campaign - dragging it on the chart, or editing it by hand in MT5's
+        own Trade tab - this propagates that exact SL to every OTHER open
+        position in the same campaign (pending, not-yet-filled orders are
+        left alone; they get their own SL only once filled, from the zone's
+        normal shared SL). Works the same in both EXIT_MODE settings.
+
+        "Manual" is anything that changed since last tick AND doesn't match
+        what THIS bot itself last commanded for that ticket (tracked in
+        _last_commanded_sl by check_average_breakeven/check_trailing_stops)
+        - without that check, a position picking up the bot's own queued
+        breakeven/trailing SL one tick later than its siblings would look
+        like a manual edit and trigger a pointless re-sync loop.
+
+        Call this BEFORE check_average_breakeven/check_trailing_stops each
+        poll tick: both of those only ever tighten a SL, never loosen one,
+        so afterward they simply keep tightening from whatever level was
+        just set here - no special-casing needed to keep them "working
+        normally" after a manual sync.
+        """
+        mt5 = self._mt5
+        positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
+        last_known = self._last_known_sl.get(campaign.magic, {})
+
+        manual_target = None
+        if len(positions) >= 2:
+            for pos in positions:
+                prev_sl = last_known.get(pos.ticket)
+                if prev_sl is None:
+                    continue
+                if pos.sl != prev_sl and pos.sl != self._last_commanded_sl.get(pos.ticket):
+                    manual_target = pos.sl
+                    break
+
+        if manual_target is not None:
+            updates = [(p.ticket, manual_target, p.tp) for p in positions if p.sl != manual_target]
+            if updates:
+                lines = ["TYPE=MODIFY_POSITIONS", f"SYMBOL={self.config.symbol}"]
+                for ticket, sl, tp in updates:
+                    lines.append(f"POSITION={ticket},{sl},{tp}")
+                path = self._write_command(f"slsync_{campaign.id}", lines)
+                log.info(
+                    "manual SL change detected in campaign %s -> syncing whole basket to %.2f (%s)",
+                    campaign.id, manual_target, path.name,
+                )
+                for ticket, sl, _ in updates:
+                    self._last_commanded_sl[ticket] = sl
+
+        self._last_known_sl[campaign.magic] = {p.ticket: p.sl for p in positions}
 
     def check_trailing_stops(
         self,
@@ -323,6 +383,8 @@ class Mt5Executor:
             "queued trailing SL update for %d position(s) in campaign %s -> %s",
             len(updates), campaign.id, path.name,
         )
+        for ticket, sl, tp in updates:
+            self._last_commanded_sl[ticket] = sl
 
     def campaign_has_open_trades(self, campaign: Campaign) -> bool:
         """True while a campaign still has pending orders or open positions

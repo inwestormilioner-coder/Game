@@ -227,6 +227,20 @@ reprezentować zakładaną wielkość/ryzyko strefy. Zlecenie, które zniknęło
 bo się wypełniło (normalny przypadek - jeden poziom siatki złapał cenę),
 zostaje bez zmian, razem z resztą siatki.
 
+**Ręczna zmiana SL przesuwa całą siatkę**: jeśli sam zmienisz SL na
+JEDNEJ otwartej pozycji z danej strefy - przeciągając linię SL na
+wykresie albo edytując ją ręcznie w zakładce Trade w terminalu - EA
+wykrywa to co tick timera (`PanelSyncManualSL`, uruchamiane PRZED
+trailingiem) i ustawia dokładnie ten sam SL na WSZYSTKICH pozostałych
+już otwartych pozycjach z tej samej strefy (zlecenia oczekujące - jeszcze
+niewypełnione - zostają bez zmian, dostaną swój SL dopiero po
+wypełnieniu, jak zwykle). Rozpoznanie "to była ręczna zmiana" opiera się
+o to, że nowa wartość SL różni się od tej, którą EA samo ostatnio
+skomenderowało dla tego ticketu - własne zmiany trailingu nigdy nie są
+mylone z ręczną edycją. Po takiej ręcznej synchronizacji trailing/blokada
+zysku dalej działają normalnie - ponieważ tylko zaciskają SL, nigdy go nie
+luzują, po prostu dalej zaciskają od nowego, ręcznie ustawionego poziomu.
+
 `PanelMagicBase` (domyślnie 500000+) jest celowo poza zakresem
 `MAGIC_BASE` (990000+) używanym przez Pythona - zlecenia z panelu nigdy
 się nie pomieszają z kampaniami sterowanymi sygnałami z kanału, nawet

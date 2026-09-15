@@ -126,6 +126,15 @@
 //| EA restart loses it for positions already open from before the   |
 //| restart (a fresh panel click always works immediately).          |
 //|                                                                  |
+//| Manual SL sync (PanelSyncManualSL, run every OnTimer tick, BEFORE |
+//| PanelUpdateTrailingStops): if you manually move the SL on ANY ONE |
+//| open position of a zone - dragging it on the chart, or editing it |
+//| by hand in MT5's own Trade tab - the SAME SL is propagated to      |
+//| every OTHER open position sharing that magic (pending orders are   |
+//| left alone; they get their own SL only once filled). Trailing is   |
+//| tightening-only, so it keeps working normally afterward - it just  |
+//| tightens further from whatever level you just set by hand.         |
+//|                                                                  |
 //| Zone visibility: each placed order also draws the zone            |
 //| (rectangle), its shared SL (dashed horizontal line) and a text   |
 //| label on the chart, named per magic so several zones can coexist |
@@ -186,6 +195,18 @@ double g_panelLevelTrailPips[];
 // having filled - see that function for why.
 long   g_panelKnownPendingTickets[];
 long   g_panelKnownPendingMagics[];
+
+// Manual-SL-sync tracking (see PanelSyncManualSL): SL last OBSERVED per
+// ticket, and the SL THIS EA itself last COMMANDED per ticket (set by
+// PanelUpdateTrailingStops) - mirrors the Python bot's
+// Mt5Executor.sync_manual_sl/_last_known_sl/_last_commanded_sl. Flat by
+// ticket (globally unique across every magic) rather than grouped by
+// magic - simpler than a nested structure, and a ticket only ever
+// belongs to one magic anyway.
+ulong  g_panelKnownSLTickets[];
+double g_panelKnownSLValues[];
+ulong  g_panelCommandedSLTickets[];
+double g_panelCommandedSLValues[];
 
 double g_zoneLow = 0;
 double g_zoneHigh = 0;
@@ -258,6 +279,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+   PanelSyncManualSL();
    PanelUpdateTrailingStops();
    PanelDetectAbandonedGrids();
    PanelCleanupFinishedZones();
@@ -1434,6 +1456,180 @@ double PanelBasketAvgEntry(long magic)
   }
 
 //+------------------------------------------------------------------+
+//| Small helpers for the flat ticket->SL tracking arrays used by both |
+//| PanelSyncManualSL (manual-edit detection) and PanelUpdateTrailing  |
+//| Stops (recording its own commanded SL) below.                      |
+//+------------------------------------------------------------------+
+bool PanelLookupTrackedSL(const ulong &tickets[], const double &values[], ulong ticket, double &outSL)
+  {
+   for(int i = ArraySize(tickets) - 1; i >= 0; i--)
+      if(tickets[i] == ticket)
+        {
+         outSL = values[i];
+         return true;
+        }
+   return false;
+  }
+
+void PanelSetTrackedSL(ulong &tickets[], double &values[], ulong ticket, double sl)
+  {
+   for(int i = ArraySize(tickets) - 1; i >= 0; i--)
+      if(tickets[i] == ticket)
+        {
+         values[i] = sl;
+         return;
+        }
+   int slot = ArraySize(tickets);
+   ArrayResize(tickets, slot + 1);
+   ArrayResize(values, slot + 1);
+   tickets[slot] = ticket;
+   values[slot] = sl;
+  }
+
+// Keeps only entries whose ticket is still in liveTickets, forward-
+// compacting rather than swap-with-last - same reasoning as
+// PanelCleanupFinishedZones's fix for g_panelLevelMagics: once a ticket's
+// position has actually closed there is no future pass that would catch
+// a leaked entry, so a swap-remove that skips one isn't self-correcting
+// here the way it is for the per-magic arrays.
+void PanelPruneTrackedSL(ulong &tickets[], double &values[], const ulong &liveTickets[])
+  {
+   int kept = 0;
+   for(int i = 0; i < ArraySize(tickets); i++)
+     {
+      bool alive = false;
+      for(int j = 0; j < ArraySize(liveTickets); j++)
+         if(liveTickets[j] == tickets[i])
+           {
+            alive = true;
+            break;
+           }
+      if(!alive)
+         continue;
+      tickets[kept] = tickets[i];
+      values[kept] = values[i];
+      kept++;
+     }
+   ArrayResize(tickets, kept);
+   ArrayResize(values, kept);
+  }
+
+//+------------------------------------------------------------------+
+//| If you manually move the SL on ANY ONE open position belonging to  |
+//| a panel zone - dragging it on the chart, or editing it by hand in  |
+//| MT5's own Trade tab - this propagates that exact SL to every OTHER |
+//| open position sharing the same magic (pending, not-yet-filled      |
+//| orders are left alone; they get their own SL only once filled).    |
+//| Mirrors the Python bot's Mt5Executor.sync_manual_sl.               |
+//|                                                                      |
+//| "Manual" = changed since last tick AND not equal to what THIS EA   |
+//| itself last commanded for that ticket (g_panelCommandedSL*, set by |
+//| PanelUpdateTrailingStops below) - otherwise a position picking up  |
+//| its OWN trailing update one tick later than a sibling would look   |
+//| like a manual edit and trigger a pointless re-sync loop.           |
+//|                                                                      |
+//| Run every OnTimer tick, BEFORE PanelUpdateTrailingStops: trailing  |
+//| only ever tightens a SL, never loosens one, so afterward it simply |
+//| keeps tightening from whatever level was just set here - no        |
+//| special-casing needed to keep it "working normally" post-sync.     |
+//+------------------------------------------------------------------+
+void PanelSyncManualSL()
+  {
+   if(ArraySize(g_panelMagics) == 0)
+      return;
+
+   ulong  liveTickets[];
+   long   liveMagics[];
+   double liveSL[];
+   double liveTP[];
+   string liveSymbol[];
+
+   for(int p = PositionsTotal() - 1; p >= 0; p--)
+     {
+      ulong ticket = PositionGetTicket(p);
+      if(ticket == 0 || !PositionSelectByTicket(ticket))
+         continue;
+      long magic = (long)PositionGetInteger(POSITION_MAGIC);
+      bool managed = false;
+      for(int m = 0; m < ArraySize(g_panelMagics); m++)
+         if(g_panelMagics[m] == magic)
+           {
+            managed = true;
+            break;
+           }
+      if(!managed)
+         continue;
+
+      int slot = ArraySize(liveTickets);
+      ArrayResize(liveTickets, slot + 1);
+      ArrayResize(liveMagics, slot + 1);
+      ArrayResize(liveSL, slot + 1);
+      ArrayResize(liveTP, slot + 1);
+      ArrayResize(liveSymbol, slot + 1);
+      liveTickets[slot] = ticket;
+      liveMagics[slot]  = magic;
+      liveSL[slot]      = PositionGetDouble(POSITION_SL);
+      liveTP[slot]      = PositionGetDouble(POSITION_TP);
+      liveSymbol[slot]  = PositionGetString(POSITION_SYMBOL);
+     }
+
+   PanelPruneTrackedSL(g_panelKnownSLTickets, g_panelKnownSLValues, liveTickets);
+   PanelPruneTrackedSL(g_panelCommandedSLTickets, g_panelCommandedSLValues, liveTickets);
+
+   for(int i = 0; i < ArraySize(liveTickets); i++)
+     {
+      double prevSL;
+      if(!PanelLookupTrackedSL(g_panelKnownSLTickets, g_panelKnownSLValues, liveTickets[i], prevSL))
+         continue; // first tick we've seen this ticket - no baseline yet
+      if(liveSL[i] == prevSL)
+         continue; // unchanged since last tick
+
+      double commandedSL;
+      bool hasCommanded = PanelLookupTrackedSL(g_panelCommandedSLTickets, g_panelCommandedSLValues, liveTickets[i], commandedSL);
+      if(hasCommanded && liveSL[i] == commandedSL)
+         continue; // this EA's own trailing update taking effect - not a manual edit
+
+      // Manual change detected on liveTickets[i] - propagate it to every
+      // OTHER open position sharing this magic.
+      long   magic  = liveMagics[i];
+      double target = liveSL[i];
+      for(int j = 0; j < ArraySize(liveTickets); j++)
+        {
+         if(liveMagics[j] != magic || liveTickets[j] == liveTickets[i])
+            continue;
+         if(liveSL[j] == target)
+            continue;
+
+         MqlTradeRequest request;
+         MqlTradeResult  result;
+         ZeroMemory(request);
+         ZeroMemory(result);
+         request.action   = TRADE_ACTION_SLTP;
+         request.position = liveTickets[j];
+         request.symbol   = liveSymbol[j];
+         request.sl       = target;
+         request.tp       = liveTP[j];
+
+         bool ok = OrderSend(request, result);
+         if(!ok || result.retcode != TRADE_RETCODE_DONE)
+            PrintFormat("Panel: manual SL sync FAILED for ticket %d retcode=%d comment='%s'",
+                        (int)liveTickets[j], result.retcode, result.comment);
+         else
+           {
+            PrintFormat("Panel: manual SL change on ticket %d -> syncing whole zone (magic=%d) to %.2f",
+                        (int)liveTickets[i], (int)magic, target);
+            PanelSetTrackedSL(g_panelCommandedSLTickets, g_panelCommandedSLValues, liveTickets[j], target);
+            liveSL[j] = target; // keep this tick's snapshot consistent if the magic has more than 2 positions
+           }
+        }
+      break; // one manual change actioned per tick - PollSeconds is short enough that a second one is caught next tick
+     }
+
+   for(int i = 0; i < ArraySize(liveTickets); i++)
+      PanelSetTrackedSL(g_panelKnownSLTickets, g_panelKnownSLValues, liveTickets[i], liveSL[i]);
+  }
+
+//+------------------------------------------------------------------+
 //| Trailing stop for panel-placed positions (matched by magic        |
 //| against g_panelMagics): untouched below trailPips profit; at      |
 //| trailPips profit SL jumps to trailLockPips profit (or exact       |
@@ -1538,7 +1734,10 @@ void PanelUpdateTrailingStops()
          PrintFormat("Panel: trailing SL FAILED for ticket %d retcode=%d comment='%s'",
                      (int)ticket, result.retcode, result.comment);
       else
+        {
          PrintFormat("Panel: trailing SL -> %.2f for ticket %d (magic=%d)", candidate, (int)ticket, (int)magic);
+         PanelSetTrackedSL(g_panelCommandedSLTickets, g_panelCommandedSLValues, ticket, candidate);
+        }
      }
   }
 

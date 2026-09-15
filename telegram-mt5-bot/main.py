@@ -183,11 +183,20 @@ class Bot:
     async def monitor_campaigns(self) -> None:
         """Own trade management, independent of the Telegram channel.
 
+        Every tick, first checks for a MANUAL SL edit (dragged on the chart,
+        or typed into MT5's own Trade tab) on any one open position of a
+        campaign - if found, syncs the whole campaign's other open positions
+        to that same SL (see Mt5Executor.sync_manual_sl). Works the same in
+        both exit modes.
+
+        Then, per EXIT_MODE:
         EXIT_MODE=tp (default): moves SL to the basket average once profit
         reaches 1:1 (configurable) risk:reward.
         EXIT_MODE=trailing_stop: every open position's own SL continuously
         trails TRAILING_STOP_PIPS behind price instead - no basket-average
         move, since the two would fight each other.
+        Both are tightening-only, so they never undo a manual sync above -
+        they just keep tightening from whatever level it set.
 
         Either way, marks a campaign inactive once MT5 shows no pending
         orders or open positions left for it (all closed via TP/SL). No-op
@@ -202,6 +211,7 @@ class Bot:
             self.executor.check_bridge_backlog()
             for campaign in self.store.most_recent_active(self.config.symbol):
                 try:
+                    self.executor.sync_manual_sl(campaign)
                     if self.config.exit_mode == "trailing_stop":
                         self.executor.check_trailing_stops(
                             campaign, self.config.trailing_stop_pips, self.config.pip_size,
