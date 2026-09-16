@@ -575,6 +575,107 @@ def test_sync_manual_sl_noop_when_nothing_changed(tmp_path):
     assert _bridge_files(fake, "slsync_") == []
 
 
+def test_check_trailing_stops_returns_true_when_it_activates(tmp_path):
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    fake = FakeMt5(positions=positions, bid=4423.6, ask=4423.8, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1) is True
+
+
+def test_check_trailing_stops_returns_false_when_below_threshold(tmp_path):
+    positions = [FakePosition(ticket=111, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    fake = FakeMt5(positions=positions, bid=4423.0, ask=4423.2, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1) is False
+
+
+def test_check_trailing_stops_returns_false_with_no_open_positions(tmp_path):
+    fake = FakeMt5(positions=[], bid=4423.6, ask=4423.8, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    assert executor.check_trailing_stops(campaign, trailing_pips=36, pip_size=0.1) is False
+
+
+def test_trim_grid_noop_when_trailing_not_yet_activated(tmp_path):
+    # Half the zone (2 of 4) is already filled, but trailing_activated is
+    # still False - must not touch the pending orders yet.
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=[FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000)], commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60, total_orders=4, trailing_activated=False)
+
+    executor.trim_grid_if_half_filled(campaign)
+
+    assert _bridge_files(fake, "trim_") == []
+
+
+def test_trim_grid_noop_below_half_filled(tmp_path):
+    # Trailing already activated, but only 1 of 4 orders (25%) has filled.
+    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    orders = [FakeOrder(ticket=2, magic=990000), FakeOrder(ticket=3, magic=990000), FakeOrder(ticket=4, magic=990000)]
+    fake = FakeMt5(positions=positions, bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60, total_orders=4, trailing_activated=True)
+
+    executor.trim_grid_if_half_filled(campaign)
+
+    assert _bridge_files(fake, "trim_") == []
+
+
+def test_trim_grid_cancels_pending_once_half_filled_and_trailing_active(tmp_path):
+    # Trailing already activated, and 2 of 4 orders (50%) have filled -
+    # the remaining 2 pending orders must be cancelled.
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4420.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4420.0),
+    ]
+    orders = [FakeOrder(ticket=3, magic=990000), FakeOrder(ticket=4, magic=990000)]
+    fake = FakeMt5(positions=positions, bid=4425.6, ask=4425.8, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60, total_orders=4, trailing_activated=True)
+
+    executor.trim_grid_if_half_filled(campaign)
+
+    files = _bridge_files(fake, "trim_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "TYPE=CANCEL_PENDING" in content
+    assert "MAGIC=990000" in content
+    assert "SYMBOL=XAUUSD" in content
+
+
+def test_trim_grid_noop_when_total_orders_unknown(tmp_path):
+    # An old campaign from before total_orders existed (default 0) - must
+    # not attempt any division-by-zero or spurious cancellation.
+    positions = [FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4414.0)]
+    orders = [FakeOrder(ticket=2, magic=990000)]
+    fake = FakeMt5(positions=positions, bid=4425.6, ask=4425.8, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60, trailing_activated=True)
+
+    executor.trim_grid_if_half_filled(campaign)
+
+    assert _bridge_files(fake, "trim_") == []
+
+
+def test_trim_grid_noop_when_nothing_left_pending(tmp_path):
+    positions = [
+        FakePosition(ticket=1, magic=990000, price_open=4420.0, volume=0.01, tp=0.0, sl=4420.0),
+        FakePosition(ticket=2, magic=990000, price_open=4424.0, volume=0.01, tp=0.0, sl=4420.0),
+    ]
+    fake = FakeMt5(positions=positions, bid=4425.6, ask=4425.8, orders=[], commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60, total_orders=2, trailing_activated=True)
+
+    executor.trim_grid_if_half_filled(campaign)
+
+    assert _bridge_files(fake, "trim_") == []
+
+
 def test_place_zone_orders_writes_one_command_file(tmp_path):
     fake = FakeMt5(positions=[], bid=4419.0, ask=4419.2, commondata_path=str(tmp_path))
     executor = _executor_with(fake)

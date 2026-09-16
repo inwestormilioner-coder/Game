@@ -32,6 +32,17 @@ class Campaign:
     opened_at: float = field(default_factory=time.time)
     active: bool = True
     breakeven_applied: bool = False
+    # How many orders plan_orders() produced for this zone at signal time -
+    # used by Mt5Executor.trim_grid_if_half_filled to know what "half the
+    # zone's orders" means (0 = unknown/not tracked, e.g. an old campaign
+    # from before this field existed - that check just no-ops on 0).
+    total_orders: int = 0
+    # EXIT_MODE=trailing_stop only: True once check_trailing_stops has
+    # queued at least one SL update for this campaign (see
+    # mark_trailing_activated below) - sticky even if a later tick's price
+    # pullback produces no further update, since trailing having KICKED IN
+    # once is what trim_grid_if_half_filled cares about.
+    trailing_activated: bool = False
 
 
 class CampaignStore:
@@ -86,4 +97,10 @@ class CampaignStore:
         for c in self._campaigns:
             if c.id == campaign_id:
                 c.breakeven_applied = True
+        self._save()
+
+    def mark_trailing_activated(self, campaign_id: str) -> None:
+        for c in self._campaigns:
+            if c.id == campaign_id:
+                c.trailing_activated = True
         self._save()

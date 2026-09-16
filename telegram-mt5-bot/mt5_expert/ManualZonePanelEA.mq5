@@ -135,6 +135,14 @@
 //| tightening-only, so it keeps working normally afterward - it just  |
 //| tightens further from whatever level you just set by hand.         |
 //|                                                                  |
+//| Trim grid once trailing activates (PanelTrimGridIfHalfFilled, run  |
+//| every OnTimer tick, after PanelUpdateTrailingStops): once trailing  |
+//| has moved any SL for a zone AND at least HALF that zone's           |
+//| originally-placed orders have already filled, cancels whatever's   |
+//| still pending in that same grid - trailing is already protecting   |
+//| the filled positions' profit, so there's no reason to keep waiting |
+//| for (and risking) the rest of the zone filling too.                |
+//|                                                                  |
 //| Zone visibility: each placed order also draws the zone            |
 //| (rectangle), its shared SL (dashed horizontal line) and a text   |
 //| label on the chart, named per magic so several zones can coexist |
@@ -180,6 +188,8 @@ long   g_panelMagics[];
 double g_panelTrailingPips[];
 double g_panelTrailingLockPips[];
 bool   g_panelBasketMode[];   // per-magic: true = Koszyk (basket) trailing, see PanelUpdateTrailingStops
+int    g_panelTotalOrders[];       // per-magic: how many orders PanelPlaceZone placed for this zone
+bool   g_panelTrailingActivated[]; // per-magic: true once PanelUpdateTrailingStops has moved any SL for it - see PanelTrimGridIfHalfFilled
 
 // Per-GRID-LEVEL trailing distance (one entry per price level placed by
 // PanelPlaceZone, keyed by magic + that level's own entry price) - lets
@@ -281,6 +291,7 @@ void OnTimer()
   {
    PanelSyncManualSL();
    PanelUpdateTrailingStops();
+   PanelTrimGridIfHalfFilled();
    PanelDetectAbandonedGrids();
    PanelCleanupFinishedZones();
   }
@@ -1001,10 +1012,14 @@ void PanelPlaceZone(string direction)
    ArrayResize(g_panelTrailingPips, slot + 1);
    ArrayResize(g_panelTrailingLockPips, slot + 1);
    ArrayResize(g_panelBasketMode, slot + 1);
+   ArrayResize(g_panelTotalOrders, slot + 1);
+   ArrayResize(g_panelTrailingActivated, slot + 1);
    g_panelMagics[slot] = magic;
    g_panelTrailingPips[slot] = trailPips;
    g_panelTrailingLockPips[slot] = trailLockPips;
    g_panelBasketMode[slot] = basketMode;
+   g_panelTotalOrders[slot] = kept;
+   g_panelTrailingActivated[slot] = false;
 
    int levelSlot = ArraySize(g_panelLevelMagics);
    ArrayResize(g_panelLevelMagics, levelSlot + kept);
@@ -1365,10 +1380,14 @@ void PanelCleanupFinishedZones()
       g_panelTrailingPips[m] = g_panelTrailingPips[last];
       g_panelTrailingLockPips[m] = g_panelTrailingLockPips[last];
       g_panelBasketMode[m] = g_panelBasketMode[last];
+      g_panelTotalOrders[m] = g_panelTotalOrders[last];
+      g_panelTrailingActivated[m] = g_panelTrailingActivated[last];
       ArrayResize(g_panelMagics, last);
       ArrayResize(g_panelTrailingPips, last);
       ArrayResize(g_panelTrailingLockPips, last);
       ArrayResize(g_panelBasketMode, last);
+      ArrayResize(g_panelTotalOrders, last);
+      ArrayResize(g_panelTrailingActivated, last);
 
       // Forward compaction (not swap-with-last) - this magic is about to
       // drop out of g_panelMagics entirely, so any entry a swap-remove
@@ -1668,6 +1687,7 @@ void PanelUpdateTrailingStops()
       double trailPips = -1;
       double trailLockPips = 0;
       bool basketMode = false;
+      int magicSlot = -1;
       for(int m = 0; m < ArraySize(g_panelMagics); m++)
         {
          if(g_panelMagics[m] == magic)
@@ -1675,6 +1695,7 @@ void PanelUpdateTrailingStops()
             trailPips = g_panelTrailingPips[m];
             trailLockPips = g_panelTrailingLockPips[m];
             basketMode = g_panelBasketMode[m];
+            magicSlot = m;
             break;
            }
         }
@@ -1737,6 +1758,87 @@ void PanelUpdateTrailingStops()
         {
          PrintFormat("Panel: trailing SL -> %.2f for ticket %d (magic=%d)", candidate, (int)ticket, (int)magic);
          PanelSetTrackedSL(g_panelCommandedSLTickets, g_panelCommandedSLValues, ticket, candidate);
+         if(magicSlot >= 0)
+            g_panelTrailingActivated[magicSlot] = true;
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Once trailing has activated for a zone (g_panelTrailingActivated, |
+//| set above the moment PanelUpdateTrailingStops first moves any SL  |
+//| for it) AND at least half its originally-placed orders have       |
+//| filled, cancels whatever's still pending in that grid - trailing  |
+//| is already protecting the filled positions' profit, so there's no |
+//| reason to keep waiting for (and risking) the rest of the zone.    |
+//| Mirrors the Python bot's Mt5Executor.trim_grid_if_half_filled.    |
+//| Run every OnTimer tick, after PanelUpdateTrailingStops - safe to   |
+//| call unconditionally, since once nothing is left pending this is  |
+//| just a no-op scan. Runs BEFORE PanelDetectAbandonedGrids in        |
+//| OnTimer, and forgets whatever it cancels from                     |
+//| g_panelKnownPendingTickets right away - otherwise that function    |
+//| would see this magic's tickets vanish without a fill on the very   |
+//| next tick and misreport it as an abandoned order.                  |
+//+------------------------------------------------------------------+
+void PanelTrimGridIfHalfFilled()
+  {
+   for(int m = 0; m < ArraySize(g_panelMagics); m++)
+     {
+      if(!g_panelTrailingActivated[m] || g_panelTotalOrders[m] <= 0)
+         continue;
+      long magic = g_panelMagics[m];
+
+      int openCount = 0;
+      for(int p = PositionsTotal() - 1; p >= 0; p--)
+        {
+         ulong ticket = PositionGetTicket(p);
+         if(ticket == 0 || !PositionSelectByTicket(ticket))
+            continue;
+         if((long)PositionGetInteger(POSITION_MAGIC) == magic)
+            openCount++;
+        }
+      if((double)openCount / g_panelTotalOrders[m] < 0.5)
+         continue;
+
+      int cancelled = 0;
+      for(int o = OrdersTotal() - 1; o >= 0; o--)
+        {
+         ulong ticket = OrderGetTicket(o);
+         if(ticket == 0 || OrderGetInteger(ORDER_MAGIC) != magic)
+            continue;
+
+         MqlTradeRequest request;
+         MqlTradeResult  result;
+         ZeroMemory(request);
+         ZeroMemory(result);
+         request.action = TRADE_ACTION_REMOVE;
+         request.order   = ticket;
+
+         bool ok = OrderSend(request, result);
+         if(!ok || result.retcode != TRADE_RETCODE_DONE)
+            PrintFormat("Panel: trim-grid cancel FAILED for ticket %d retcode=%d comment='%s'",
+                        (int)ticket, result.retcode, result.comment);
+         else
+            cancelled++;
+        }
+
+      if(cancelled > 0)
+        {
+         PrintFormat(
+            "Panel: zone magic=%d: %d/%d orders filled (trailing already active) -> cancelled %d remaining pending order(s)",
+            (int)magic, openCount, g_panelTotalOrders[m], cancelled);
+
+         int kept = 0;
+         for(int i = 0; i < ArraySize(g_panelKnownPendingMagics); i++)
+           {
+            if(g_panelKnownPendingMagics[i] == magic)
+               continue;
+            g_panelKnownPendingTickets[kept] = g_panelKnownPendingTickets[i];
+            g_panelKnownPendingMagics[kept] = g_panelKnownPendingMagics[i];
+            kept++;
+           }
+         ArrayResize(g_panelKnownPendingTickets, kept);
+         ArrayResize(g_panelKnownPendingMagics, kept);
         }
      }
   }

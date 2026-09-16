@@ -17,10 +17,11 @@ clicking "New Order" uses, unaffected by that restriction. All read-only
 calls (prices, positions, orders, terminal state) still go straight through
 the Python API, which works fine either way - see mt5_expert/README.md.
 
-Three command types get written: OPEN_ORDERS and MODIFY_SL (one shared new
+Four command types get written: OPEN_ORDERS and MODIFY_SL (one shared new
 SL for every position matching a magic number - EXIT_MODE=tp's basket
-breakeven) and MODIFY_POSITIONS (a distinct new SL per ticket -
-EXIT_MODE=trailing_stop's per-position trailing).
+breakeven), MODIFY_POSITIONS (a distinct new SL per ticket -
+EXIT_MODE=trailing_stop's per-position trailing) and CANCEL_PENDING (every
+still-pending order for a magic - trim_grid_if_half_filled below).
 """
 from __future__ import annotations
 
@@ -278,7 +279,7 @@ class Mt5Executor:
         pip_size: float,
         trailing_lock_pips: float = 0.0,
         trailing_basket: bool = False,
-    ) -> None:
+    ) -> bool:
         """EXIT_MODE=trailing_stop only: a STEPPED trailing stop - it does
         NOT continuously follow the price trailing_pips behind it.
 
@@ -332,11 +333,17 @@ class Mt5Executor:
         MODIFY_POSITIONS command (targeting each position by ticket) rather
         than the single-shared-SL MODIFY_SL command check_average_breakeven
         uses.
+
+        Returns True the moment ANY update gets queued this call - main.py
+        uses that to latch campaign.trailing_activated (see
+        campaign_store.CampaignStore.mark_trailing_activated), which
+        trim_grid_if_half_filled below then acts on. False otherwise
+        (nothing to report, NOT "trailing turned off").
         """
         mt5 = self._mt5
         positions = [p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic]
         if not positions:
-            return
+            return False
 
         bid, ask = self.current_price()
         trail_distance = trailing_pips * pip_size
@@ -346,7 +353,7 @@ class Mt5Executor:
         if trailing_basket:
             total_volume = sum(p.volume for p in positions)
             if total_volume <= 0:
-                return
+                return False
             basket_reference_price = sum(p.price_open * p.volume for p in positions) / total_volume
 
         updates = []
@@ -372,7 +379,7 @@ class Mt5Executor:
                 updates.append((pos.ticket, candidate_sl, pos.tp))
 
         if not updates:
-            return
+            return False
 
         lines = ["TYPE=MODIFY_POSITIONS", f"SYMBOL={self.config.symbol}"]
         for ticket, sl, tp in updates:
@@ -385,6 +392,45 @@ class Mt5Executor:
         )
         for ticket, sl, tp in updates:
             self._last_commanded_sl[ticket] = sl
+        return True
+
+    def trim_grid_if_half_filled(self, campaign: Campaign) -> None:
+        """Once trailing has activated for a campaign (campaign.trailing_
+        activated, set by main.py from check_trailing_stops's return value)
+        AND at least half of the zone's originally-planned orders have
+        filled, cancels whatever pending orders are still left in that
+        grid: trailing is already protecting the open positions' profit, so
+        there's no reason to keep waiting for (and adding the risk of) the
+        rest of the zone filling too.
+
+        "Half filled" compares currently OPEN positions of this magic
+        against campaign.total_orders (the count plan_orders() produced at
+        signal time, stored on the campaign) - good enough since this is
+        checked from early in a campaign's life, before anything from it
+        has had a chance to close. campaign.total_orders==0 (an old
+        campaign from before this field existed) makes this a no-op.
+
+        Safe to call every poll tick unconditionally: once nothing is left
+        pending, orders_get comes back empty and this is just a no-op read.
+        """
+        if not campaign.trailing_activated or campaign.total_orders <= 0:
+            return
+
+        mt5 = self._mt5
+        open_count = len([p for p in (mt5.positions_get(symbol=self.config.symbol) or ()) if p.magic == campaign.magic])
+        if open_count / campaign.total_orders < 0.5:
+            return
+
+        pending = [o for o in (mt5.orders_get(symbol=self.config.symbol) or ()) if o.magic == campaign.magic]
+        if not pending:
+            return
+
+        lines = ["TYPE=CANCEL_PENDING", f"MAGIC={campaign.magic}", f"SYMBOL={self.config.symbol}"]
+        path = self._write_command(f"trim_{campaign.id}", lines)
+        log.info(
+            "campaign %s: %d/%d orders filled (trailing already active) -> cancelling %d remaining pending order(s) -> %s",
+            campaign.id, open_count, campaign.total_orders, len(pending), path.name,
+        )
 
     def campaign_has_open_trades(self, campaign: Campaign) -> bool:
         """True while a campaign still has pending orders or open positions

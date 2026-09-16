@@ -95,6 +95,24 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   mechanizm co "Trailing: CALY KOSZYK" w panelu ręcznym
   (`mt5_expert/ManualZonePanelEA.mq5`), tu zastosowany do sygnałów z kanału/
   ręcznego czatu.
+- **Ręczna zmiana SL przesuwa całą siatkę**: jeśli sam zmienisz SL na
+  JEDNEJ otwartej pozycji danej strefy - przeciągając linię SL na wykresie
+  albo edytując ją ręcznie w zakładce Trade w terminalu - bot wykrywa to co
+  tick monitorującej pętli i ustawia dokładnie ten sam SL na wszystkich
+  pozostałych już otwartych pozycjach z tej strefy (zlecenia jeszcze
+  oczekujące zostają bez zmian - dostaną swój SL dopiero po wypełnieniu).
+  Działa w obu `EXIT_MODE`. Breakeven/trailing dalej działają normalnie
+  potem - tylko zaciskają SL, nigdy nie luzują, więc po prostu zaciskają
+  dalej od nowego, ręcznie ustawionego poziomu (`Mt5Executor.sync_manual_sl`).
+  Ten sam mechanizm w panelu ręcznym - zobacz `mt5_expert/README.md`.
+- **Przycinanie siatki po aktywacji trailingu** (`EXIT_MODE=trailing_stop`
+  tylko): gdy trailing już RUSZYŁ SL choć raz dla danej strefy I
+  przynajmniej połowa jej zleceń już się złapała, bot automatycznie
+  anuluje resztę jeszcze niewypełnionych zleceń oczekujących z tej samej
+  strefy - trailing już chroni zysk złapanych pozycji, więc nie ma sensu
+  dalej czekać (i ryzykować) na wypełnienie reszty
+  (`Mt5Executor.trim_grid_if_half_filled`). Już otwartych pozycji to nie
+  dotyka. Ten sam mechanizm w panelu ręcznym - zobacz `mt5_expert/README.md`.
 
 ## Instalacja (na Windows, obok MT5)
 

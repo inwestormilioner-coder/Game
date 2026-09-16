@@ -227,6 +227,15 @@ reprezentować zakładaną wielkość/ryzyko strefy. Zlecenie, które zniknęło
 bo się wypełniło (normalny przypadek - jeden poziom siatki złapał cenę),
 zostaje bez zmian, razem z resztą siatki.
 
+**Przycinanie siatki po aktywacji trailingu**: gdy w danej strefie
+trailing już RUSZYŁ SL choć raz (co tick timera,
+`PanelTrimGridIfHalfFilled`, sprawdzane po `PanelUpdateTrailingStops`) I
+przynajmniej **połowa** zleceń z tej strefy już się złapała, EA
+automatycznie anuluje resztę jeszcze niewypełnionych zleceń oczekujących z
+tej samej siatki. Skoro trailing już chroni zysk złapanych pozycji, nie ma
+sensu dalej czekać (i ryzykować) na wypełnienie reszty strefy. Już
+otwartych pozycji to nie dotyka - tylko zleceń jeszcze oczekujących.
+
 **Ręczna zmiana SL przesuwa całą siatkę**: jeśli sam zmienisz SL na
 JEDNEJ otwartej pozycji z danej strefy - przeciągając linię SL na
 wykresie albo edytując ją ręcznie w zakładce Trade w terminalu - EA

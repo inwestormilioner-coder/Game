@@ -39,6 +39,13 @@
 //|   ...  (ticket,new_sl,tp - each position its own new SL, unlike  |
 //|         MODIFY_SL's one shared SL for every position of a magic) |
 //|                                                                  |
+//|   TYPE=CANCEL_PENDING                                           |
+//|   MAGIC=990009                                                  |
+//|   SYMBOL=XAUUSD                                                 |
+//|   (cancels every still-PENDING order of this magic/symbol - open |
+//|    positions are never touched - see                             |
+//|    mt5_executor.trim_grid_if_half_filled on the Python side)      |
+//|                                                                  |
 //| Each file is deleted once processed. Results are printed to the |
 //| Experts/Journal log - the Python side never reads a result file,|
 //| it just polls positions/orders by magic number afterwards.      |
@@ -218,6 +225,8 @@ void ProcessCommandFile(string relativePath)
       HandleModifySl(magic, symbol, newSl);
    else if(type == "MODIFY_POSITIONS")
       HandleModifyPositions(symbol, positionLines, positionCount);
+   else if(type == "CANCEL_PENDING")
+      HandleCancelPending(magic, symbol);
    else
       PrintFormat("Bridge: unknown command TYPE in %s: '%s'", relativePath, type);
 
@@ -413,6 +422,44 @@ void HandleModifyPositions(string symbol, string &positionLines[], int positionC
       else
          PrintFormat("Bridge: trailing SL -> %.2f for ticket %d", newSl, (int)ticket);
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Cancels every still-PENDING order matching (magic, symbol) - open |
+//| positions are never touched. See                                  |
+//| mt5_executor.trim_grid_if_half_filled on the Python side, which   |
+//| sends this once a campaign's trailing has activated and at least  |
+//| half its grid has already filled.                                 |
+//+------------------------------------------------------------------+
+void HandleCancelPending(long magic, string symbol)
+  {
+   int cancelled = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(OrderGetInteger(ORDER_MAGIC) != magic)
+         continue;
+      if(OrderGetString(ORDER_SYMBOL) != symbol)
+         continue;
+
+      MqlTradeRequest request;
+      MqlTradeResult  result;
+      ZeroMemory(request);
+      ZeroMemory(result);
+      request.action = TRADE_ACTION_REMOVE;
+      request.order   = ticket;
+
+      bool ok = OrderSend(request, result);
+      if(!ok || result.retcode != TRADE_RETCODE_DONE)
+         PrintFormat("Bridge: CANCEL_PENDING FAILED for ticket %d retcode=%d comment='%s'",
+                     (int)ticket, result.retcode, result.comment);
+      else
+         cancelled++;
+     }
+
+   PrintFormat("Bridge: CANCEL_PENDING for magic=%d cancelled %d pending order(s)", (int)magic, cancelled);
   }
 
 //+------------------------------------------------------------------+

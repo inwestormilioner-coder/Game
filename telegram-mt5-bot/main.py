@@ -113,6 +113,7 @@ class Bot:
             direction=zone.direction,
             magic=self.store.next_magic(self.config.magic_base),
             sl_pips=zone.sl_pips,
+            total_orders=len(plans),
         )
 
         log.info(
@@ -198,6 +199,13 @@ class Bot:
         Both are tightening-only, so they never undo a manual sync above -
         they just keep tightening from whatever level it set.
 
+        EXIT_MODE=trailing_stop only, additionally: once trailing has
+        activated for a campaign AND at least half its originally-planned
+        orders have filled, cancels whatever's still pending in that grid
+        (see Mt5Executor.trim_grid_if_half_filled) - trailing is already
+        protecting the filled positions' profit, so there's no reason to
+        keep waiting for (and risking) the rest of the zone.
+
         Either way, marks a campaign inactive once MT5 shows no pending
         orders or open positions left for it (all closed via TP/SL). No-op
         in DRY_RUN - there is no live MT5 position/price data to check
@@ -213,10 +221,13 @@ class Bot:
                 try:
                     self.executor.sync_manual_sl(campaign)
                     if self.config.exit_mode == "trailing_stop":
-                        self.executor.check_trailing_stops(
+                        activated = self.executor.check_trailing_stops(
                             campaign, self.config.trailing_stop_pips, self.config.pip_size,
                             self.config.trailing_stop_lock_pips, self.config.trailing_stop_basket,
                         )
+                        if activated and not campaign.trailing_activated:
+                            self.store.mark_trailing_activated(campaign.id)
+                        self.executor.trim_grid_if_half_filled(campaign)
                     else:
                         applied = self.executor.check_average_breakeven(campaign, self.config.risk_reward_trigger)
                         if applied:
