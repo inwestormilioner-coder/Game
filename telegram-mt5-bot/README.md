@@ -116,6 +116,14 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   dalej czekać (i ryzykować) na wypełnienie reszty
   (`Mt5Executor.trim_grid_if_half_filled`). Już otwartych pozycji to nie
   dotyka. Ten sam mechanizm w panelu ręcznym - zobacz `mt5_expert/README.md`.
+- **Siatka wszystko-albo-nic**: jeśli jedno zlecenie oczekujące z danej
+  strefy zniknie BEZ fillu (np. ręcznie usunięte w terminalu, wygasłe,
+  odrzucone), bot automatycznie usuwa resztę jeszcze niewypełnionych
+  zleceń z tej samej strefy (`Mt5Executor.detect_abandoned_grid`) -
+  niekompletna siatka przestaje reprezentować zakładaną wielkość/ryzyko
+  strefy. Zlecenie, które zniknęło bo się wypełniło (normalny przypadek),
+  zostaje bez zmian razem z resztą siatki. Działa w obu `EXIT_MODE`. Ten
+  sam mechanizm w panelu ręcznym - zobacz `mt5_expert/README.md`.
 
 ## Instalacja (na Windows, obok MT5)
 

@@ -38,6 +38,12 @@ class FakeOrder:
 
 
 @dataclass
+class FakeHistoryOrder:
+    ticket: int
+    state: int
+
+
+@dataclass
 class FakeMt5:
     positions: list
     bid: float
@@ -46,15 +52,21 @@ class FakeMt5:
     orders: list = field(default_factory=list)
     sent_requests: list = field(default_factory=list)
     trade_allowed: bool = True
+    history_orders: list = field(default_factory=list)
 
     TRADE_ACTION_SLTP = "SLTP"
     TRADE_RETCODE_DONE = 10009
+    ORDER_STATE_FILLED = 4
+    ORDER_STATE_CANCELED = 3
 
     def positions_get(self, symbol=None):
         return list(self.positions)
 
     def orders_get(self, symbol=None):
         return list(self.orders)
+
+    def history_orders_get(self, ticket=None):
+        return tuple(o for o in self.history_orders if o.ticket == ticket)
 
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(bid=self.bid, ask=self.ask)
@@ -674,6 +686,84 @@ def test_trim_grid_noop_when_nothing_left_pending(tmp_path):
     executor.trim_grid_if_half_filled(campaign)
 
     assert _bridge_files(fake, "trim_") == []
+
+
+def test_detect_abandoned_grid_first_tick_only_learns_baseline(tmp_path):
+    orders = [FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000)]
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.detect_abandoned_grid(campaign)
+
+    assert _bridge_files(fake, "abandoned_") == []
+
+
+def test_detect_abandoned_grid_noop_when_vanished_ticket_filled(tmp_path):
+    orders = [FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000)]
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.detect_abandoned_grid(campaign)  # baseline: tickets 1,2 pending
+
+    # ticket 1 filled - gone from orders_get, but history shows FILLED.
+    fake.orders = [FakeOrder(ticket=2, magic=990000)]
+    fake.history_orders = [FakeHistoryOrder(ticket=1, state=fake.ORDER_STATE_FILLED)]
+    executor.detect_abandoned_grid(campaign)
+
+    assert _bridge_files(fake, "abandoned_") == []
+
+
+def test_detect_abandoned_grid_cancels_rest_when_ticket_vanished_without_filling(tmp_path):
+    orders = [
+        FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000), FakeOrder(ticket=3, magic=990000),
+    ]
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.detect_abandoned_grid(campaign)  # baseline: tickets 1,2,3 pending
+
+    # ticket 1 manually removed in the terminal - vanished without filling.
+    fake.orders = [FakeOrder(ticket=2, magic=990000), FakeOrder(ticket=3, magic=990000)]
+    fake.history_orders = [FakeHistoryOrder(ticket=1, state=fake.ORDER_STATE_CANCELED)]
+    executor.detect_abandoned_grid(campaign)
+
+    files = _bridge_files(fake, "abandoned_")
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "TYPE=CANCEL_PENDING" in content
+    assert "MAGIC=990000" in content
+    assert "SYMBOL=XAUUSD" in content
+
+
+def test_detect_abandoned_grid_noop_when_no_history_found(tmp_path):
+    orders = [FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000)]
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.detect_abandoned_grid(campaign)  # baseline
+
+    # ticket 1 gone, but no history record for it at all - be conservative.
+    fake.orders = [FakeOrder(ticket=2, magic=990000)]
+    fake.history_orders = []
+    executor.detect_abandoned_grid(campaign)
+
+    assert _bridge_files(fake, "abandoned_") == []
+
+
+def test_detect_abandoned_grid_noop_when_nothing_vanished(tmp_path):
+    orders = [FakeOrder(ticket=1, magic=990000), FakeOrder(ticket=2, magic=990000)]
+    fake = FakeMt5(positions=[], bid=4420.0, ask=4420.2, orders=orders, commondata_path=str(tmp_path))
+    executor = _executor_with(fake)
+    campaign = Campaign(id="c1", symbol="XAUUSD", direction="BUY", magic=990000, sl_pips=60)
+
+    executor.detect_abandoned_grid(campaign)
+    executor.detect_abandoned_grid(campaign)
+
+    assert _bridge_files(fake, "abandoned_") == []
 
 
 def test_place_zone_orders_writes_one_command_file(tmp_path):

@@ -21,7 +21,8 @@ Four command types get written: OPEN_ORDERS and MODIFY_SL (one shared new
 SL for every position matching a magic number - EXIT_MODE=tp's basket
 breakeven), MODIFY_POSITIONS (a distinct new SL per ticket -
 EXIT_MODE=trailing_stop's per-position trailing) and CANCEL_PENDING (every
-still-pending order for a magic - trim_grid_if_half_filled below).
+still-pending order for a magic - trim_grid_if_half_filled and
+detect_abandoned_grid below both use it).
 """
 from __future__ import annotations
 
@@ -78,6 +79,9 @@ class Mt5Executor:
         # without mistaking its own not-yet-applied commands for a manual edit.
         self._last_known_sl: dict[int, dict[int, float]] = {}
         self._last_commanded_sl: dict[int, float] = {}
+        # detect_abandoned_grid's tracking: pending order tickets last seen
+        # per campaign magic - see that method.
+        self._known_pending_tickets: dict[int, set] = {}
 
     def connect(self) -> None:
         import MetaTrader5 as mt5  # noqa: N814 - package name
@@ -431,6 +435,52 @@ class Mt5Executor:
             "campaign %s: %d/%d orders filled (trailing already active) -> cancelling %d remaining pending order(s) -> %s",
             campaign.id, open_count, campaign.total_orders, len(pending), path.name,
         )
+
+    def detect_abandoned_grid(self, campaign: Campaign) -> None:
+        """All-or-nothing grid: if one pending order from a campaign's zone
+        disappears WITHOUT having filled - cancelled by hand in the
+        terminal, expired, rejected - cancels the rest of that zone's
+        still-pending orders too, since a grid missing one of its entries
+        no longer represents the position size/risk the zone was meant to
+        have. Already-open positions are never touched - only still-
+        pending orders. Mirrors the manual panel EA's
+        PanelDetectAbandonedGrids (ManualZonePanelEA.mq5).
+
+        Detects "vanished" by diffing this campaign's currently-pending
+        ticket set against the set seen on the PREVIOUS call (per-campaign,
+        via _known_pending_tickets) - the very first call for a campaign
+        only learns the baseline, same reasoning as sync_manual_sl: with no
+        prior snapshot there's nothing to compare against yet.
+
+        A vanished ticket's own MT5 order history tells us whether it
+        FILLED (expected - one grid entry just caught price, rest is fine,
+        no action) or not (cancelled/expired/rejected - triggers the
+        cleanup). Safe to call every poll tick unconditionally.
+        """
+        mt5 = self._mt5
+        current_pending = {o.ticket for o in (mt5.orders_get(symbol=self.config.symbol) or ()) if o.magic == campaign.magic}
+        known = self._known_pending_tickets.get(campaign.magic, set())
+
+        for ticket in known - current_pending:
+            history = mt5.history_orders_get(ticket=ticket)
+            if not history:
+                continue  # can't tell what happened to it - be conservative, don't cancel
+            if history[0].state == mt5.ORDER_STATE_FILLED:
+                continue  # expected - one grid entry just filled, rest is fine
+
+            still_pending = [o for o in (mt5.orders_get(symbol=self.config.symbol) or ()) if o.magic == campaign.magic]
+            if still_pending:
+                lines = ["TYPE=CANCEL_PENDING", f"MAGIC={campaign.magic}", f"SYMBOL={self.config.symbol}"]
+                path = self._write_command(f"abandoned_{campaign.id}", lines)
+                log.info(
+                    "campaign %s: order %d vanished without filling -> cancelling the rest of its grid "
+                    "(%d order(s)) -> %s",
+                    campaign.id, ticket, len(still_pending), path.name,
+                )
+            current_pending = set()
+            break  # one abandoned order per tick is enough to trigger cleanup
+
+        self._known_pending_tickets[campaign.magic] = current_pending
 
     def campaign_has_open_trades(self, campaign: Campaign) -> bool:
         """True while a campaign still has pending orders or open positions
