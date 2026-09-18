@@ -128,6 +128,38 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   masz drugiego bota na innym koncie i tam tego nie chcesz). Ten sam
   mechanizm w panelu ręcznym - zobacz `mt5_expert/README.md`.
 
+## Drugie konto / druga instancja bota (np. drugi broker)
+
+Uruchomienie bota na DRUGIM koncie MT5 wymaga osobnego procesu Pythona w
+osobnym folderze (pakiet `MetaTrader5` obsługuje tylko JEDEN podłączony
+terminal na proces) - patrz komentarz przy `MT5_BRIDGE_SUBFOLDER` w
+`.env.example`. Druga instancja normalnie potrzebowałaby też WŁASNEGO
+logowania do Telegrama, ale **dwie sesje Telethon zrobione z kopii tego
+samego logowania nie odbierają obie na żywo** - tylko JEDNA z nich
+faktycznie dostaje powiadomienia o nowych wiadomościach (sprawdzone w
+praktyce, nie teoria), więc druga instancja losowo/na stałe przestaje
+widzieć sygnały.
+
+**Rozwiązanie 1 (docelowe, jeśli się da)**: zaloguj drugą instancję
+NAPRAWDĘ osobno (`TELEGRAM_SESSION_NAME` na inną wartość, usuń plik
+`.session` w jej folderze, uruchom - poprosi o numer telefonu i kod z
+aplikacji Telegram, jednorazowo). Wtedy obie instancje mają w pełni
+niezależne sesje i nic więcej nie trzeba robić.
+
+**Rozwiązanie 2 (gdy logowanie się nie udaje - np. kod z Telegrama nie
+przychodzi)**: `SIGNAL_RELAY_ROLE`/`SIGNAL_RELAY_FOLDER` w `.env.example`.
+Jedna instancja (ta z działającym logowaniem) dostaje `SIGNAL_RELAY_ROLE=
+source` i przy okazji zwykłego działania zapisuje każdą wiadomość z
+kanału/prywatnego czatu do wspólnego folderu na dysku. Druga instancja
+(`SIGNAL_RELAY_ROLE=consumer`) w ogóle nie nasłuchuje Telegrama na
+żywo - zamiast tego pilnuje tego folderu i traktuje każdy znaleziony tam
+plik dokładnie tak jak żywą wiadomość. Obie instancje muszą wskazywać na
+**ten sam** folder w `SIGNAL_RELAY_FOLDER` (np. poza folderami obu botów,
+np. `C:\Users\Ty\Desktop\Game\signal_relay`). Powiadomienia wychodzące
+(`NOTIFY_ENABLED`) na instancji `consumer` dalej działają normalnie -
+korzystają z JEJ WŁASNEGO klienta Telegrama tylko do wysyłania, co nie ma
+tego samego problemu co odbieranie.
+
 ## Instalacja (na Windows, obok MT5)
 
 ```bash

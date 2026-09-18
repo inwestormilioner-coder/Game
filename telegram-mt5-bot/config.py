@@ -40,6 +40,29 @@ class Config:
     telegram_session_name: str
     telegram_channel: str
 
+    # Signal relay (multi-account setup where a SECOND bot instance/account
+    # runs as a separate process - needed since the MetaTrader5 Python
+    # package only supports one connected terminal per process): lets that
+    # second instance receive the exact same channel/manual-chat signals as
+    # this one WITHOUT needing its own separate Telegram login. Two
+    # Telethon sessions built from copies of the same login can't both
+    # reliably receive live updates at once - only one of the two actually
+    # gets push notifications for new messages (an observed failure mode,
+    # not a hypothetical one).
+    #   "source" (the instance with the one working Telegram login): every
+    #     incoming channel/manual-chat message is ALSO written as a plain
+    #     text file into signal_relay_folder, in addition to being handled
+    #     normally by this instance itself.
+    #   "consumer" (the second instance): does NOT subscribe to live
+    #     Telegram updates at all - instead polls signal_relay_folder and
+    #     feeds each file it finds through its own handle_text(), exactly
+    #     as if it had received it directly from Telegram. Still connects
+    #     its own Telegram client for OUTBOUND use (NOTIFY_ENABLED's
+    #     messages) if configured - only the INCOMING side is relayed.
+    #   "" (default): disabled, normal single-account behavior.
+    signal_relay_role: str
+    signal_relay_folder: str
+
     mt5_path: str
     mt5_login: int
     mt5_password: str
@@ -163,6 +186,8 @@ def load_config() -> Config:
         telegram_api_hash=os.getenv("TELEGRAM_API_HASH", ""),
         telegram_session_name=os.getenv("TELEGRAM_SESSION_NAME", "signal_bot"),
         telegram_channel=os.getenv("TELEGRAM_CHANNEL", ""),
+        signal_relay_role=os.getenv("SIGNAL_RELAY_ROLE", "").strip().lower(),
+        signal_relay_folder=os.getenv("SIGNAL_RELAY_FOLDER", ""),
         mt5_path=os.getenv("MT5_PATH", ""),
         mt5_login=_int("MT5_LOGIN", 0),
         mt5_password=os.getenv("MT5_PASSWORD", ""),

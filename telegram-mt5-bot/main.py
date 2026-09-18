@@ -14,6 +14,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from campaign_store import Campaign, CampaignStore
 from config import Config, load_config
@@ -335,22 +336,61 @@ def replay(config: Config, path: str) -> None:
 
 
 async def live(config: Config) -> None:
+    """SIGNAL_RELAY_ROLE="consumer" (see config.py/signal_relay.py) skips
+    subscribing to Telegram updates entirely - a second bot instance/
+    account sharing a Telegram login with the "source" instance can't
+    reliably receive live updates itself, so it polls a shared folder for
+    signals relayed by the source instead. It still connects its own
+    Telegram client for OUTBOUND notifications (NOTIFY_ENABLED) if wanted,
+    since sending doesn't have the same reliability problem as receiving.
+
+    Any other role ("source" or "" - the default, single-account case)
+    behaves as before: a live Telegram listener on the channel/manual chat.
+    "source" additionally writes every message it receives to the relay
+    folder for a consumer instance to pick up."""
     from telegram_listener import build_client, run_listener
 
-    client = build_client(config)
-    await client.start()
-
     bot = Bot(config)
-    tasks = [run_listener(client, config, bot.handle_text), bot.monitor_campaigns()]
+    tasks = [bot.monitor_campaigns()]
+    client = None
 
-    if config.notify_enabled and not config.dry_run:
+    if config.signal_relay_role == "consumer":
+        if config.signal_relay_folder:
+            import signal_relay
+
+            tasks.append(signal_relay.watch_relay_folder(
+                Path(config.signal_relay_folder), bot.handle_text, config.monitor_interval_seconds,
+            ))
+        else:
+            log.error("SIGNAL_RELAY_ROLE=consumer but SIGNAL_RELAY_FOLDER is empty - no signals will ever arrive")
+
+        if config.notify_enabled and not config.dry_run:
+            client = build_client(config)
+            await client.start()
+    else:
+        client = build_client(config)
+        await client.start()
+
+        async def on_message(text: str) -> None:
+            if config.signal_relay_role == "source" and config.signal_relay_folder:
+                import signal_relay
+
+                try:
+                    signal_relay.write_relay_signal(Path(config.signal_relay_folder), text)
+                except Exception:
+                    log.exception("error writing relay signal")
+            await bot.handle_text(text)
+
+        tasks.append(run_listener(client, config, on_message))
+
+    if client is not None and config.notify_enabled and not config.dry_run:
         from notifier import Notifier, resolve_chat_identifier
 
         notifier = Notifier(client, resolve_chat_identifier(config.telegram_notify_chat))
         bot._signal_notifier = notifier
         tasks.append(bot.watch_fills())
         tasks.append(bot.daily_summary_loop(notifier))
-    elif config.notify_enabled:
+    elif config.notify_enabled and config.dry_run:
         log.info("NOTIFY_ENABLED is on but DRY_RUN is on too - no MT5 connection, notifications stay off")
 
     await asyncio.gather(*tasks)
