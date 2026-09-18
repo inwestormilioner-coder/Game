@@ -123,6 +123,14 @@ class Config:
     risk_reward_trigger: float
     monitor_interval_seconds: float
 
+    # All-or-nothing grid (default: on): if one pending order from a
+    # campaign's zone disappears WITHOUT having filled (removed by hand in
+    # the terminal, expired, rejected), cancels the rest of that zone's
+    # still-pending orders too - see Mt5Executor.detect_abandoned_grid.
+    # Set false to disable this per bot instance (e.g. a second bot/account
+    # run with a different .env where you don't want this automation).
+    abandoned_grid_cancel: bool
+
     # Telegram notifications (one per ZONE signal + a daily summary) - uses
     # the SAME logged-in Telethon session that reads the signal channel, no
     # separate bot needed. Only active when dry_run is False (the daily
@@ -183,6 +191,7 @@ def load_config() -> Config:
         max_zone_width=_float("MAX_ZONE_WIDTH", 20.0),
         risk_reward_trigger=_float("RISK_REWARD_TRIGGER", 1.0),
         monitor_interval_seconds=_float("MONITOR_INTERVAL_SECONDS", 5),
+        abandoned_grid_cancel=_bool("ABANDONED_GRID_CANCEL", True),
         notify_enabled=_bool("NOTIFY_ENABLED", True),
         telegram_notify_chat=os.getenv("TELEGRAM_NOTIFY_CHAT", "me"),
         daily_summary_time=os.getenv("DAILY_SUMMARY_TIME", "23:55"),

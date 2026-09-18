@@ -209,13 +209,13 @@ class Bot:
         to that same SL (see Mt5Executor.sync_manual_sl). Works the same in
         both exit modes.
 
-        Also every tick, regardless of exit mode: if one pending order from
-        a campaign's grid disappears WITHOUT having filled (cancelled by
-        hand in the terminal, expired, rejected), cancels the rest of that
-        campaign's still-pending orders too (see
-        Mt5Executor.detect_abandoned_grid) - a grid missing one of its
-        entries no longer represents the position size/risk the zone was
-        meant to have.
+        Also every tick, regardless of exit mode, when ABANDONED_GRID_CANCEL
+        is on (the default): if one pending order from a campaign's grid
+        disappears WITHOUT having filled (cancelled by hand in the
+        terminal, expired, rejected), cancels the rest of that campaign's
+        still-pending orders too (see Mt5Executor.detect_abandoned_grid) -
+        a grid missing one of its entries no longer represents the
+        position size/risk the zone was meant to have.
 
         Then, per EXIT_MODE:
         EXIT_MODE=tp (default): moves SL to the basket average once profit
@@ -247,7 +247,8 @@ class Bot:
             for campaign in self.store.most_recent_active(self.config.symbol):
                 try:
                     self.executor.sync_manual_sl(campaign)
-                    self.executor.detect_abandoned_grid(campaign)
+                    if self.config.abandoned_grid_cancel:
+                        self.executor.detect_abandoned_grid(campaign)
                     if self.config.exit_mode == "trailing_stop":
                         activated = self.executor.check_trailing_stops(
                             campaign, self.config.trailing_stop_pips, self.config.pip_size,

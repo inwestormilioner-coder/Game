@@ -88,7 +88,7 @@ def _config(**overrides) -> Config:
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
         exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_lock_pips=0.0, trailing_stop_basket=False,
         deviation_points=20, magic_base=990000,
-        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5,
+        max_zone_width=20.0, risk_reward_trigger=1.0, monitor_interval_seconds=5, abandoned_grid_cancel=True,
         notify_enabled=False, telegram_notify_chat="me", daily_summary_time="23:55",
         manual_signals_enabled=True, telegram_manual_chat="me",
         dry_run=False,
