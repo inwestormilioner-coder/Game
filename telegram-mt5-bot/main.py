@@ -29,6 +29,13 @@ class Bot:
         self.store = store or CampaignStore()
         self.executor = None
         self._last_trading_allowed: bool | None = None
+        # Set by live() when NOTIFY_ENABLED - a ZONE signal (channel or the
+        # manual-signal chat) sends exactly ONE text notification through
+        # this the moment its order grid is placed (see _handle_zone),
+        # instead of a screenshot per individual fill (watch_fills below
+        # still drains/deletes those fill-notification files so they don't
+        # pile up in the bridge folder, it just no longer sends them).
+        self._signal_notifier = None
         if not config.dry_run:
             from mt5_executor import Mt5Executor
 
@@ -38,9 +45,9 @@ class Bot:
     async def handle_text(self, text: str) -> None:
         msg = parse(text)
         if msg.type == SignalType.ZONE:
-            self._handle_zone(msg.zone, msg.raw_text)
+            await self._handle_zone(msg.zone, msg.raw_text)
         elif msg.type == SignalType.ADD_TO_ZONE:
-            self._handle_add_to_zone(msg)
+            await self._handle_add_to_zone(msg)
         elif msg.type == SignalType.BREAKEVEN:
             self._handle_breakeven(msg)
         elif msg.type == SignalType.CLOSE_ALL:
@@ -50,7 +57,7 @@ class Bot:
         else:
             log.info("unrecognized message, ignored: %s", text.replace("\n", " | "))
 
-    def _handle_add_to_zone(self, msg: ParsedMessage) -> None:
+    async def _handle_add_to_zone(self, msg: ParsedMessage) -> None:
         """Channel said "dolóz do pozycji" with a new zone/SL but no
         "Kierunek: Buy/Sell Gold" of its own - treated as another zone
         signal, with direction inferred from the most recently active
@@ -75,9 +82,9 @@ class Bot:
             "channel said 'dolóz do pozycji' - treating as a new %s zone signal "
             "(direction inferred from the most recent active campaign)", direction,
         )
-        self._handle_zone(zone, msg.raw_text)
+        await self._handle_zone(zone, msg.raw_text)
 
-    def _handle_zone(self, zone: ZoneSignal, raw_text: str = "") -> None:
+    async def _handle_zone(self, zone: ZoneSignal, raw_text: str = "") -> None:
         zone_width = zone.zone_high - zone.zone_low
         if zone_width > self.config.max_zone_width:
             log.error("=" * 70)
@@ -139,6 +146,17 @@ class Bot:
             campaign.tickets = self.executor.place_zone_orders(plans, campaign)
 
         self.store.add(campaign)
+
+        if self._signal_notifier is not None:
+            text = (
+                f"\U0001F4E1 Nowy sygnal - {self.config.symbol}\n"
+                f"{zone.direction} strefa {zone.zone_low:.2f}-{zone.zone_high:.2f} SL: {zone.sl_pips:.0f} pips\n"
+                f"Wystawiono {len(plans)} zlecen (kampania {campaign.id})"
+            )
+            try:
+                await self._signal_notifier.send_text(text)
+            except Exception:
+                log.exception("error sending signal notification")
 
     def _handle_breakeven(self, msg: ParsedMessage) -> None:
         # Deliberately ignored: the channel's own "SL na BE" call is not
@@ -238,38 +256,26 @@ class Bot:
                     log.exception("error monitoring campaign %s", campaign.id)
             await asyncio.sleep(self.config.monitor_interval_seconds)
 
-    async def watch_fills(self, notifier) -> None:
-        """Sends a chart screenshot + entry details to Telegram (see
-        notifier.py) whenever TelegramBridgeEA reports one of our pending
-        orders actually filled - not when it's merely placed. See
+    async def watch_fills(self) -> None:
+        """Drains the per-fill screenshot+metadata files TelegramBridgeEA
+        drops whenever one of our pending orders actually fills (see
         mt5_executor.take_pending_fill_notifications and the EA's
-        OnTradeTransaction. No-op without a live MT5 connection."""
+        OnTradeTransaction) - but no longer SENDS one per fill to Telegram
+        (that got noisy with a multi-order grid: one message per catch).
+        Notification now happens once per SIGNAL instead, from
+        _handle_zone. This loop still has to run and clean these files up
+        though, or they'd pile up forever in the bridge folder's fills\\
+        subfolder since nothing else consumes them. No-op without a live
+        MT5 connection."""
         if self.executor is None:
             return
         while True:
             try:
                 for fn in self.executor.take_pending_fill_notifications():
-                    caption = self._format_fill_caption(fn.meta)
-                    await notifier.send_photo(fn.png_path, caption)
                     fn.png_path.unlink(missing_ok=True)
             except Exception:
-                log.exception("error sending fill notification")
+                log.exception("error draining fill notification files")
             await asyncio.sleep(self.config.monitor_interval_seconds)
-
-    def _format_fill_caption(self, meta: dict) -> str:
-        magic = int(meta.get("MAGIC", 0))
-        position_id = int(meta.get("POSITION", 0))
-        symbol = meta.get("SYMBOL", self.config.symbol)
-        campaign = self.store.find_by_magic(magic)
-        details = self.executor.position_details(position_id)
-
-        lines = [f"✅ Złapane entry - {symbol}"]
-        if details:
-            lines.append(f"{details.direction} {details.volume:.2f} lota @ {details.entry:.2f}")
-            lines.append(f"SL: {details.sl:.2f}  TP: {details.tp:.2f}")
-        if campaign:
-            lines.append(f"Kampania: {campaign.id}")
-        return "\n".join(lines)
 
     async def daily_summary_loop(self, notifier) -> None:
         """Sends one automatic summary per day at config.daily_summary_time
@@ -330,7 +336,8 @@ async def live(config: Config) -> None:
         from notifier import Notifier, resolve_chat_identifier
 
         notifier = Notifier(client, resolve_chat_identifier(config.telegram_notify_chat))
-        tasks.append(bot.watch_fills(notifier))
+        bot._signal_notifier = notifier
+        tasks.append(bot.watch_fills())
         tasks.append(bot.daily_summary_loop(notifier))
     elif config.notify_enabled:
         log.info("NOTIFY_ENABLED is on but DRY_RUN is on too - no MT5 connection, notifications stay off")

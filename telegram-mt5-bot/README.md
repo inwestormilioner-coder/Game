@@ -63,16 +63,19 @@ przesunięcia SL. Same zlecenia i zmiany SL są jednak wystawiane przez
   wysłał do MT5, ale nic nie wysyła. Włącz realne zlecenia (`DRY_RUN=false`)
   dopiero gdy przejrzysz logi z kilku prawdziwych sygnałów.
 - **Powiadomienia na Telegram** (`NOTIFY_ENABLED=true`, domyślnie włączone,
-  wymaga `DRY_RUN=false`): gdy zlecenie oczekujące faktycznie się wypełni
-  (nie w momencie wystawienia - dopiero gdy cena je złapie), bot wysyła na
-  Telegram (tą samą sesją co czyta kanał - `TELEGRAM_NOTIFY_CHAT`, domyślnie
-  "me" czyli własne Zapisane Wiadomości) zrzut wykresu z EA + kierunek/
-  entry/SL/TP/lot. Do tego raz dziennie o `DAILY_SUMMARY_TIME` (domyślnie
+  wymaga `DRY_RUN=false`): JEDNO powiadomienie tekstowe na SYGNAŁ (nie na
+  każde złapane zlecenie z siatki) - wysyłane od razu przy odebraniu
+  sygnału ZONE (z kanału albo z Twojego prywatnego czatu do ręcznych
+  stref) i wystawieniu jego siatki zleceń: kierunek/strefa/SL + ile zleceń
+  wystawiono + ID kampanii. Wysyłane tą samą sesją co czyta kanał
+  (`TELEGRAM_NOTIFY_CHAT`, domyślnie "me" czyli własne Zapisane
+  Wiadomości). Do tego raz dziennie o `DAILY_SUMMARY_TIME` (domyślnie
   23:55) wysyła podsumowanie: ile entry faktycznie złapaliśmy danego dnia
   (i ile lotów), ile pozycji się zamknęło i jaki łączny wynik (pipsy + $) -
   liczone z historii transakcji MT5, niezależnie od tego kiedy sygnał
-  przyszedł. Zobacz **`mt5_expert/README.md`** sekcję "Powiadomienia..." -
-  wymaga zaktualizowanego EA.
+  przyszedł. (Wcześniej bot wysyłał osobne powiadomienie ze zrzutem
+  wykresu za KAŻDYM złapanym zleceniem z siatki - zmienione na jedno na
+  sygnał, żeby nie zalewać czatu przy siatkach z wieloma poziomami.)
 - **Ręczne strefy z telefonu** (`MANUAL_SIGNALS_ENABLED=true`, domyślnie
   włączone): możesz sam wysłać sygnał strefy - np. z telefonu - wklejając
   wiadomość w DOKŁADNIE tej samej postaci co kanał ("Kierunek: Buy/Sell

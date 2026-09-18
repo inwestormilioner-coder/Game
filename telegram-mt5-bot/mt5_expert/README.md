@@ -79,26 +79,30 @@ automatically), or remove and re-drag it onto the chart if it doesn't.
 - If the Python bot's own log ever shows a warning about "command file(s)
   ... still unprocessed" - the EA isn't attached/running; redo steps 4-6.
 
-## Powiadomienia na Telegram przy realnym wypełnieniu zlecenia
+## Powiadomienia na Telegram
 
-Poza wystawianiem/modyfikowaniem zleceń ten EA robi jeszcze jedną rzecz:
-gdy jedno z naszych zleceń oczekujących faktycznie się wypełni (nie w
-momencie wystawienia, tylko dopiero gdy cena je faktycznie złapie), robi
-zrzut wykresu (`ChartScreenShot`) i zapisuje go razem z małym plikiem
-tekstowym (numer transakcji/pozycji/magic/symbol) do
-`Common\Files\<BridgeSubfolder>\fills\`. Rozpoznaje "nasze" zlecenia po
-magic number - każda transakcja z magic `>= MagicRangeStart` (domyślnie
-990000, musi się zgadzać z `MAGIC_BASE` w `.env`) liczy się jako nasza,
-niezależnie od tego, kiedy EA został uruchomiony/zrestartowany.
+Powiadomienie o sygnale (kierunek/strefa/SL/ile zleceń wystawiono) wysyła
+teraz Python **od razu przy odebraniu sygnału ZONE** (z kanału albo z
+Twojego prywatnego czatu do ręcznych stref), a nie za każdym pojedynczym
+złapanym zleceniem z siatki - patrz `NOTIFY_ENABLED`/`TELEGRAM_NOTIFY_CHAT`
+w `.env.example` i `main.py`'s `Bot._handle_zone`. Ten EA nie bierze w tym
+udziału.
 
-Stronę Python odbiera te pliki (`mt5_executor.take_pending_fill_notifications`,
-wołane z `main.py`'s `Bot.watch_fills`) i wysyła screenshot + szczegóły
-zlecenia na Telegram tą samą sesją, która czyta kanał z sygnałami - zobacz
-`NOTIFY_ENABLED`/`TELEGRAM_NOTIFY_CHAT`/`DAILY_SUMMARY_TIME` w
-`.env.example`. Zamknięcia pozycji i dzienne podsumowanie pipsów/wyniku EA
-w ogóle nie liczy - to Python robi z historii transakcji MT5, do której ma
-dostęp przez zwykłe (read-only, więc nieobjęte retcode 10027) wywołania
-API.
+Ten EA nadal, przy okazji, robi zrzut wykresu (`ChartScreenShot`) + mały
+plik tekstowy (numer transakcji/pozycji/magic/symbol) do
+`Common\Files\<BridgeSubfolder>\fills\` za każdym razem gdy jedno z
+naszych zleceń oczekujących faktycznie się wypełni (rozpoznaje "nasze" po
+magic `>= MagicRangeStart`, domyślnie 990000) - to zostało w kodzie EA bez
+zmian. Strona Python nadal odbiera te pliki
+(`mt5_executor.take_pending_fill_notifications`, wołane z `main.py`'s
+`Bot.watch_fills`), ale już ich NIE wysyła na Telegram - tylko usuwa, żeby
+nie zalegały w folderze `fills\`. Jeśli zależy Ci na oszczędzeniu tych
+zrzutów ekranu (drobny narzut dyskowy/CPU), można by wyłączyć ten
+mechanizm w samym EA - daj znać.
+
+Zamknięcia pozycji i dzienne podsumowanie pipsów/wyniku EA w ogóle nie
+liczy - to Python robi z historii transakcji MT5, do której ma dostęp
+przez zwykłe (read-only, więc nieobjęte retcode 10027) wywołania API.
 
 Żeby zrzuty ekranu były sensowne (pokazywały realny wykres złota, nie
 przypadkowy inny symbol), EA musi być podpięty do wykresu tego samego

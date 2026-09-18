@@ -60,11 +60,14 @@
 //| drops a chart screenshot + a small metadata file into            |
 //| Common\Files\<BridgeSubfolder>\fills\ - <deal_ticket>.png and    |
 //| <deal_ticket>.txt (DEAL=/POSITION=/MAGIC=/SYMBOL= lines). The    |
-//| Python side polls that folder and forwards it to Telegram (see   |
-//| mt5_executor.take_pending_fill_notifications / main.py's          |
-//| Bot.watch_fills) - closes and the daily pips/profit summary are  |
-//| computed entirely on the Python side from MT5's own deal history,|
-//| not handled here.                                                 |
+//| Python side still polls that folder and deletes what it finds     |
+//| (mt5_executor.take_pending_fill_notifications / main.py's         |
+//| Bot.watch_fills) so this folder doesn't fill up forever, but no    |
+//| longer forwards each one to Telegram - the bot now sends ONE       |
+//| text notification per ZONE SIGNAL instead (main.py's               |
+//| Bot._handle_zone), not one per individual grid fill. Closes and   |
+//| the daily pips/profit summary are computed entirely on the Python |
+//| side from MT5's own deal history, not handled here.               |
 //+------------------------------------------------------------------+
 #property copyright "Telegram MT5 signal bot"
 #property strict
