@@ -358,6 +358,7 @@ async def live(config: Config) -> None:
         if config.signal_relay_folder:
             import signal_relay
 
+            log.info("SIGNAL_RELAY_ROLE=consumer -> watching %s for relayed signals (not listening to Telegram directly)", config.signal_relay_folder)
             tasks.append(signal_relay.watch_relay_folder(
                 Path(config.signal_relay_folder), bot.handle_text, config.monitor_interval_seconds,
             ))
@@ -371,12 +372,16 @@ async def live(config: Config) -> None:
         client = build_client(config)
         await client.start()
 
+        if config.signal_relay_role == "source" and config.signal_relay_folder:
+            log.info("SIGNAL_RELAY_ROLE=source -> also relaying every incoming message to %s", config.signal_relay_folder)
+
         async def on_message(text: str) -> None:
             if config.signal_relay_role == "source" and config.signal_relay_folder:
                 import signal_relay
 
                 try:
-                    signal_relay.write_relay_signal(Path(config.signal_relay_folder), text)
+                    path = signal_relay.write_relay_signal(Path(config.signal_relay_folder), text)
+                    log.info("relayed incoming message -> %s", path.name)
                 except Exception:
                     log.exception("error writing relay signal")
             await bot.handle_text(text)
