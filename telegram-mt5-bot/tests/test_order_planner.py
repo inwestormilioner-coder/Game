@@ -64,6 +64,53 @@ def test_plan_orders_lot_scaling_mode_multiplier_compounds_per_tier():
     assert [p.lot for p in plans] == [0.17, 0.17, 0.14, 0.14, 0.14, 0.12, 0.12, 0.12, 0.1, 0.1, 0.1]
 
 
+def test_plan_orders_lot_size_ladder_applies_exact_custom_lots():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        lot_size_ladder=[0.01, 0.02, 0.05],
+    )
+    # Ladder is furthest-from-SL-first: 4421.0 (furthest) -> 0.01,
+    # 4420.5 -> 0.02, 4420.0 (closest to SL) -> 0.05 - plans are in
+    # entry-price order (4420.0, 4420.5, 4421.0), so closest-to-SL first.
+    assert [p.lot for p in plans] == [0.05, 0.02, 0.01]
+
+
+def test_plan_orders_lot_size_ladder_shorter_than_grid_repeats_last_value():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        lot_size_ladder=[0.01, 0.02],
+    )
+    # Only 2 ladder entries for 3 orders - the extra order closest to SL
+    # (4420.0) holds the ladder's LAST value (0.02) instead of falling
+    # back to a formula.
+    assert [p.lot for p in plans] == [0.02, 0.02, 0.01]
+
+
+def test_plan_orders_lot_size_ladder_longer_than_grid_ignores_unused_tail():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        lot_size_ladder=[0.01, 0.02, 0.03, 0.04, 0.05],
+    )
+    # Only 3 orders - only the ladder's first 3 entries are used, 0.04/0.05
+    # never get applied to anything.
+    assert [p.lot for p in plans] == [0.03, 0.02, 0.01]
+
+
+def test_plan_orders_lot_size_ladder_overrides_scaling_mode_entirely():
+    zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4421.0, sl_pips=60)
+    plans = plan_orders(
+        zone, lot=0.01, step=0.5, pip_size=0.1, start_tp_pips=60, tp_increment_pips=10,
+        lot_tier_orders=1, lot_scaling_mode="multiplier", lot_multiplier=1.2,
+        lot_size_ladder=[0.07, 0.08, 0.09],
+    )
+    # lot_tier_orders/lot_scaling_mode/lot_multiplier are all set too, but
+    # lot_size_ladder being non-empty takes over completely.
+    assert [p.lot for p in plans] == [0.09, 0.08, 0.07]
+
+
 def test_plan_orders_risk_reward_tp_mode_is_1to1_per_order():
     zone = ZoneSignal(direction="BUY", zone_low=4420.0, zone_high=4425.0, sl_pips=60)
     plans = plan_orders(

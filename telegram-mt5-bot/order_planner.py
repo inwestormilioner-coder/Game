@@ -41,12 +41,22 @@ SL, size increases one more tier (`lot_scaling_mode`):
   "multiplier" - each tier is `lot_multiplier` times the previous one
     (compounding), e.g. lot=0.1, lot_multiplier=1.2, lot_tier_orders=3:
     0.1,0.1,0.1,0.12,0.12,0.12,0.14,0.14,0.14,0.17 (rounded to 2dp per step).
+
+lot_size_ladder, when non-empty, OVERRIDES all three of the above with an
+exact, explicit lot per rank-by-distance-to-SL instead of a formula - e.g.
+[0.01,0.01,0.01,0.02,0.02,0.03,0.03,0.04,0.04,0.05] for irregular group
+sizes a uniform lot_tier_orders step can't produce. Same direction as the
+tiers above: ladder[0] is the entry furthest from SL, ladder[-1] the entry
+closest to SL. If the zone has MORE orders than the ladder has entries,
+the excess orders closest to SL all get the ladder's LAST value (holds the
+biggest size rather than falling back to a formula); if it has FEWER, the
+ladder is simply used from the start and the unused tail is ignored.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from signal_parser import ZoneSignal
 
@@ -99,6 +109,21 @@ def _lot_tiers_by_distance_to_sl(levels: List[float], shared_sl_price: float, lo
     return tier_of_index
 
 
+def _lot_ranks_by_distance_to_sl(levels: List[float], shared_sl_price: float) -> List[int]:
+    """Returns, for each index into `levels`, its RANK by distance to
+    shared_sl_price - 0 = furthest from SL, len(levels)-1 = closest - used
+    by lot_size_ladder mode instead of _lot_tiers_by_distance_to_sl's
+    grouped-by-lot_tier_orders tiers, since a ladder needs the exact
+    ordering, not a group number."""
+    order_by_distance_desc = sorted(
+        range(len(levels)), key=lambda i: abs(levels[i] - shared_sl_price), reverse=True
+    )
+    rank_of_index = [0] * len(levels)
+    for rank, idx in enumerate(order_by_distance_desc):
+        rank_of_index[idx] = rank
+    return rank_of_index
+
+
 def plan_orders(
     zone: ZoneSignal,
     lot: float,
@@ -109,6 +134,7 @@ def plan_orders(
     lot_tier_orders: int = 3,
     lot_scaling_mode: str = "additive",
     lot_multiplier: float = 1.2,
+    lot_size_ladder: Optional[List[float]] = None,
     tp_mode: str = "ladder",
     tp_risk_reward_ratio: float = 1.0,
     exit_mode: str = "tp",
@@ -135,7 +161,10 @@ def plan_orders(
     else:
         levels = [lv for lv in levels if lv < shared_sl_price]
 
-    tier_of_index = _lot_tiers_by_distance_to_sl(levels, shared_sl_price, lot_tier_orders)
+    if lot_size_ladder:
+        rank_of_index = _lot_ranks_by_distance_to_sl(levels, shared_sl_price)
+    else:
+        tier_of_index = _lot_tiers_by_distance_to_sl(levels, shared_sl_price, lot_tier_orders)
 
     plans: List[OrderPlan] = []
     for i, entry in enumerate(levels):
@@ -151,11 +180,15 @@ def plan_orders(
                 tp_distance = tp_pips * pip_size
             tp_price = entry + tp_distance if zone.direction == "BUY" else entry - tp_distance
 
-        tier = tier_of_index[i]
-        if lot_scaling_mode == "multiplier":
-            order_lot = round(lot * (lot_multiplier ** tier), 2)
+        if lot_size_ladder:
+            ladder_idx = min(rank_of_index[i], len(lot_size_ladder) - 1)
+            order_lot = round(lot_size_ladder[ladder_idx], 2)
         else:
-            order_lot = round(lot * (tier + 1), 2)
+            tier = tier_of_index[i]
+            if lot_scaling_mode == "multiplier":
+                order_lot = round(lot * (lot_multiplier ** tier), 2)
+            else:
+                order_lot = round(lot * (tier + 1), 2)
 
         plans.append(
             OrderPlan(

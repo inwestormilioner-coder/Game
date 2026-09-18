@@ -107,6 +107,7 @@ class Bot:
             lot_tier_orders=self.config.lot_tier_orders,
             lot_scaling_mode=self.config.lot_scaling_mode,
             lot_multiplier=self.config.lot_multiplier,
+            lot_size_ladder=self.config.lot_size_ladder,
             tp_mode=self.config.tp_mode,
             tp_risk_reward_ratio=self.config.tp_risk_reward_ratio,
             exit_mode=self.config.exit_mode,

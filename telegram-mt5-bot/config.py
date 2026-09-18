@@ -26,6 +26,13 @@ def _int(name: str, default: int) -> int:
     return int(val) if val else default
 
 
+def _float_list(name: str) -> list[float]:
+    val = os.getenv(name)
+    if not val:
+        return []
+    return [float(x.strip()) for x in val.split(",") if x.strip()]
+
+
 @dataclass(frozen=True)
 class Config:
     telegram_api_id: int
@@ -53,6 +60,13 @@ class Config:
     # (compounding), e.g. 0.1 -> 0.12 -> 0.144 -> ... for lot_multiplier=1.2.
     lot_scaling_mode: str
     lot_multiplier: float
+    # Explicit lot per grid level, furthest-from-SL first, e.g.
+    # [0.01,0.01,0.01,0.02,0.02,0.03,0.03,0.04,0.04,0.05] - OVERRIDES
+    # lot_tier_orders/lot_scaling_mode/lot_multiplier entirely when
+    # non-empty (see order_planner.plan_orders), for an exact ladder a
+    # uniform tier step can't produce. Empty (default) = disabled, use the
+    # tier-based settings above instead.
+    lot_size_ladder: list[float]
     zone_step: float
     # Extra orders beyond the signal's own zone, SL unaffected (still
     # anchored to the signal's zone_low/zone_high): zone_extend_front adds
@@ -151,6 +165,7 @@ def load_config() -> Config:
         lot_tier_orders=_int("LOT_TIER_ORDERS", 3),
         lot_scaling_mode=os.getenv("LOT_SCALING_MODE", "additive"),
         lot_multiplier=_float("LOT_MULTIPLIER", 1.2),
+        lot_size_ladder=_float_list("LOT_SIZE_LADDER"),
         zone_step=_float("ZONE_STEP", 0.5),
         zone_extend_front=_float("ZONE_EXTEND_FRONT", 0.0),
         zone_extend_back=_float("ZONE_EXTEND_BACK", 0.0),

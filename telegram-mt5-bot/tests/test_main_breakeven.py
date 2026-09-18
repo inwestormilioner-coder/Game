@@ -18,7 +18,7 @@ def _dry_run_config(**overrides) -> Config:
     base = dict(
         telegram_api_id=0, telegram_api_hash="", telegram_session_name="x", telegram_channel="",
         mt5_path="", mt5_login=0, mt5_password="", mt5_server="", bridge_subfolder="tg_bridge",
-        symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, lot_scaling_mode="additive", lot_multiplier=1.2,
+        symbol="XAUUSD", lot_size=0.01, lot_tier_orders=3, lot_scaling_mode="additive", lot_multiplier=1.2, lot_size_ladder=[],
         zone_step=0.5, zone_extend_front=0.0, zone_extend_back=0.0, pip_size=0.1,
         start_tp_pips=60, tp_increment_pips=10, tp_mode="ladder", tp_risk_reward_ratio=1.0,
         exit_mode="tp", trailing_stop_pips=36.0, trailing_stop_lock_pips=0.0, trailing_stop_basket=False,

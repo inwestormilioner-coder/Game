@@ -110,7 +110,7 @@ def simulate_campaign(
         lot=config.lot_size, step=config.zone_step, pip_size=config.pip_size,
         start_tp_pips=config.start_tp_pips, tp_increment_pips=config.tp_increment_pips,
         lot_tier_orders=config.lot_tier_orders, lot_scaling_mode=config.lot_scaling_mode,
-        lot_multiplier=config.lot_multiplier, tp_mode=config.tp_mode,
+        lot_multiplier=config.lot_multiplier, lot_size_ladder=config.lot_size_ladder, tp_mode=config.tp_mode,
         tp_risk_reward_ratio=config.tp_risk_reward_ratio, exit_mode=config.exit_mode,
         zone_extend_front=config.zone_extend_front, zone_extend_back=config.zone_extend_back,
     )
