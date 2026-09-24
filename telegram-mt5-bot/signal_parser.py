@@ -8,6 +8,11 @@
     TAKE PROFIT: +70 pips SL na BE juz mozliwy...
 
     TAKE PROFIT: +140 pips Zamykam calosc. Podsylajcie swoje wyniki!
+
+A zone's two numbers can also both be short (e.g. "Strefa: 59-54") -
+shorthand for the last digits of wherever XAUUSD is trading right now,
+resolved via parse()'s current_price argument (with gold at 4260, that
+becomes 4254-4259) - see _combine_zone_prices.
 """
 from __future__ import annotations
 
@@ -71,7 +76,26 @@ def _strip_diacritics(text: str) -> str:
     return "".join(c for c in normalized if not unicodedata.combining(c))
 
 
-def _combine_zone_prices(a: str, b: str) -> tuple[float, float]:
+# Real XAUUSD prices are always 4-digit (thousands) - a zone where BOTH
+# numbers are below this can't be a literal price, so it's read as
+# shorthand for "the last N digits" of whatever the market is trading at
+# right now instead (see _combine_zone_prices's third form below).
+_RELATIVE_ZONE_THRESHOLD = 1000
+
+
+def _nearest_to_price(suffix_val: float, scale: int, current_price: float) -> float:
+    """Picks whichever block of `scale` (e.g. 100 for a 2-digit suffix) -
+    the one current_price itself falls in, one below, or one above - makes
+    suffix_val land closest to current_price. Same "closest candidate"
+    idea _combine_zone_prices already uses for an abbreviated second
+    number, just anchored to the live price instead of to the zone's own
+    first number."""
+    base = (int(current_price) // scale) * scale
+    candidates = [base + suffix_val - scale, base + suffix_val, base + suffix_val + scale]
+    return min(candidates, key=lambda c: abs(c - current_price))
+
+
+def _combine_zone_prices(a: str, b: str, current_price: Optional[float] = None) -> tuple[float, float]:
     """'4425-20' -> (4420.0, 4425.0); '4430-35' -> (4430.0, 4435.0);
     '4397-02' -> (4397.0, 4402.0).
 
@@ -83,15 +107,30 @@ def _combine_zone_prices(a: str, b: str) -> tuple[float, float]:
     a's leading digits with b - a live signal ("Strefa: 4397-02") once got
     misread as 4302 that way, turning a $5 zone into a $100 one and firing
     ~200 orders instead of ~11.
+
+    A third form: BOTH numbers short, e.g. '59-54' - too small to be a
+    literal XAUUSD price (see _RELATIVE_ZONE_THRESHOLD), so BOTH are read
+    as shorthand for "the last N digits", each resolved independently
+    against the CURRENT MARKET PRICE rather than against each other - with
+    gold at 4260, '59-54' becomes (4254.0, 4259.0). Needs current_price to
+    resolve; without one (DRY_RUN/replay with no live MT5 connection) this
+    falls back to reading the numbers literally rather than guessing - the
+    resulting price (e.g. 54.00) is self-evidently not a real gold price,
+    which is the point: it makes "this needs a live connection to preview
+    correctly" obvious in the DRY RUN log instead of silently wrong.
     """
+    a_val, b_val = float(a), float(b)
+
     if len(b) >= len(a):
-        p1, p2 = float(a), float(b)
+        if current_price is not None and a_val < _RELATIVE_ZONE_THRESHOLD and b_val < _RELATIVE_ZONE_THRESHOLD:
+            p1 = _nearest_to_price(a_val, 10 ** len(a), current_price)
+            p2 = _nearest_to_price(b_val, 10 ** len(b), current_price)
+            return (p1, p2) if p1 <= p2 else (p2, p1)
+        p1, p2 = a_val, b_val
         return (p1, p2) if p1 <= p2 else (p2, p1)
 
-    a_val = float(a)
     scale = 10 ** len(b)
     base = (int(a_val) // scale) * scale
-    b_val = float(b)
     candidates = [base + b_val - scale, base + b_val, base + b_val + scale]
     b_full = min(candidates, key=lambda c: abs(c - a_val))
 
@@ -106,7 +145,14 @@ def _extract_profit(plain_text: str) -> Optional[float]:
     return float(match.group(1).replace(" ", "").replace(",", "."))
 
 
-def parse(raw_text: str) -> ParsedMessage:
+def parse(raw_text: str, current_price: Optional[float] = None) -> ParsedMessage:
+    """current_price (optional): the live market price at the moment this
+    message arrived - only used to resolve a zone written as two short
+    numbers (e.g. "Strefa: 59-54"), shorthand for the last digits of
+    wherever price currently is (see _combine_zone_prices). Every other
+    signal type/zone form ignores it entirely, so it's safe to always pass
+    it when available (main.py does) and leave it as None where there's no
+    live connection (DRY_RUN, --replay, tests)."""
     text = raw_text.strip()
     plain = _strip_diacritics(text.lower())
 
@@ -122,7 +168,7 @@ def parse(raw_text: str) -> ParsedMessage:
     add_to_position = "doloz do pozycji" in plain
 
     if zone_match and sl_match and (direction_match or add_to_position):
-        zone_low, zone_high = _combine_zone_prices(zone_match.group(1), zone_match.group(2))
+        zone_low, zone_high = _combine_zone_prices(zone_match.group(1), zone_match.group(2), current_price)
         sl_pips = float(sl_match.group(1).replace(",", "."))
         if direction_match:
             return ParsedMessage(

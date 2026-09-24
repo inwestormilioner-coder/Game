@@ -44,7 +44,20 @@ class Bot:
             self.executor.connect()
 
     async def handle_text(self, text: str) -> None:
-        msg = parse(text)
+        # Passed through to parse() to resolve a zone given as two short
+        # numbers (e.g. "Strefa: 59-54") relative to wherever price
+        # currently is - see signal_parser.parse's docstring. None in
+        # DRY_RUN/--replay (no live MT5 connection to read a price from);
+        # any other signal shape ignores this entirely.
+        current_price = None
+        if self.executor is not None:
+            try:
+                bid, ask = self.executor.current_price()
+                current_price = (bid + ask) / 2
+            except Exception:
+                log.exception("error fetching current price for relative-zone resolution")
+
+        msg = parse(text, current_price)
         if msg.type == SignalType.ZONE:
             await self._handle_zone(msg.zone, msg.raw_text)
         elif msg.type == SignalType.ADD_TO_ZONE:

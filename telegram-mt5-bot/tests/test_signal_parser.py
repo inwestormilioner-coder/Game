@@ -55,6 +55,58 @@ def test_zone_signal_wraps_backward_across_a_hundred():
     assert msg.zone.zone_high == 4402.0
 
 
+def test_zone_signal_both_numbers_short_resolves_relative_to_current_price():
+    # "Strefa: 59-54" with gold at 4260 - both numbers too small to be a
+    # literal XAUUSD price, so both are read as the last two digits of
+    # wherever price currently is.
+    msg = parse("Kierunek: Buy Gold\nStrefa: 59-54\nSL: 60 pips", current_price=4260.0)
+    assert msg.type == SignalType.ZONE
+    assert msg.zone.zone_low == 4254.0
+    assert msg.zone.zone_high == 4259.0
+
+
+def test_zone_signal_both_numbers_short_picks_the_nearest_hundred_each():
+    # Current price sits just above a round hundred (4301) - "99" is
+    # actually closer to 4299 (the hundred BELOW current price) than to
+    # 4399, even though 4301's own hundred-block is 4300.
+    msg = parse("Kierunek: Sell Gold\nStrefa: 99-94\nSL: 60 pips", current_price=4301.0)
+    assert msg.zone.zone_low == 4294.0
+    assert msg.zone.zone_high == 4299.0
+
+
+def test_zone_signal_both_numbers_short_sell_direction():
+    msg = parse("Kierunek: Sell Gold\nStrefa: 65-60\nSL: 60 pips", current_price=4260.0)
+    assert msg.zone.direction == "SELL"
+    assert msg.zone.zone_low == 4260.0
+    assert msg.zone.zone_high == 4265.0
+
+
+def test_zone_signal_both_numbers_short_without_current_price_falls_back_to_literal():
+    # No live price available (DRY_RUN/replay) - can't safely resolve, so
+    # falls back to the literal (obviously-not-a-real-gold-price) numbers
+    # rather than guessing.
+    msg = parse("Kierunek: Buy Gold\nStrefa: 59-54\nSL: 60 pips")
+    assert msg.type == SignalType.ZONE
+    assert msg.zone.zone_low == 54.0
+    assert msg.zone.zone_high == 59.0
+
+
+def test_zone_signal_full_prices_are_unaffected_by_current_price():
+    # Both numbers already look like real prices (>= 1000) - current_price
+    # must NOT override this normal, literal case.
+    msg = parse("Kierunek: Buy Gold\nStrefa: 4419-4425\nSL: 60 pips", current_price=4260.0)
+    assert msg.zone.zone_low == 4419.0
+    assert msg.zone.zone_high == 4425.0
+
+
+def test_zone_signal_abbreviated_tail_is_unaffected_by_current_price():
+    # The existing "one full, one short" form must keep resolving against
+    # its OWN first number, not against current_price.
+    msg = parse("Kierunek: Sell Gold\nStrefa: 4397-02\nSL: 60 pips", current_price=4260.0)
+    assert msg.zone.zone_low == 4397.0
+    assert msg.zone.zone_high == 4402.0
+
+
 def test_breakeven_update():
     msg = parse(
         "TAKE PROFIT: +70 pips ⚖️ SL na BE już możliwy, choć rynek potrafi cofnąć. "
