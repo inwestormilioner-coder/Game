@@ -1,0 +1,101 @@
+"""Konfiguracja z pliku .env / zmiennych środowiskowych."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def _bool(name: str, default: bool = False) -> bool:
+    return _env(name, str(default)).lower() in ("1", "true", "yes", "tak")
+
+
+@dataclass
+class Config:
+    symbol: str = "XAU/USD"
+    display_symbol: str = "XAUUSD"
+    timeframe: str = "M30"
+    bars: int = 500
+    data_source: str = "twelvedata"
+
+    mt5_login: int | None = None
+    mt5_password: str = ""
+    mt5_server: str = ""
+    mt5_path: str = ""
+    twelvedata_api_key: str = ""
+    csv_path: str = ""
+
+    min_rr: float = 1.5
+    language: str = "pl"
+    use_ai: bool = True
+    anthropic_model: str = "claude-opus-5-5"
+
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+    threads_enabled: bool = False
+    threads_user_id: str = ""
+    threads_access_token: str = ""
+    public_image_base_url: str = ""   # Threads wymaga obrazka pod publicznym URL
+
+    x_enabled: bool = False
+    x_api_key: str = ""
+    x_api_secret: str = ""
+    x_access_token: str = ""
+    x_access_secret: str = ""
+
+    dry_run: bool = True
+    data_dir: Path = field(default_factory=lambda: Path("data"))
+
+
+def load_config(env_file: str | None = ".env") -> Config:
+    if env_file:
+        _load_dotenv(Path(env_file))
+    login = _env("MT5_LOGIN")
+    return Config(
+        symbol=_env("SYMBOL", "XAU/USD"),
+        display_symbol=_env("DISPLAY_SYMBOL", "XAUUSD"),
+        timeframe=_env("TIMEFRAME", "M30"),
+        bars=int(_env("BARS", "500")),
+        data_source=_env("DATA_SOURCE", "twelvedata"),
+        mt5_login=int(login) if login else None,
+        mt5_password=_env("MT5_PASSWORD"),
+        mt5_server=_env("MT5_SERVER"),
+        mt5_path=_env("MT5_PATH"),
+        twelvedata_api_key=_env("TWELVEDATA_API_KEY"),
+        csv_path=_env("CSV_PATH"),
+        min_rr=float(_env("MIN_RR", "1.5")),
+        language=_env("POST_LANGUAGE", "pl"),
+        use_ai=_bool("USE_AI", True),
+        anthropic_model=_env("ANTHROPIC_MODEL", "claude-opus-5-5"),
+        telegram_enabled=_bool("TELEGRAM_ENABLED"),
+        telegram_bot_token=_env("TELEGRAM_BOT_TOKEN"),
+        telegram_chat_id=_env("TELEGRAM_CHAT_ID"),
+        threads_enabled=_bool("THREADS_ENABLED"),
+        threads_user_id=_env("THREADS_USER_ID"),
+        threads_access_token=_env("THREADS_ACCESS_TOKEN"),
+        public_image_base_url=_env("PUBLIC_IMAGE_BASE_URL").rstrip("/"),
+        x_enabled=_bool("X_ENABLED"),
+        x_api_key=_env("X_API_KEY"),
+        x_api_secret=_env("X_API_SECRET"),
+        x_access_token=_env("X_ACCESS_TOKEN"),
+        x_access_secret=_env("X_ACCESS_SECRET"),
+        dry_run=_bool("DRY_RUN", True),
+        data_dir=Path(_env("DATA_DIR", "data")),
+    )

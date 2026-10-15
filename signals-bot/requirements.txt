@@ -1,0 +1,9 @@
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+mplfinance>=0.12.10b0
+requests>=2.31
+requests-oauthlib>=2.0
+anthropic>=1.14
+# Tylko na Windows, gdy DATA_SOURCE=mt5:
+MetaTrader5>=5.0.45; sys_platform == "win32"
