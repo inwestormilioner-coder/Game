@@ -15,10 +15,10 @@ from pathlib import Path
 import pandas as pd
 
 from .chart import render_chart
-from .config import Config, load_config
+from .config import Config, load_config, strategy_params
 from .data import TF_MINUTES, SyntheticProvider, make_provider
 from .publishers import make_publishers
-from .strategy import Params, Setup, find_setups
+from .strategy import Setup, find_setups
 from .tracker import State, evaluate
 from .writer import build_post, result_text
 
@@ -46,7 +46,7 @@ def publish_signal(cfg: Config, df: pd.DataFrame, s: Setup, publishers: dict) ->
 
 def run_once(cfg: Config, provider, state: State, publishers: dict) -> None:
     df = provider.get_bars(cfg.symbol, cfg.timeframe, cfg.bars)
-    setups = find_setups(df, Params(min_rr=cfg.min_rr))
+    setups = find_setups(df, strategy_params(cfg))
 
     # nowe sygnały: potwierdzone na jednej z 2 ostatnich zamkniętych świec
     for s in setups:
@@ -97,7 +97,7 @@ def backtest(cfg: Config, provider=None, charts: int = 0) -> pd.DataFrame:
     provider = provider or make_provider(cfg)
     df = provider.get_bars(cfg.symbol, cfg.timeframe, cfg.bars)
     rows = []
-    for s in find_setups(df, Params(min_rr=cfg.min_rr)):
+    for s in find_setups(df, strategy_params(cfg)):
         res = evaluate(df.iloc[s.confirm_idx + 1 :], s.direction, s.entry, s.sl, s.tp)
         rows.append(dict(time=s.confirm_time, dir=s.direction, type=s.break_type,
                          entry=round(s.entry, 2), sl=round(s.sl, 2), tp=round(s.tp, 2),
@@ -123,7 +123,7 @@ def backtest(cfg: Config, provider=None, charts: int = 0) -> pd.DataFrame:
 
 def demo(cfg: Config) -> None:
     df = SyntheticProvider(seed=1).get_bars(cfg.symbol, cfg.timeframe, 3000)
-    s = next(x for x in find_setups(df, Params(min_rr=cfg.min_rr)) if x.direction == "SELL")
+    s = next(x for x in find_setups(df, strategy_params(cfg)) if x.direction == "SELL")
     chart = render_chart(df, s, cfg.data_dir / "demo.png", cfg.display_symbol, cfg.timeframe)
     post = build_post(s, chart, cfg.display_symbol, cfg.timeframe, cfg.language, cfg.use_ai,
                       cfg.anthropic_model)

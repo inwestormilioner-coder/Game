@@ -21,6 +21,26 @@ Bot śledzi złoto (domyślnie M30). Po zamknięciu każdej świecy szuka setupu
 | **Unieważnienie** | Zamknięcie nad strefą albo brak retestu w ciągu 48 świec. |
 | **Filtry** | RR ≥ `MIN_RR` (1,5), impuls ≥ 2 ATR. |
 
+**Konfluencje** liczone przy każdym setupie, rysowane na wykresie i opisywane w poście:
+
+| Konfluencja | Znaczenie |
+|---|---|
+| **Fibo 0.5–0.786** | Retest sięgnął strefy premium/discount impulsu (OTE). |
+| **FVG** | Retest wszedł w lukę (Fair Value Gap) zostawioną przez impuls. |
+| **Sweep (BSL/SSL)** | Retest wybił wcześniejszy szczyt lub dołek, czyli zebrał płynność, i wrócił. |
+| **Liquidity target** | Następna pula płynności za TP. Przy `TP_MODE=liquidity` staje się celem. |
+
+`MIN_SCORE=0..3` pozwala publikować tylko setupy z określoną liczbą konfluencji.
+
+### Porównanie wariantów
+
+```bash
+python -m signalbot.compare XAUUSD_M30.csv --tf M30   # CSV: time/datetime,open,high,low,close
+```
+
+Skrypt liczy każdy wariant (bazowy, +Fibo, +FVG, +sweep, min. 1 lub 2 konfluencje, TP na płynności)
+osobno dla 1. i 2. połowy danych, z kosztem spreadu.
+
 Parametry są w `signalbot/strategy.py` (`Params`). Detektor nie zagląda w przyszłość
 (test `test_no_lookahead`), więc wyniki backtestu odpowiadają temu, co bot zrobiłby na żywo.
 

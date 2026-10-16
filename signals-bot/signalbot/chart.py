@@ -23,8 +23,8 @@ def _label(ax, x, y, text, color, ha="left", va="center", fontsize=8):
 
 
 def render_chart(df: pd.DataFrame, s: Setup, path: Path, title: str, timeframe: str,
-                 lookback: int = 90) -> Path:
-    start = max(0, min(s.swing_idx, s.confirm_idx - lookback) - 10)
+                 lookback: int = 60) -> Path:
+    start = max(0, min(s.swing_idx - 25, s.confirm_idx - lookback))
     win = df.iloc[start : s.confirm_idx + 1].copy()
     win.index = pd.DatetimeIndex(win["time"]).tz_convert(None)
     x = lambda i: i - start  # noqa: E731  indeks świecy -> pozycja na osi
@@ -73,9 +73,34 @@ def render_chart(df: pd.DataFrame, s: Setup, path: Path, title: str, timeframe: 
     # retest
     rx = x(s.retest_idx)
     ry = win["high"].iloc[rx] if sell else win["low"].iloc[rx]
-    ax.annotate("Retest", (rx, ry), xytext=(rx - 10, ry + (1.5 * pad if sell else -1.5 * pad)),
+    ax.annotate("Retest", (rx, ry), xytext=(rx - 14, ry + (1.5 * pad if sell else -1.5 * pad)),
                 fontsize=8, color=GREY, ha="center",
                 arrowprops=dict(arrowstyle="->", color=GREY, lw=1))
+
+    # Fibo impulsu: 0.5 / 0.618 / 0.786
+    fx = x(s.break_idx)
+    for lvl in (0.5, 0.618, 0.786):
+        y = s.leg_end + (s.leg_start - s.leg_end) * lvl
+        ax.hlines(y, fx, last + 3, colors="#7e57c2", lw=0.8, ls="--", alpha=0.7, zorder=2)
+        ax.text(last + 3.5, y, f"{lvl:g}", color="#7e57c2", fontsize=7, ha="left", va="center")
+
+    # FVG
+    if s.fvg_low is not None:
+        ax.add_patch(Rectangle((fx, s.fvg_low), right - fx, s.fvg_high - s.fvg_low,
+                               fc="#7e57c2", alpha=0.15, ec="#7e57c2", lw=0.8, ls=":", zorder=1))
+        ax.text(right - 1, (s.fvg_low + s.fvg_high) / 2, "FVG", color="#7e57c2", fontsize=8,
+                ha="right", va="center", fontweight="bold", zorder=6)
+
+    # płynność: zebrana (sweep) i docelowa
+    if s.sweep_price is not None:
+        ax.hlines(s.sweep_price, zx - 10, x(s.retest_idx), colors="#ef6c00", lw=1, zorder=3)
+        ax.text(zx - 10, s.sweep_price, ("BSL" if sell else "SSL") + " sweep", color="#ef6c00",
+                fontsize=7, ha="left", va="bottom" if sell else "top", fontweight="bold")
+    if s.liq_target is not None and s.liq_target != s.tp:
+        ax.hlines(s.liq_target, 0, right, colors="#ef6c00", lw=1, ls="-.", zorder=2)
+        _label(ax, right - 1, s.liq_target, ("SSL" if sell else "BSL") + " liquidity", "#ef6c00",
+               ha="right")
+        ax.set_ylim(min(ax.get_ylim()[0], s.liq_target - pad), max(ax.get_ylim()[1], s.liq_target + pad))
 
     # strzałka do celu
     ax.annotate("", xy=(right - 8, s.tp), xytext=(last + 1, s.entry),

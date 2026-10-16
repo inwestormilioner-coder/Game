@@ -36,7 +36,20 @@ def _levels(s: Setup, symbol: str) -> str:
         f"RR: 1:{s.rr:.1f}\n"
         f"{zone} zone: {s.zone_low:.2f}–{s.zone_high:.2f}\n"
         f"Structure: {s.break_type} @ {s.level:.2f}"
+        f"{_confluence(s)}"
     )
+
+
+def _confluence(s: Setup) -> str:
+    """Linia z konfluencjami, np. 'Confluence: Fibo 0.62 ✓ | FVG ✓ | BSL sweep ✓'."""
+    parts = []
+    if s.fibo:
+        parts.append(f"Fibo {s.retrace:.2f} ✓")
+    if s.fvg:
+        parts.append("FVG ✓")
+    if s.sweep:
+        parts.append(("BSL" if s.direction == "SELL" else "SSL") + " sweep ✓")
+    return f"\nConfluence: {' | '.join(parts)}" if parts else ""
 
 
 def template_analysis(s: Setup, lang: str) -> tuple[str, str]:
@@ -64,6 +77,10 @@ You receive a detected Smart Money Concepts setup (JSON) and its chart.
 Explain in plain words WHY the setup exists: which structure broke (BOS = continuation,
 CHOCH = change of character / trend shift), where the zone is, what the retest showed,
 why SL and TP sit where they do (both come from market structure).
+Mention the confluences that are true in the JSON: fibo (retest reached the 0.5-0.786
+retracement of the impulse, value in `retrace`), fvg (retest filled a fair value gap left
+by the impulse), sweep (retest took liquidity above/below a prior swing before rejecting),
+liq_target (next liquidity pool beyond TP). Never claim a confluence that is false.
 Rules:
 - Do not repeat the entry/SL/TP numbers as a list; they are printed separately.
 - No hype, no promises, no "guaranteed". Be factual and brief.

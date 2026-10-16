@@ -81,8 +81,9 @@ class CSVProvider:
     def get_bars(self, symbol: str, timeframe: str, count: int | None = None) -> pd.DataFrame:
         df = pd.read_csv(self.path)
         df.columns = [c.strip().lower().strip("<>") for c in df.columns]
-        if "time" not in df.columns and "date" in df.columns:
-            df["time"] = df["date"]
+        for alt in ("datetime", "date"):
+            if "time" not in df.columns and alt in df.columns:
+                df["time"] = df[alt]
         df["time"] = pd.to_datetime(df["time"], utc=True)
         df = df[["time", "open", "high", "low", "close"]].sort_values("time").reset_index(drop=True)
         return df.tail(count).reset_index(drop=True) if count else df

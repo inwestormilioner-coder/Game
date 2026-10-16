@@ -81,3 +81,30 @@ def test_evaluate_tp_sl_and_same_bar():
     both = evaluate(_bars([(100, 106, 89, 95)]), "SELL", 100, 105, 90)
     assert both.outcome == "sl"
     assert evaluate(_bars([(100, 101, 99, 100)]), "BUY", 100, 95, 110) is None
+
+
+def test_confluences_consistent_and_mirrored():
+    df = SyntheticProvider(seed=3).get_bars("x", "M30", 2500)
+    m = df.copy()
+    m["open"], m["close"] = 9000 - df["open"], 9000 - df["close"]
+    m["high"], m["low"] = 9000 - df["low"], 9000 - df["high"]
+    orig, mirr = find_setups(df), find_setups(m)
+    assert any(s.score > 0 for s in orig)
+    for s in orig:
+        assert s.fibo == (0.5 <= s.retrace <= 0.786)
+        assert s.score == s.fibo + s.fvg + s.sweep
+        if s.fvg:
+            assert s.fvg_low < s.fvg_high
+    key = lambda s: (s.confirm_idx, s.direction)  # noqa: E731
+    flipped = {key(s): s for s in mirr}
+    for s in orig:
+        t = flipped[(s.confirm_idx, "BUY" if s.direction == "SELL" else "SELL")]
+        assert (t.fibo, t.fvg, t.sweep) == (s.fibo, s.fvg, s.sweep)
+        assert t.retrace == pytest.approx(s.retrace)
+
+
+def test_require_filters():
+    df = SyntheticProvider(seed=3).get_bars("x", "M30", 2500)
+    from signalbot.strategy import Params
+    assert all(s.fvg for s in find_setups(df, Params(require=("fvg",))))
+    assert all(s.score >= 2 for s in find_setups(df, Params(min_score=2)))

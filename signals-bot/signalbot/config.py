@@ -41,6 +41,8 @@ class Config:
     csv_path: str = ""
 
     min_rr: float = 1.5
+    min_score: int = 0          # minimalna liczba konfluencji (Fibo / FVG / sweep)
+    tp_mode: str = "impulse"    # impulse | liquidity
     language: str = "pl"
     use_ai: bool = True
     anthropic_model: str = "claude-opus-5-5"
@@ -64,6 +66,12 @@ class Config:
     data_dir: Path = field(default_factory=lambda: Path("data"))
 
 
+def strategy_params(cfg: Config):
+    from .strategy import Params
+
+    return Params(min_rr=cfg.min_rr, min_score=cfg.min_score, tp_mode=cfg.tp_mode)
+
+
 def load_config(env_file: str | None = ".env") -> Config:
     if env_file:
         _load_dotenv(Path(env_file))
@@ -81,6 +89,8 @@ def load_config(env_file: str | None = ".env") -> Config:
         twelvedata_api_key=_env("TWELVEDATA_API_KEY"),
         csv_path=_env("CSV_PATH"),
         min_rr=float(_env("MIN_RR", "1.5")),
+        min_score=int(_env("MIN_SCORE", "0")),
+        tp_mode=_env("TP_MODE", "impulse"),
         language=_env("POST_LANGUAGE", "pl"),
         use_ai=_bool("USE_AI", True),
         anthropic_model=_env("ANTHROPIC_MODEL", "claude-opus-5-5"),
