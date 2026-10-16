@@ -23,6 +23,7 @@ Cel płynnościowy (SSL): najbliższy starszy swing low poniżej dołka impulsu
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import asdict, dataclass
 
 import numpy as np
@@ -117,6 +118,8 @@ def _scan_sell(df: pd.DataFrame, p: Params) -> list[dict]:
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
     a = atr(df, p.atr_period).to_numpy()
     swing_highs, swing_lows = find_swings(df, p.swing_n)
+    low_conf = [x.confirmed_at for x in swing_lows]
+    high_conf = [x.confirmed_at for x in swing_highs]
 
     out: list[dict] = []
     used: set[int] = set()
@@ -143,16 +146,18 @@ def _scan_sell(df: pd.DataFrame, p: Params) -> list[dict]:
                     continue
 
         # --- nowe przebicie struktury ---
-        known_lows = [s for s in swing_lows if s.confirmed_at <= t - 1]
-        if not known_lows:
+        # swingi są posortowane po idx, a confirmed_at = idx + n, więc znane to prefiks listy
+        n_lows = bisect_right(low_conf, t - 1)
+        if not n_lows:
             continue
-        s = known_lows[-1]
+        s = swing_lows[n_lows - 1]
         if s.idx in used or c[t] >= s.price:
             continue
         used.add(s.idx)
         if active is not None and active["touched"]:
             continue  # trwa retest wcześniejszego poziomu
-        known_highs = [x for x in swing_highs if x.confirmed_at <= t - 1]
+        known_lows = swing_lows[max(0, n_lows - 2) : n_lows]
+        known_highs = swing_highs[max(0, bisect_right(high_conf, t - 1) - 2) : bisect_right(high_conf, t - 1)]
         leg_idx = s.idx + int(np.argmax(h[s.idx : t + 1]))
         leg_high = float(h[leg_idx])
         active = dict(
