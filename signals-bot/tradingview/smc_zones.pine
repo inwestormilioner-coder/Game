@@ -111,8 +111,8 @@ f_cleanZones(array<Zone> arr, bool supply) =>
         for i = arr.size() - 1 to 0
             Zone z = arr.get(i)
             if supply ? close > z.top : close < z.bot
-                z.bx.delete()
                 arr.remove(i)
+                z.bx.delete()
             else
                 z.bx.set_right(bar_index + 15)
 
@@ -204,8 +204,8 @@ if barstate.isconfirmed
         for i = fvgs.size() - 1 to 0
             Fvg g = fvgs.get(i)
             if g.bear ? high >= g.top : low <= g.bot
-                g.bx.delete()
                 fvgs.remove(i)
+                g.bx.delete()
     while fvgs.size() > maxFvg
         Fvg g = fvgs.shift()
         g.bx.delete()
