@@ -148,6 +148,7 @@ def fibtest(cfg: Config, csv: str | None, at: str | None) -> None:
         tr = next(t for t in trades if str(df["time"].iloc[t.entry_idx]).startswith(at))
     else:
         tr = next(t for t in reversed(trades) if t.r >= 1.0)
+    cfg.display_symbol = f"[TEST] {cfg.display_symbol}"  # żeby testu nie pomylić z prawdziwym sygnałem
     state_path = cfg.data_dir / "fibtest_state.json"
     state_path.unlink(missing_ok=True)
     live_replay(cfg, df, tr, make_publishers(cfg), State(state_path))

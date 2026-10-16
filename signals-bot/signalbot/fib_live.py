@@ -81,10 +81,10 @@ def _reply(publishers: dict, rec: dict, text: str) -> None:
             log.error("Reply on %s failed: %s", name, e)
 
 
-def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict) -> None:
+def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None) -> None:
     trades = find_fib_trades(df, fib_params(cfg))
     for tr in trades:
-        if tr.entry_idx >= len(df) - 2 and tr.id not in state.signals:
+        if tr.entry_idx >= len(df) - 2 and tr.id not in state.signals and only in (None, tr.id):
             log.info("New %s signal %s @ %.2f", tr.direction, tr.id, levels(tr)["entry"])
             state.signals[tr.id] = publish_fib(cfg, df, tr, publishers)
             state.save()
@@ -114,4 +114,4 @@ def live_replay(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict, s
     """Test: feed bars one by one from the signal bar until the trade closes, like the live bot would see them."""
     end = tr.exits[-1][1] if tr.exits else tr.entry_idx
     for i in range(tr.entry_idx, end + 1):
-        run_once_fib(cfg, df.iloc[: i + 1].reset_index(drop=True), state, publishers)
+        run_once_fib(cfg, df.iloc[: i + 1].reset_index(drop=True), state, publishers, only=tr.id)

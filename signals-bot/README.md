@@ -59,6 +59,14 @@ Do wyboru są dwie drogi:
 Na start polecam Twelve Data, bo hosting jest prostszy i tańszy. Na MT5 można przejść później
 zmianą jednej linijki w `.env`.
 
+## Windows: najprościej
+
+1. Zainstaluj Python 3.12 z python.org i zaznacz **„Add Python to PATH”**.
+2. Rozpakuj folder `signals-bot`, np. do `C:\SignalBot`.
+3. Kliknij dwukrotnie **`1_INSTALUJ.bat`**. Zainstaluje wszystko i otworzy `.env` do uzupełnienia.
+4. Kliknij **`2_TEST_TELEGRAM.bat`**. Na Twój Telegram przyjdzie sygnał oznaczony `[TEST]`.
+5. Kliknij **`3_START_BOT.bat`**, żeby bot działał na żywo. Okno musi zostać otwarte.
+
 ## Instalacja
 
 ```bash
