@@ -129,3 +129,18 @@ Na Windows z MT5 możesz użyć Harmonogramu zadań albo po prostu `python -m si
   (KNF, rozporządzenie MAR). Przy płatnej grupie lub linkach afiliacyjnych skonsultuj to z prawnikiem.
 - Wyniki (✅ TP / ❌ SL) są publikowane automatycznie, także te przegrane. To buduje wiarygodność.
 - Stan sygnałów jest w `data/state.json`, wykresy w `data/charts/`.
+
+## Wskaźnik TradingView
+
+`tradingview/smc_zones.pine` to ta sama logika co bot, do porównania na wykresie:
+
+- **Strefy** SELL ZONE / BUY ZONE z siłą Weak / Medium / Strong. Siła to liczba spełnionych warunków:
+  - impuls ≥ 3 ATR,
+  - impuls zostawił FVG,
+  - wolumen świecy przebicia ≥ 1,5× średniej.
+- **BOS / CHoCH** oraz FVG.
+- **Sygnały bota** z Entry / SL / TP i konfluencjami Fibo i FVG, z alertami.
+- **Tabela trendu** na 5 interwałach (M5, M15, H1, H4, D1).
+
+Instalacja: TradingView → Pine Editor → wklej plik → *Add to chart*.
+Alert: ⏰ → warunek „SMC Zones” → *Any alert() function call*.

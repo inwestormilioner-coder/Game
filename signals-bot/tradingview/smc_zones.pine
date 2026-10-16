@@ -1,0 +1,373 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// Wskaźnik odtwarza logikę signalbota (signals-bot/signalbot/strategy.py):
+//  - swingi = fraktale (swingLen świec z każdej strony),
+//  - BOS / CHoCH = zamknięcie za ostatnim potwierdzonym swingiem,
+//  - SELL / BUY ZONE = od przebitego poziomu do szczytu/dołka ruchu, który go przebił (maks. zoneMaxAtr x ATR),
+//  - sygnał = retest strefy + świeca odrzucenia, SL za retestem, TP na końcu impulsu.
+// Siła strefy (Weak / Medium / Strong) = liczba spełnionych warunków:
+//  impuls >= strongImp x ATR, impuls zostawił FVG, wolumen świecy przebicia >= volMult x średnia.
+//@version=6
+indicator("SMC Zones + Signals (signalbot)", shorttitle = "SMC Zones", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+// ───────── ustawienia ─────────
+grpS       = "Struktura i strefy"
+swingLen   = input.int(3, "Swing: świece z każdej strony", minval = 1, group = grpS)
+atrLen     = input.int(14, "ATR", minval = 1, group = grpS)
+zoneMaxAtr = input.float(2.5, "Maks. wysokość strefy (x ATR)", minval = 0.1, step = 0.1, group = grpS)
+maxZones   = input.int(5, "Maks. stref na stronę", minval = 1, maxval = 50, group = grpS)
+showStruct = input.bool(true, "Pokaż BOS / CHoCH", group = grpS)
+
+grpQ      = "Siła strefy"
+strongImp = input.float(3.0, "+1: impuls >= x ATR", minval = 0.5, step = 0.5, group = grpQ)
+volMult   = input.float(1.5, "+1: wolumen przebicia >= x średniej (20)", minval = 1.0, step = 0.1, group = grpQ)
+
+grpF    = "FVG"
+showFvg = input.bool(true, "Pokaż FVG", group = grpF)
+maxFvg  = input.int(10, "Maks. FVG na wykresie", minval = 1, maxval = 100, group = grpF)
+
+grpSig    = "Sygnały (jak bot)"
+showSig   = input.bool(true, "Pokaż sygnały", group = grpSig)
+maxWait   = input.int(48, "Maks. świec na retest", minval = 1, group = grpSig)
+minImpAtr = input.float(2.0, "Min. impuls (x ATR)", minval = 0.0, step = 0.5, group = grpSig)
+slBufAtr  = input.float(0.2, "Bufor SL (x ATR)", minval = 0.0, step = 0.1, group = grpSig)
+minRR     = input.float(1.5, "Min. RR", minval = 0.1, step = 0.1, group = grpSig)
+fiboMin   = input.float(0.5, "Fibo od", step = 0.05, group = grpSig)
+fiboMax   = input.float(0.786, "Fibo do", step = 0.05, group = grpSig)
+lineLen   = input.int(20, "Długość linii Entry/SL/TP (świece)", minval = 1, maxval = 400, group = grpSig)
+
+grpT      = "Tabela trendu (bias)"
+showTable = input.bool(true, "Pokaż tabelę", group = grpT)
+tf1       = input.timeframe("5", "TF 1", group = grpT)
+tf2       = input.timeframe("15", "TF 2", group = grpT)
+tf3       = input.timeframe("60", "TF 3", group = grpT)
+tf4       = input.timeframe("240", "TF 4", group = grpT)
+tf5       = input.timeframe("D", "TF 5", group = grpT)
+
+grpC      = "Kolory"
+supplyCol = input.color(#d32f2f, "Podaż / SELL", group = grpC)
+demandCol = input.color(#26a69a, "Popyt / BUY", group = grpC)
+fvgCol    = input.color(#7e57c2, "FVG", group = grpC)
+
+// ───────── typy ─────────
+type Zone
+    box   bx
+    float top
+    float bot
+
+type Fvg
+    box   bx
+    float top
+    float bot
+    bool  bear
+
+// ───────── serie liczone na każdej świecy ─────────
+float atr    = ta.atr(atrLen)
+float volAvg = ta.sma(volume, 20)
+float pl     = ta.pivotlow(low, swingLen, swingLen)
+float ph     = ta.pivothigh(high, swingLen, swingLen)
+
+// ostatnie potwierdzone swingi (aktualizowane PO sprawdzeniu przebicia, jak w bocie)
+var float pl1     = na
+var float pl2     = na
+var int   pl1Idx  = na
+var bool  pl1Used = true
+var float ph1     = na
+var float ph2     = na
+var int   ph1Idx  = na
+var bool  ph1Used = true
+
+// zasięg ruchu od swingu do bieżącej świecy (szczyt/dołek nogi, która przebija poziom)
+int   lenL       = na(pl1Idx) ? 1 : math.max(1, math.min(bar_index - pl1Idx + 1, 4000))
+float legHigh    = ta.highest(high, lenL)
+int   legHighIdx = bar_index + ta.highestbars(high, lenL)
+int   lenH       = na(ph1Idx) ? 1 : math.max(1, math.min(bar_index - ph1Idx + 1, 4000))
+float legLow     = ta.lowest(low, lenH)
+int   legLowIdx  = bar_index + ta.lowestbars(low, lenH)
+
+bool bigVol = not na(volAvg) and volAvg > 0 and volume > volMult * volAvg
+
+// ───────── funkcje ─────────
+f_strength(float impulseAtr, bool hasFvg, bool bigV) =>
+    int sc = (impulseAtr >= strongImp ? 1 : 0) + (hasFvg ? 1 : 0) + (bigV ? 1 : 0)
+    sc >= 3 ? "Strong" : sc == 2 ? "Medium" : "Weak"
+
+f_addZone(array<Zone> arr, float top, float bot, int left, bool supply, string strength) =>
+    color c  = supply ? supplyCol : demandCol
+    int   tp = strength == "Strong" ? 70 : strength == "Medium" ? 82 : 90
+    string t = (supply ? "SELL ZONE (" : "BUY ZONE (") + strength + ")"
+    box b = box.new(left, top, bar_index + 15, bot, border_color = color.new(c, 50), bgcolor = color.new(c, tp),
+         text = t, text_size = size.small, text_color = c,
+         text_halign = text.align_right, text_valign = text.align_center)
+    arr.push(Zone.new(b, top, bot))
+    if arr.size() > maxZones
+        Zone old = arr.shift()
+        old.bx.delete()
+
+// strefa podaży znika po zamknięciu nad nią, popytu - po zamknięciu pod nią;
+// pozostałe przesuwamy w prawo, żeby opis był zawsze przy bieżącej cenie
+f_cleanZones(array<Zone> arr, bool supply) =>
+    if arr.size() > 0
+        for i = arr.size() - 1 to 0
+            Zone z = arr.get(i)
+            if supply ? close > z.top : close < z.bot
+                z.bx.delete()
+                arr.remove(i)
+            else
+                z.bx.set_right(bar_index + 15)
+
+f_struct(int fromIdx, float lvl, string txt, color c, bool up) =>
+    line.new(fromIdx, lvl, bar_index, lvl, color = c, style = line.style_dashed)
+    label.new(math.floor((fromIdx + bar_index) / 2), lvl, txt, color = color.new(color.white, 100),
+         textcolor = c, size = size.small, style = up ? label.style_label_down : label.style_label_up)
+
+f_signal(bool sell, float entry, float sl, float tp, float rr, string conf) =>
+    line.new(bar_index, entry, bar_index + lineLen, entry, color = color.gray, width = 2)
+    line.new(bar_index, sl, bar_index + lineLen, sl, color = supplyCol, style = line.style_dashed)
+    line.new(bar_index, tp, bar_index + lineLen, tp, color = demandCol, width = 2)
+    string txt = (sell ? "SELL" : "BUY") + "\nEntry " + str.tostring(entry, format.mintick) +
+         "\nSL " + str.tostring(sl, format.mintick) + "\nTP " + str.tostring(tp, format.mintick) +
+         "\nRR 1:" + str.tostring(rr, "#.0") + conf
+    label.new(bar_index, sell ? high : low, txt, color = sell ? supplyCol : demandCol, textcolor = color.white,
+         size = size.small, style = sell ? label.style_label_down : label.style_label_up)
+    txt
+
+f_conf(float retrace, bool fvgOk) =>
+    string s = ""
+    if retrace >= fiboMin and retrace <= fiboMax
+        s += "\nFibo " + str.tostring(retrace, "0.00") + " ✓"
+    if fvgOk
+        s += "\nFVG ✓"
+    s
+
+// ───────── stan ─────────
+var array<Zone> supplyZones = array.new<Zone>()
+var array<Zone> demandZones = array.new<Zone>()
+var array<Fvg>  fvgs        = array.new<Fvg>()
+
+// ostatnie FVG (dno luki spadkowej / szczyt luki wzrostowej i świeca środkowa)
+var float lastBearFvgBot = na
+var int   lastBearFvgMid = na
+var float lastBullFvgTop = na
+var int   lastBullFvgMid = na
+
+// aktywny setup SELL
+var bool  sOn    = false
+var bool  sTouch = false
+var float sLvl   = na
+var float sTop   = na
+var float sLeg   = na
+var float sExt   = na
+var float sRet   = na
+var float sAtr   = na
+var float sFvg   = na
+var int   sBrk   = na
+// aktywny setup BUY
+var bool  bOn    = false
+var bool  bTouch = false
+var float bLvl   = na
+var float bBot   = na
+var float bLeg   = na
+var float bExt   = na
+var float bRet   = na
+var float bAtr   = na
+var float bFvg   = na
+var int   bBrk   = na
+
+bool sellSig = false
+bool buySig  = false
+
+// cała logika na zamkniętych świecach (jak bot) - bez przemalowywania w trakcie świecy
+if barstate.isconfirmed
+    // ── FVG ──
+    bool bearFvg = low[2] > high
+    bool bullFvg = high[2] < low
+    if bearFvg
+        lastBearFvgBot := high
+        lastBearFvgMid := bar_index - 1
+        if sOn and not sTouch
+            sFvg := na(sFvg) ? high : math.min(sFvg, high)
+        if showFvg
+            fvgs.push(Fvg.new(box.new(bar_index - 2, low[2], bar_index, high, border_color = color.new(fvgCol, 60),
+                 bgcolor = color.new(fvgCol, 85), extend = extend.right, text = "FVG", text_size = size.tiny,
+                 text_color = fvgCol, text_halign = text.align_right), low[2], high, true))
+    if bullFvg
+        lastBullFvgTop := low
+        lastBullFvgMid := bar_index - 1
+        if bOn and not bTouch
+            bFvg := na(bFvg) ? low : math.max(bFvg, low)
+        if showFvg
+            fvgs.push(Fvg.new(box.new(bar_index - 2, low, bar_index, high[2], border_color = color.new(fvgCol, 60),
+                 bgcolor = color.new(fvgCol, 85), extend = extend.right, text = "FVG", text_size = size.tiny,
+                 text_color = fvgCol, text_halign = text.align_right), low, high[2], false))
+    if fvgs.size() > 0
+        for i = fvgs.size() - 1 to 0
+            Fvg g = fvgs.get(i)
+            if g.bear ? high >= g.top : low <= g.bot
+                g.bx.delete()
+                fvgs.remove(i)
+    while fvgs.size() > maxFvg
+        Fvg g = fvgs.shift()
+        g.bx.delete()
+
+    f_cleanZones(supplyZones, true)
+    f_cleanZones(demandZones, false)
+
+    // ── setup SELL: retest i odrzucenie ──
+    bool sDone = false
+    if sOn and bar_index > sBrk
+        if bar_index - sBrk > maxWait or close > sTop
+            sOn := false
+        else
+            if not sTouch and low < sExt
+                sExt := low
+            if high >= sLvl
+                sTouch := true
+                sRet := na(sRet) ? high : math.max(sRet, high)
+            if sTouch and close < sLvl and close < open
+                float entry  = close
+                float sl     = sRet + slBufAtr * atr
+                float tp     = sExt
+                float risk   = sl - entry
+                float reward = entry - tp
+                if risk > 0 and reward > 0 and sLvl - sExt >= minImpAtr * sAtr and reward / risk >= minRR
+                    float retr = sLeg > sExt ? (sRet - sExt) / (sLeg - sExt) : 0.0
+                    string conf = f_conf(retr, not na(sFvg) and sRet >= sFvg)
+                    sellSig := true
+                    if showSig
+                        string msg = f_signal(true, entry, sl, tp, reward / risk, conf)
+                        alert(syminfo.ticker + " " + msg, alert.freq_once_per_bar_close)
+                sOn := false
+                sDone := true
+
+    // ── setup BUY ──
+    bool bDone = false
+    if bOn and bar_index > bBrk
+        if bar_index - bBrk > maxWait or close < bBot
+            bOn := false
+        else
+            if not bTouch and high > bExt
+                bExt := high
+            if low <= bLvl
+                bTouch := true
+                bRet := na(bRet) ? low : math.min(bRet, low)
+            if bTouch and close > bLvl and close > open
+                float entry  = close
+                float sl     = bRet - slBufAtr * atr
+                float tp     = bExt
+                float risk   = entry - sl
+                float reward = tp - entry
+                if risk > 0 and reward > 0 and bExt - bLvl >= minImpAtr * bAtr and reward / risk >= minRR
+                    float retr = bExt > bLeg ? (bExt - bRet) / (bExt - bLeg) : 0.0
+                    string conf = f_conf(retr, not na(bFvg) and bRet <= bFvg)
+                    buySig := true
+                    if showSig
+                        string msg = f_signal(false, entry, sl, tp, reward / risk, conf)
+                        alert(syminfo.ticker + " " + msg, alert.freq_once_per_bar_close)
+                bOn := false
+                bDone := true
+
+    // ── przebicie swing low -> BOS / CHoCH w dół + strefa podaży ──
+    if not sDone and not na(pl1) and not pl1Used and close < pl1
+        pl1Used := true
+        bool   choch = not na(pl2) and not na(ph2) and pl1 > pl2 and ph1 > ph2
+        float  top   = math.min(legHigh, pl1 + zoneMaxAtr * atr)
+        bool   hasF  = not na(lastBearFvgMid) and lastBearFvgMid > legHighIdx
+        string str_  = f_strength((legHigh - low) / atr, hasF, bigVol)
+        if showStruct
+            f_struct(pl1Idx, pl1, choch ? "CHoCH" : "BOS", supplyCol, false)
+        f_addZone(supplyZones, top, pl1, pl1Idx, true, str_)
+        if not (sOn and sTouch)
+            sOn    := true
+            sTouch := false
+            sLvl   := pl1
+            sTop   := top
+            sLeg   := legHigh
+            sExt   := low
+            sRet   := na
+            sAtr   := atr
+            sFvg   := hasF ? lastBearFvgBot : na
+            sBrk   := bar_index
+
+    // ── przebicie swing high -> BOS / CHoCH w górę + strefa popytu ──
+    if not bDone and not na(ph1) and not ph1Used and close > ph1
+        ph1Used := true
+        bool   choch = not na(ph2) and not na(pl2) and ph1 < ph2 and pl1 < pl2
+        float  bot   = math.max(legLow, ph1 - zoneMaxAtr * atr)
+        bool   hasF  = not na(lastBullFvgMid) and lastBullFvgMid > legLowIdx
+        string str_  = f_strength((high - legLow) / atr, hasF, bigVol)
+        if showStruct
+            f_struct(ph1Idx, ph1, choch ? "CHoCH" : "BOS", demandCol, true)
+        f_addZone(demandZones, ph1, bot, ph1Idx, false, str_)
+        if not (bOn and bTouch)
+            bOn    := true
+            bTouch := false
+            bLvl   := ph1
+            bBot   := bot
+            bLeg   := legLow
+            bExt   := high
+            bRet   := na
+            bAtr   := atr
+            bFvg   := hasF ? lastBullFvgTop : na
+            bBrk   := bar_index
+
+    // ── nowe swingi (znane od następnej świecy) ──
+    if not na(pl)
+        pl2     := pl1
+        pl1     := pl
+        pl1Idx  := bar_index - swingLen
+        pl1Used := false
+    if not na(ph)
+        ph2     := ph1
+        ph1     := ph
+        ph1Idx  := bar_index - swingLen
+        ph1Used := false
+
+alertcondition(sellSig, "SELL sygnał", "SMC Zones: SELL setup")
+alertcondition(buySig, "BUY sygnał", "SMC Zones: BUY setup")
+
+// ───────── tabela trendu na kilku interwałach ─────────
+// bias = kierunek ostatniego przebicia struktury na danym interwale
+f_bias() =>
+    var int   trend = 0
+    var float lastH = na
+    var float lastL = na
+    float pH = ta.pivothigh(high, swingLen, swingLen)
+    float pL = ta.pivotlow(low, swingLen, swingLen)
+    if not na(lastH) and close > lastH
+        trend := 1
+        lastH := na
+    if not na(lastL) and close < lastL
+        trend := -1
+        lastL := na
+    if not na(pH)
+        lastH := pH
+    if not na(pL)
+        lastL := pL
+    trend
+
+int b1 = request.security(syminfo.tickerid, tf1, f_bias())
+int b2 = request.security(syminfo.tickerid, tf2, f_bias())
+int b3 = request.security(syminfo.tickerid, tf3, f_bias())
+int b4 = request.security(syminfo.tickerid, tf4, f_bias())
+int b5 = request.security(syminfo.tickerid, tf5, f_bias())
+
+f_tfName(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    sec >= 86400 ? "D" + str.tostring(sec / 86400) : sec >= 3600 ? "H" + str.tostring(sec / 3600) : "M" + str.tostring(sec / 60)
+
+f_row(table tb, int row, string tf, int b) =>
+    tb.cell(0, row, f_tfName(tf), text_color = color.white, text_size = size.small)
+    tb.cell(1, row, b == 1 ? "▲" : b == -1 ? "▼" : "–", text_size = size.small,
+         text_color = b == 1 ? demandCol : b == -1 ? supplyCol : color.gray)
+
+var table biasTable = table.new(position.top_right, 2, 6, bgcolor = color.new(#455a64, 20), border_width = 1,
+     border_color = color.new(color.white, 80))
+if showTable and barstate.islast
+    biasTable.cell(0, 0, "TF", text_color = color.white, text_size = size.small)
+    biasTable.cell(1, 0, "Bias", text_color = color.white, text_size = size.small)
+    f_row(biasTable, 1, tf1, b1)
+    f_row(biasTable, 2, tf2, b2)
+    f_row(biasTable, 3, tf3, b3)
+    f_row(biasTable, 4, tf4, b4)
+    f_row(biasTable, 5, tf5, b5)
