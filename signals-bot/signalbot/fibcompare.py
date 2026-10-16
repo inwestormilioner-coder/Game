@@ -45,7 +45,7 @@ def main() -> None:
         p.max_hold = args.max_hold
         tr = find_fib_trades(df, p)
         t = pd.DataFrame([dict(time=df["time"].iloc[x.entry_idx], dir=x.direction,
-                               r=x.r - args.spread / abs(x.entry - x.sl)) for x in tr],
+                               r=x.r - args.spread / abs(x.entry - x.sl)) for x in tr if x.closed],
                          columns=["time", "dir", "r"])
         full, a, b = stats(t), stats(t[t.time < mid]), stats(t[t.time >= mid])
         rows.append({"wariant": name, **full, "1.poł R": a["sumR"], "2.poł R": b["sumR"]})

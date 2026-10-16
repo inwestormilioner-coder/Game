@@ -147,3 +147,26 @@ Alert: ⏰ → warunek „SMC Zones” → *Any alert() function call*.
 
 `tradingview/tpz_zones.pine` to wersja w stylu TPZ: węższe strefy z jednej świecy order blocka,
 paski wolumenu kupna i sprzedaży, siła jako ranking wolumenu (Strong / Medium / Weak) i maks. 3 strefy na stronę.
+
+## Strategia „strefa + Fibo” (domyślna, posty po angielsku)
+
+Działanie strategii:
+1. Cena dotyka strefy (order block). Fibo idzie od dołka (dla SELL: szczytu) reakcji (0) do poprzedniego swingu (1).
+2. Zlecenie BUY/SELL STOP stoi na 0.1272, SL na -0.1272, a TP na każdym kolejnym poziomie Fibo, z częściowym zamykaniem i SL na wejście po TP2.
+3. Post wychodzi, gdy zlecenie się aktywuje: wykres, poziomy i uzasadnienie „Why” od AI.
+4. Odpowiedź pod postem pojawia się tylko po zaliczeniu 1:1 RR, a potem na zamknięciu, jeśli wynik ≥ +1R.
+
+Test na historii, odtwarzany świeca po świecy (przy `DRY_RUN=false` naprawdę wysyła):
+
+```bash
+python -m signalbot.main fibtest --csv XAUUSD_M15.csv --at "2026-07-08 15:45"
+```
+
+### Tryb podglądu: tylko Twój prywatny Telegram
+
+W `.env` ustaw:
+- `TELEGRAM_ENABLED=true`, `THREADS_ENABLED=false`, `X_ENABLED=false`, `DRY_RUN=false`,
+- `TELEGRAM_CHAT_ID` = Twoje ID.
+
+Żeby poznać ID, napisz cokolwiek do swojego bota i otwórz `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+ID jest w polu `"chat":{"id": ...}`.

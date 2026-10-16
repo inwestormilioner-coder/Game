@@ -3,6 +3,9 @@
     python -m signalbot.main once       # jedno sprawdzenie (np. z crona)
     python -m signalbot.main backtest   # statystyki strategii na historii
     python -m signalbot.main demo       # wykres + post na danych syntetycznych, bez publikacji
+    python -m signalbot.main fibtest --csv plik.csv [--at "2026-07-08 15:45"]
+                                        # testowy sygnał "strefa + Fibo" odtworzony świeca po świecy
+                                        # (przy DRY_RUN=false naprawdę wysyła na włączone kanały)
 """
 from __future__ import annotations
 
@@ -21,6 +24,9 @@ from .publishers import make_publishers
 from .strategy import Setup, find_setups
 from .tracker import State, evaluate
 from .writer import build_post, result_text
+from .fib_live import fib_params, live_replay, run_once_fib
+from .fibzone import find_fib_trades
+from .data import CSVProvider
 
 log = logging.getLogger("signalbot")
 
@@ -46,6 +52,9 @@ def publish_signal(cfg: Config, df: pd.DataFrame, s: Setup, publishers: dict) ->
 
 def run_once(cfg: Config, provider, state: State, publishers: dict) -> None:
     df = provider.get_bars(cfg.symbol, cfg.timeframe, cfg.bars)
+    if cfg.strategy == "fibzone":
+        run_once_fib(cfg, df, state, publishers)
+        return
     setups = find_setups(df, strategy_params(cfg))
 
     # nowe sygnały: potwierdzone na jednej z 2 ostatnich zamkniętych świec
@@ -131,9 +140,24 @@ def demo(cfg: Config) -> None:
           f"\n\n--- X ---\n{post.short}")
 
 
+def fibtest(cfg: Config, csv: str | None, at: str | None) -> None:
+    df = CSVProvider(csv).get_bars(cfg.symbol, cfg.timeframe) if csv else \
+        SyntheticProvider(seed=1).get_bars(cfg.symbol, cfg.timeframe, 3000)
+    trades = [t for t in find_fib_trades(df, fib_params(cfg)) if t.closed]
+    if at:
+        tr = next(t for t in trades if str(df["time"].iloc[t.entry_idx]).startswith(at))
+    else:
+        tr = next(t for t in reversed(trades) if t.r >= 1.0)
+    state_path = cfg.data_dir / "fibtest_state.json"
+    state_path.unlink(missing_ok=True)
+    live_replay(cfg, df, tr, make_publishers(cfg), State(state_path))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="signalbot")
-    ap.add_argument("command", choices=["run", "once", "backtest", "demo"])
+    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest"])
+    ap.add_argument("--csv", help="fibtest: plik z historią (time,open,high,low,close[,volume])")
+    ap.add_argument("--at", help="fibtest: czas świecy wejścia, np. '2026-07-08 15:45'")
     ap.add_argument("--env", default=".env")
     ap.add_argument("--charts", type=int, default=0, help="backtest: ile wykresów zapisać")
     args = ap.parse_args()
@@ -144,6 +168,8 @@ def main() -> None:
         run_loop(cfg)
     elif args.command == "once":
         run_once(cfg, make_provider(cfg), State(cfg.data_dir / "state.json"), make_publishers(cfg))
+    elif args.command == "fibtest":
+        fibtest(cfg, args.csv, args.at)
     elif args.command == "backtest":
         backtest(cfg, charts=args.charts)
     else:

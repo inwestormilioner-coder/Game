@@ -25,7 +25,7 @@ class SliceProvider:
 def test_publishes_once_then_reports_result(tmp_path):
     full = SyntheticProvider(seed=1).get_bars("x", "M30", 3000)
     s = find_setups(full)[0]
-    cfg = Config(data_source="synthetic", use_ai=False, data_dir=tmp_path)
+    cfg = Config(data_source="synthetic", strategy="smc", use_ai=False, data_dir=tmp_path)
     state = State(tmp_path / "state.json")
     pub = FakePublisher()
     pubs = {"telegram": (pub, "long")}

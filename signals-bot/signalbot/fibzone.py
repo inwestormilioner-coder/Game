@@ -63,6 +63,16 @@ class FibTrade:
     fib1_idx: int = 0
     vp: bool = False                         # strefa na POC / HVN profilu wolumenu
     poc: float | None = None
+    closed: bool = True                      # False = pozycja wciąż otwarta (koniec danych)
+    touch_time: str = ""
+
+    @property
+    def risk(self) -> float:
+        return abs(self.entry - self.sl)
+
+    @property
+    def id(self) -> str:
+        return f"{self.direction}-{self.touch_time}"
 
 
 def _atr(h, l, c, n=14):
@@ -83,15 +93,15 @@ def _support_slope(l: np.ndarray, t: int, short: int, long: int) -> float | None
 
 
 def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
-              p: FibParams) -> tuple[float, list]:
-    """Zarządzanie pozycją BUY od świecy wejścia. Zwraca wynik w R i listę wyjść."""
+              p: FibParams) -> tuple[float, list, bool]:
+    """Zarządzanie pozycją BUY od świecy wejścia. Zwraca (wynik w R, wyjścia, czy zamknięta)."""
     risk = entry - sl
     left, cur_sl, pnl, k, exits = 1.0, sl, 0.0, 0, []
     for u in range(start, min(len(c), start + p.max_hold)):
         if u > start and l[u] <= cur_sl:     # SL przed TP (konserwatywnie)
             pnl += left * (cur_sl - entry)
             exits.append(("sl", u, cur_sl, left))
-            return pnl / risk, exits
+            return pnl / risk, exits, True
         while k < len(levels) and h[u] >= levels[k]:
             frac = min(p.fractions[k], left)
             pnl += frac * (levels[k] - entry)
@@ -101,11 +111,13 @@ def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
                 cur_sl = entry
             k += 1
             if left <= 1e-9:
-                return pnl / risk, exits
-    last = min(len(c), start + p.max_hold) - 1
+                return pnl / risk, exits, True
+    if len(c) < start + p.max_hold:          # dane się skończyły - pozycja otwarta
+        return pnl / risk, exits, False
+    last = start + p.max_hold - 1
     pnl += left * (c[last] - entry)
     exits.append(("timeout", last, c[last], left))
-    return pnl / risk, exits
+    return pnl / risk, exits, True
 
 
 def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
@@ -150,11 +162,12 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                     levels = [f0 + x * rng for x in p.tps]
                     levels = [x for x in levels if x > entry]
                     if levels:
-                        r, exits = _simulate(h, l, c, t, entry, sl, levels,
+                        r, exits, closed = _simulate(h, l, c, t, entry, sl, levels,
                                              FibParams(**{**p.__dict__, "fractions": p.fractions[-len(levels):]}))
                         trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
-                                               z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"]))
-                        busy_until = exits[-1][1]
+                                               z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
+                                               str(df["time"].iloc[setup["touch"]]) if "time" in df else ""))
+                        busy_until = exits[-1][1] if closed else len(df)
                         zones = [x for x in zones if x is not z]
                     setup = None
             continue
