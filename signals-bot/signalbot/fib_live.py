@@ -83,6 +83,10 @@ def _reply(publishers: dict, rec: dict, text: str) -> None:
 
 def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None) -> None:
     trades = find_fib_trades(df, fib_params(cfg))
+    last = df.iloc[-1]
+    open_n = sum(1 for r in state.signals.values() if r["status"] == "open")
+    log.info("Checked %s candle %s close %.2f | open signals: %d", cfg.timeframe,
+             pd.Timestamp(last["time"]).strftime("%Y-%m-%d %H:%M"), last["close"], open_n)
     for tr in trades:
         if tr.entry_idx >= len(df) - 2 and tr.id not in state.signals and only in (None, tr.id):
             log.info("New %s signal %s @ %.2f", tr.direction, tr.id, levels(tr)["entry"])
