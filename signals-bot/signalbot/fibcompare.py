@@ -24,6 +24,8 @@ VARIANTS = {
     "3 TP (0.5/1.0/1.618) + BE po 1.": FibParams(tps=(0.5, 1.0, 1.618), fractions=(1 / 3,) * 3, be_after=0),
     "9 TP + BE + filtr trendline": FibParams(tps=FIB_TPS, fractions=ALL9, be_after=1, trend_filter=True),
     "TP 1.0 + filtr trendline": FibParams(tps=(1.0,), trend_filter=True),
+    "9 TP + BE + Volume Profile": FibParams(tps=FIB_TPS, fractions=ALL9, be_after=1, vp_filter=True),
+    "TP 1.0 + Volume Profile": FibParams(tps=(1.0,), vp_filter=True),
 }
 
 

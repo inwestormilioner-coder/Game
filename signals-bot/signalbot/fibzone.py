@@ -11,6 +11,9 @@ Setup:
 4. TP na kolejnych poziomach Fibo — jednym albo częściami (scale-out), opcjonalnie SL na wejście po TP n.
 5. Anulowanie: zamknięcie pod strefą albo brak wejścia przez `max_wait` świec.
 
+Volume Profile (opcjonalny filtr `vp_filter`): strefa pokrywa się z POC albo węzłem dużego wolumenu
+z ostatnich `vp_lookback` świec przed dotknięciem.
+
 Filtr linii trendu (opcjonalny, jak skrypt TrendLineSample): linia wsparcia z najniższego dołka
 w [short+1, long] świec wstecz do najniższego dołka w [1, short]; BUY tylko gdy linia rośnie.
 """
@@ -21,7 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .structure import find_swings
+from .structure import find_swings, volume_profile
 
 FIB_TPS = (0.236, 0.382, 0.5, 0.618, 0.705, 0.786, 1.0, 1.272, 1.618)
 
@@ -38,6 +41,8 @@ class FibParams:
     max_hold: int = 96
     min_range_atr: float = 1.0               # minimalny zakres Fibo (1 - 0) w ATR
     trend_filter: bool = False
+    vp_filter: bool = False                  # wymagaj, by strefa pokrywała się z POC / HVN profilu wolumenu
+    vp_lookback: int = 200
     tl_short: int = 30
     tl_long: int = 100
 
@@ -56,6 +61,8 @@ class FibTrade:
     zone_bot: float = 0.0
     zone_top: float = 0.0
     fib1_idx: int = 0
+    vp: bool = False                         # strefa na POC / HVN profilu wolumenu
+    poc: float | None = None
 
 
 def _atr(h, l, c, n=14):
@@ -146,7 +153,7 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                         r, exits = _simulate(h, l, c, t, entry, sl, levels,
                                              FibParams(**{**p.__dict__, "fractions": p.fractions[-len(levels):]}))
                         trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
-                                               z[0], z[1], setup["f1_idx"]))
+                                               z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"]))
                         busy_until = exits[-1][1]
                         zones = [x for x in zones if x is not z]
                     setup = None
@@ -160,7 +167,15 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                     slope = _support_slope(l, t, p.tl_short, p.tl_long)
                     if slope is None or slope <= 0:
                         break
-                setup = {"zone": z, "touch": t, "f0": l[t], "f1": last_sh.price, "f1_idx": last_sh.idx}
+                prof = volume_profile(df, t - 1, p.vp_lookback)
+                vp, poc = False, None
+                if prof is not None:
+                    poc = prof.poc
+                    vp = z[0] <= poc <= z[1] or any(lo <= z[1] and hi >= z[0] for lo, hi in prof.hvn_ranges())
+                if p.vp_filter and not vp:
+                    break
+                setup = {"zone": z, "touch": t, "f0": l[t], "f1": last_sh.price, "f1_idx": last_sh.idx,
+                         "vp": vp, "poc": poc}
                 break
     return trades
 
@@ -178,4 +193,5 @@ def find_fib_trades(df: pd.DataFrame, p: FibParams | None = None) -> list[FibTra
         s.fib0, s.fib1, s.entry, s.sl = -s.fib0, -s.fib1, -s.entry, -s.sl
         s.exits = [(n, i, -px, f) for n, i, px, f in s.exits]
         s.zone_bot, s.zone_top = -s.zone_top, -s.zone_bot
+        s.poc = -s.poc if s.poc is not None else None
     return sorted(buys + sells, key=lambda x: x.entry_idx)

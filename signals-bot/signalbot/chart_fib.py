@@ -13,6 +13,7 @@ import pandas as pd  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
 from .fibzone import FIB_TPS, FibTrade  # noqa: E402
+from .structure import volume_profile  # noqa: E402
 
 RED, GREEN, BLUE, GREY = "#d32f2f", "#26a69a", "#2962ff", "#555555"
 
@@ -53,6 +54,19 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     ax.add_patch(Rectangle((-1, tr.zone_bot), right + 1, tr.zone_top - tr.zone_bot, fc=zc, alpha=0.13, ec=zc, lw=0.8))
     ax.text(1, (tr.zone_bot + tr.zone_top) / 2, ("BUY ZONE" if buy else "SELL ZONE"), color=zc, fontsize=8,
             fontweight="bold", va="center")
+
+    # Volume Profile (jak u Leviathana): słupki po lewej, Value Area ciemniej, POC
+    prof = volume_profile(df, end, 200, bins=60)
+    if prof is not None:
+        ylim = ax.get_ylim()
+        mids = (prof.edges[:-1] + prof.edges[1:]) / 2
+        in_va = (mids >= prof.val) & (mids <= prof.vah)
+        ax.barh(mids, 22 * prof.volume / prof.volume.max(), height=(prof.edges[1] - prof.edges[0]) * 0.85, left=-1,
+                color=["#78909c" if v else "#cfd8dc" for v in in_va], alpha=0.5, zorder=0)
+        if ylim[0] <= prof.poc <= ylim[1]:
+            ax.hlines(prof.poc, -1, right, colors="#546e7a", lw=1, ls=(0, (6, 3)), zorder=2)
+            ax.text(23, prof.poc, f"POC {prof.poc:.2f}", color="#546e7a", fontsize=7, va="bottom", fontweight="bold")
+        ax.set_ylim(ylim)
 
     # linie trendu (z danych do świecy wejścia)
     for vals, lowest, col in ((df["low"].to_numpy(), True, GREEN), (df["high"].to_numpy(), False, RED)):
