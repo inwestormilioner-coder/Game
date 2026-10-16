@@ -27,6 +27,7 @@ import pandas as pd
 from .structure import find_swings, volume_profile
 
 FIB_TPS = (0.236, 0.382, 0.5, 0.618, 0.705, 0.786, 1.0, 1.272, 1.618)
+SIGNAL_TPS = (0.382, 0.618, 1.0, 1.272, 1.618)   # cele w postach; 0.382 = dokładnie 1:1 RR
 
 
 @dataclass
@@ -65,6 +66,7 @@ class FibTrade:
     poc: float | None = None
     closed: bool = True                      # False = pozycja wciąż otwarta (koniec danych)
     touch_time: str = ""
+    tp_fibs: tuple = FIB_TPS                 # poziomy Fibo celów tej transakcji
 
     @property
     def risk(self) -> float:
@@ -166,7 +168,8 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                                              FibParams(**{**p.__dict__, "fractions": p.fractions[-len(levels):]}))
                         trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
                                                z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
-                                               str(df["time"].iloc[setup["touch"]]) if "time" in df else ""))
+                                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "",
+                                               tuple(p.tps)))
                         busy_until = exits[-1][1] if closed else len(df)
                         zones = [x for x in zones if x is not z]
                     setup = None

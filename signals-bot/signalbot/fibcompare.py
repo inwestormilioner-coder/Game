@@ -10,11 +10,12 @@ import pandas as pd
 
 from .compare import stats
 from .data import CSVProvider
-from .fibzone import FIB_TPS, FibParams, find_fib_trades
+from .fibzone import FIB_TPS, SIGNAL_TPS, FibParams, find_fib_trades
 
 ALL9 = tuple(1 / 9 for _ in FIB_TPS)
 
 VARIANTS = {
+    "5 TP (0.382…1.618) + BE po TP1": FibParams(tps=SIGNAL_TPS, fractions=(0.2,) * 5, be_after=0),
     "TP 0.382": FibParams(tps=(0.382,)),
     "TP 0.618": FibParams(tps=(0.618,)),
     "TP 1.0": FibParams(tps=(1.0,)),

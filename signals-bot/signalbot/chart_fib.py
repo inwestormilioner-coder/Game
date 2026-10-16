@@ -12,7 +12,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-from .fibzone import FIB_TPS, FibTrade  # noqa: E402
+from .fibzone import FibTrade  # noqa: E402
 from .structure import volume_profile  # noqa: E402
 
 RED, GREEN, BLUE, GREY, INK = "#d32f2f", "#1b9e77", "#1e4fd8", "#757575", "#212121"
@@ -59,7 +59,8 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     rng = tr.fib1 - tr.fib0
     lvl = lambda f: tr.fib0 + f * rng  # noqa: E731
 
-    ys = [lvl(-0.1272), lvl(1.618), win["low"].min(), win["high"].max()]
+    tps = tr.tp_fibs
+    ys = [lvl(-0.1272), lvl(max(tps)), win["low"].min(), win["high"].max()]
     span = max(ys) - min(ys)
     ax.set_ylim(min(ys) - span * 0.05, max(ys) + span * 0.07)
     ylim = ax.get_ylim()
@@ -95,13 +96,13 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     # fibonacci levels: lines + non-overlapping labels on the right
     fx = x(max(tr.fib1_idx, start))
     rows = []
-    for f in (-0.1272, 0.0, 0.1272, *FIB_TPS):
+    for f in (-0.1272, 0.0, 0.1272, *tps):
         if f == 0.1272:
             rows.append((f, f"ENTRY  {lvl(f):.2f}", BLUE, 2.2, "-"))
         elif f == -0.1272:
             rows.append((f, f"STOP LOSS  {lvl(f):.2f}", RED, 2.2, "-"))
-        elif f in FIB_TPS:
-            rows.append((f, f"TP{FIB_TPS.index(f) + 1}  {lvl(f):.2f}", GREEN, 1.0, "--"))
+        elif f in tps:
+            rows.append((f, f"TP{tps.index(f) + 1}  {lvl(f):.2f}", GREEN, 1.4, "--"))
         else:
             rows.append((f, f"0  {lvl(f):.2f}", GREY, 0.8, ":"))
     label_y = _spread_labels([lvl(f) for f, *_ in rows], span * 0.045)
@@ -117,7 +118,7 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     r1 = entry + (entry - tr.sl)
     box = (f"{tr.direction} STOP   {title} {timeframe}\n"
            f"Entry {entry:.2f}   SL {tr.sl:.2f}\n"
-           f"1:1 RR at {r1:.2f}   TP9 {lvl(1.618):.2f}")
+           f"1:1 RR at {r1:.2f}   TP{len(tps)} {lvl(tps[-1]):.2f}")
     ax.text(0.01, 0.98, box, transform=ax.transAxes, fontsize=11, va="top", ha="left", color=INK,
             family="monospace", bbox=dict(boxstyle="round,pad=0.5", fc="white", ec="#bdbdbd", alpha=0.95), zorder=7)
 

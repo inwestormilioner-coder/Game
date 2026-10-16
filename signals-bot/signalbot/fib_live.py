@@ -7,7 +7,7 @@ import pandas as pd
 
 from .chart_fib import _trendline, render_fib
 from .config import Config
-from .fibzone import FIB_TPS, FibParams, FibTrade, find_fib_trades
+from .fibzone import FibParams, FibTrade, find_fib_trades
 from .tracker import State
 from .writer_fib import build_fib_post, context, final_text, levels, one_r_text
 
@@ -15,7 +15,8 @@ log = logging.getLogger("signalbot")
 
 
 def fib_params(cfg: Config) -> FibParams:
-    return FibParams(tps=FIB_TPS, fractions=tuple(1 / len(FIB_TPS) for _ in FIB_TPS), be_after=1,
+    tps = cfg.tp_levels
+    return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 

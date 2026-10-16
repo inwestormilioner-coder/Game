@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from .fibzone import FIB_TPS, FibTrade
+from .fibzone import FibTrade
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def levels(tr: FibTrade, entry_fib: float = 0.1272) -> dict:
         "entry": entry,
         "sl": tr.sl,
         "one_r": entry + (entry - tr.sl),
-        "tps": [lv(f) for f in FIB_TPS],
+        "tps": [lv(f) for f in tr.tp_fibs],
         "fib0": tr.fib0,
         "fib1": tr.fib1,
     }
@@ -134,7 +134,7 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
         f"⚖️ 1:1 RR at {lv['one_r']:.2f}\n"
         f"🎯 {tps}\n\n"
         f"🧭 Why: {why_long}\n\n"
-        f"⚙️ Management: take partials at each TP, stop to breakeven after TP2.\n\n"
+        f"⚙️ Management: take partials at each TP, stop to breakeven after TP1 (1:1).\n\n"
         f"{DISCLAIMER}"
     )
     threads = (
@@ -145,7 +145,7 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
     short = (
         f"{head}\n"
         f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f}\n"
-        f"TP1 {lv['tps'][0]:.2f} … TP9 {lv['tps'][-1]:.2f}\n"
+        f"TP1 {lv['tps'][0]:.2f} … TP{len(lv['tps'])} {lv['tps'][-1]:.2f}\n"
         f"{why_short}" + (f"\n👉 {invite_url}" if invite_url else "") + "\nNFA"
     )
     return FibPost(long=long[:1024], threads=threads[:500], short=short[:280])
@@ -157,4 +157,4 @@ def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
 
 
 def final_text(tr: FibTrade, r: float, tps_hit: int, symbol: str) -> str:
-    return f"🏁 {symbol} {tr.direction} closed: {tps_hit}/9 targets hit, +{r:.1f}R on the trade."
+    return f"🏁 {symbol} {tr.direction} closed: {tps_hit}/{len(tr.tp_fibs)} targets hit, +{r:.1f}R on the trade."

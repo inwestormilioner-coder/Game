@@ -47,6 +47,7 @@ class Config:
     invite_url: str = ""        # link do grupy Telegram w postach na X / Threads
     handle: str = ""            # znak wodny na wykresie, np. @TwojNick
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
+    tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
     language: str = "pl"
     use_ai: bool = True
     anthropic_model: str = "claude-opus-5-5"
@@ -99,6 +100,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         invite_url=_env("TELEGRAM_INVITE_URL"),
         handle=_env("CHART_HANDLE"),
         reply_losses=_bool("REPLY_LOSSES", False),
+        tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
         language=_env("POST_LANGUAGE", "pl"),
         use_ai=_bool("USE_AI", True),
         anthropic_model=_env("ANTHROPIC_MODEL", "claude-opus-5-5"),

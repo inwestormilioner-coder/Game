@@ -152,7 +152,7 @@ paski wolumenu kupna i sprzedaży, siła jako ranking wolumenu (Strong / Medium 
 
 Działanie strategii:
 1. Cena dotyka strefy (order block). Fibo idzie od dołka (dla SELL: szczytu) reakcji (0) do poprzedniego swingu (1).
-2. Zlecenie BUY/SELL STOP stoi na 0.1272, SL na -0.1272, a TP na każdym kolejnym poziomie Fibo, z częściowym zamykaniem i SL na wejście po TP2.
+2. Zlecenie BUY/SELL STOP stoi na 0.1272, SL na -0.1272. Domyślnie jest 5 celów (`TP_LEVELS`): 0.382 (= 1:1 RR), 0.618, 1.0, 1.272 i 1.618. Pozycję zamykamy częściami, a SL idzie na wejście po TP1.
 3. Post wychodzi, gdy zlecenie się aktywuje: wykres, poziomy i uzasadnienie „Why” od AI.
 4. Odpowiedź pod postem pojawia się tylko po zaliczeniu 1:1 RR, a potem na zamknięciu, jeśli wynik ≥ +1R.
 
