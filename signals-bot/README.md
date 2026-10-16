@@ -144,3 +144,6 @@ Na Windows z MT5 możesz użyć Harmonogramu zadań albo po prostu `python -m si
 
 Instalacja: TradingView → Pine Editor → wklej plik → *Add to chart*.
 Alert: ⏰ → warunek „SMC Zones” → *Any alert() function call*.
+
+`tradingview/tpz_zones.pine` to wersja w stylu TPZ: węższe strefy z jednej świecy order blocka,
+paski wolumenu kupna i sprzedaży, siła jako ranking wolumenu (Strong / Medium / Weak) i maks. 3 strefy na stronę.

@@ -1,0 +1,244 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// Strefy w stylu TPZ, odtworzone na podstawie wyglądu (bez kodu źródłowego TPZ):
+//  - BUY ZONE  = order block: świeca z najniższym dołkiem między swing high a świecą, która go przebiła (BOS/CHoCH w górę),
+//  - SELL ZONE = order block: świeca z najwyższym szczytem między swing low a świecą, która go przebiła,
+//  - paski w strefie: turkusowy = udział wolumenu kupna, czerwony = sprzedaży (razem = 100% drogi od OB do teraz),
+//  - siła: ranking łącznego wolumenu OB wśród stref po tej samej stronie (Strong / Medium / Weak),
+//  - strefa znika po zamknięciu (albo knocie) za nią; na stronę zostaje N stref najbliżej ceny.
+//@version=6
+indicator("TPZ-style Zones (signalbot)", shorttitle = "TPZ Zones", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+// ───────── ustawienia ─────────
+grpZ        = "Strefy"
+swingLen    = input.int(3, "Długość swingu (mniej = czulej)", minval = 1, group = grpZ)
+maxZones    = input.int(3, "Stref na stronę", minval = 1, maxval = 20, group = grpZ)
+zoneSrc     = input.string("Wick", "Zakres strefy (świeca OB)", options = ["Wick", "Body"], group = grpZ)
+invalid     = input.string("Close", "Unieważnienie strefy", options = ["Close", "Wick"], group = grpZ)
+volBars     = input.int(3, "Świece OB do wolumenu", minval = 1, maxval = 10, group = grpZ)
+skipOverlap = input.bool(true, "Pomijaj strefy nachodzące na istniejące", group = grpZ)
+labelOffset = input.int(20, "Opis strefy: świec w prawo", minval = 1, maxval = 300, group = grpZ)
+
+grpV          = "Wygląd"
+showVol       = input.bool(true, "Paski wolumenu kupna / sprzedaży", group = grpV)
+showMid       = input.bool(true, "Linia środka strefy", group = grpV)
+showStruct    = input.bool(true, "BOS / CHoCH", group = grpV)
+zoneCol       = input.color(color.new(#5c6bc0, 82), "Strefa", group = grpV)
+textCol       = input.color(#2962ff, "Tekst i linia środka", group = grpV)
+buyCol        = input.color(color.new(#26a69a, 35), "Wolumen kupna", group = grpV)
+sellCol       = input.color(color.new(#e57373, 35), "Wolumen sprzedaży", group = grpV)
+bullStructCol = input.color(#089981, "BOS / CHoCH w górę", group = grpV)
+bearStructCol = input.color(#f23645, "BOS / CHoCH w dół", group = grpV)
+
+grpT      = "Tabela trendu (bias)"
+showTable = input.bool(true, "Pokaż tabelę", group = grpT)
+tf1       = input.timeframe("5", "TF 1", group = grpT)
+tf2       = input.timeframe("15", "TF 2", group = grpT)
+tf3       = input.timeframe("60", "TF 3", group = grpT)
+tf4       = input.timeframe("240", "TF 4", group = grpT)
+tf5       = input.timeframe("D", "TF 5", group = grpT)
+
+// ───────── typy ─────────
+type Zone
+    box   bx
+    box   bBuy
+    box   bSell
+    line  mid
+    int   left
+    float top
+    float bot
+    float vol
+    float buyShare
+    bool  bull
+
+// ───────── serie liczone na każdej świecy ─────────
+float ph = ta.pivothigh(high, swingLen, swingLen)
+float pl = ta.pivotlow(low, swingLen, swingLen)
+
+var float lastPh    = na
+var int   lastPhIdx = na
+var bool  phUsed    = true
+var float lastPl    = na
+var int   lastPlIdx = na
+var bool  plUsed    = true
+var int   trend     = 0
+
+// świeca OB: najniższy dołek od swing high (dla BUY) / najwyższy szczyt od swing low (dla SELL)
+int lenB      = na(lastPhIdx) ? 1 : math.max(1, math.min(bar_index - lastPhIdx + 1, 4000))
+int obBullOff = -ta.lowestbars(low, lenB)
+int lenS      = na(lastPlIdx) ? 1 : math.max(1, math.min(bar_index - lastPlIdx + 1, 4000))
+int obBearOff = -ta.highestbars(high, lenS)
+
+// ───────── funkcje ─────────
+f_zoneRange(int k) =>
+    float t = zoneSrc == "Wick" ? high[k] : math.max(open[k], close[k])
+    float b = zoneSrc == "Wick" ? low[k] : math.min(open[k], close[k])
+    [t, b]
+
+// wolumen świecy OB i kolejnych; kupno/sprzedaż wg położenia zamknięcia w świecy
+f_obVolume(int k) =>
+    float v  = 0.0
+    float bv = 0.0
+    for j = 0 to volBars - 1
+        int idx = k - j
+        if idx >= 0
+            float vv  = nz(volume[idx])
+            float rng = high[idx] - low[idx]
+            v  += vv
+            bv += rng > 0 ? vv * (close[idx] - low[idx]) / rng : vv * 0.5
+    [v, bv]
+
+f_overlaps(array<Zone> arr, float t, float b) =>
+    bool hit = false
+    for z in arr
+        if t >= z.bot and b <= z.top
+            hit := true
+    hit
+
+f_delete(Zone z) =>
+    box.delete(z.bx)
+    if not na(z.bBuy)
+        box.delete(z.bBuy)
+        box.delete(z.bSell)
+    if not na(z.mid)
+        line.delete(z.mid)
+
+f_addZone(array<Zone> arr, int k, bool bull) =>
+    [t, b]  = f_zoneRange(k)
+    [v, bv] = f_obVolume(k)
+    int   left = bar_index - k
+    float m    = (t + b) / 2
+    box  bx = box.new(left, t, bar_index + labelOffset, b, border_color = zoneCol, bgcolor = zoneCol,
+         text_color = textCol, text_size = size.small, text_halign = text.align_right, text_valign = text.align_center)
+    line ml = showMid ? line.new(left, m, bar_index + labelOffset, m, color = textCol, style = line.style_dashed) : na
+    box  bb = showVol ? box.new(left, t, left + 1, m, border_color = buyCol, bgcolor = buyCol) : na
+    box  bs = showVol ? box.new(left, m, left + 1, b, border_color = sellCol, bgcolor = sellCol) : na
+    arr.push(Zone.new(bx, bb, bs, ml, left, t, b, v, v > 0 ? bv / v : 0.5, bull))
+
+// unieważnienie, przesunięcie do bieżącej świecy, limit stref i ranking siły
+f_update(array<Zone> arr, bool bull) =>
+    if arr.size() > 0
+        for i = arr.size() - 1 to 0
+            Zone z    = arr.get(i)
+            bool dead = bull ? (invalid == "Close" ? close < z.bot : low < z.bot) : (invalid == "Close" ? close > z.top : high > z.top)
+            if dead
+                arr.remove(i)
+                f_delete(z)
+    while arr.size() > maxZones
+        int   far  = 0
+        float best = -1.0
+        for i = 0 to arr.size() - 1
+            Zone z = arr.get(i)
+            float d = math.abs((z.top + z.bot) / 2 - close)
+            if d > best
+                best := d
+                far  := i
+        Zone gone = arr.remove(far)
+        f_delete(gone)
+    int n = arr.size()
+    if n > 0
+        for i = 0 to n - 1
+            Zone z    = arr.get(i)
+            int  span = math.max(1, bar_index - z.left)
+            z.bx.set_right(bar_index + labelOffset)
+            if not na(z.mid)
+                z.mid.set_x2(bar_index + labelOffset)
+            if not na(z.bBuy)
+                z.bBuy.set_right(z.left + math.max(1, math.round(span * z.buyShare)))
+                z.bSell.set_right(z.left + math.max(1, math.round(span * (1 - z.buyShare))))
+            int r = 0
+            for j = 0 to n - 1
+                if arr.get(j).vol > z.vol
+                    r += 1
+            string s = n == 1 or r * 3 < n ? "Strong" : r * 3 >= 2 * n ? "Weak" : "Medium"
+            z.bx.set_text((bull ? "BUY ZONE (" : "SELL ZONE (") + s + ")")
+
+f_struct(int fromIdx, float lvl, string txt, color c, bool up) =>
+    line.new(fromIdx, lvl, bar_index, lvl, color = c, style = line.style_dashed)
+    label.new(math.floor((fromIdx + bar_index) / 2), lvl, txt, color = color.new(color.white, 100),
+         textcolor = c, size = size.small, style = up ? label.style_label_down : label.style_label_up)
+
+// ───────── logika (zamknięte świece) ─────────
+var array<Zone> buyZones  = array.new<Zone>()
+var array<Zone> sellZones = array.new<Zone>()
+
+if barstate.isconfirmed
+    // przebicie swing high -> BOS / CHoCH w górę -> BUY ZONE
+    if not na(lastPh) and not phUsed and close > lastPh
+        phUsed := true
+        string tag = trend == -1 ? "CHoCH" : "BOS"
+        trend := 1
+        if showStruct
+            f_struct(lastPhIdx, lastPh, tag, bullStructCol, true)
+        [t, b] = f_zoneRange(obBullOff)
+        if not (skipOverlap and f_overlaps(buyZones, t, b))
+            f_addZone(buyZones, obBullOff, true)
+
+    // przebicie swing low -> BOS / CHoCH w dół -> SELL ZONE
+    if not na(lastPl) and not plUsed and close < lastPl
+        plUsed := true
+        string tag = trend == 1 ? "CHoCH" : "BOS"
+        trend := -1
+        if showStruct
+            f_struct(lastPlIdx, lastPl, tag, bearStructCol, false)
+        [t, b] = f_zoneRange(obBearOff)
+        if not (skipOverlap and f_overlaps(sellZones, t, b))
+            f_addZone(sellZones, obBearOff, false)
+
+    f_update(buyZones, true)
+    f_update(sellZones, false)
+
+    // nowe swingi (znane od następnej świecy)
+    if not na(ph)
+        lastPh    := ph
+        lastPhIdx := bar_index - swingLen
+        phUsed    := false
+    if not na(pl)
+        lastPl    := pl
+        lastPlIdx := bar_index - swingLen
+        plUsed    := false
+
+// ───────── tabela trendu na kilku interwałach ─────────
+f_bias() =>
+    var int   tr    = 0
+    var float lastH = na
+    var float lastL = na
+    float pH = ta.pivothigh(high, swingLen, swingLen)
+    float pL = ta.pivotlow(low, swingLen, swingLen)
+    if not na(lastH) and close > lastH
+        tr    := 1
+        lastH := na
+    if not na(lastL) and close < lastL
+        tr    := -1
+        lastL := na
+    if not na(pH)
+        lastH := pH
+    if not na(pL)
+        lastL := pL
+    tr
+
+int b1 = request.security(syminfo.tickerid, tf1, f_bias())
+int b2 = request.security(syminfo.tickerid, tf2, f_bias())
+int b3 = request.security(syminfo.tickerid, tf3, f_bias())
+int b4 = request.security(syminfo.tickerid, tf4, f_bias())
+int b5 = request.security(syminfo.tickerid, tf5, f_bias())
+
+f_tfName(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    sec >= 86400 ? "D" + str.tostring(sec / 86400) : sec >= 3600 ? "H" + str.tostring(sec / 3600) : "M" + str.tostring(sec / 60)
+
+f_row(table tb, int row, string tf, int b) =>
+    tb.cell(0, row, f_tfName(tf), text_color = color.white, text_size = size.normal)
+    tb.cell(1, row, b == 1 ? "▲" : b == -1 ? "▼" : "–", text_size = size.normal,
+         text_color = b == 1 ? #26a69a : b == -1 ? #f23645 : color.gray)
+
+var table biasTable = table.new(position.top_right, 2, 6, bgcolor = color.new(#787b86, 25), border_width = 1,
+     border_color = color.new(color.white, 85))
+if showTable and barstate.islast
+    biasTable.cell(0, 0, "TF", text_color = color.white, text_size = size.normal)
+    biasTable.cell(1, 0, "Bias", text_color = color.white, text_size = size.normal)
+    f_row(biasTable, 1, tf1, b1)
+    f_row(biasTable, 2, tf2, b2)
+    f_row(biasTable, 3, tf3, b3)
+    f_row(biasTable, 4, tf4, b4)
+    f_row(biasTable, 5, tf5, b5)
