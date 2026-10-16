@@ -92,14 +92,14 @@ def test_confluences_consistent_and_mirrored():
     assert any(s.score > 0 for s in orig)
     for s in orig:
         assert s.fibo == (0.5 <= s.retrace <= 0.786)
-        assert s.score == s.fibo + s.fvg + s.sweep
+        assert s.score == s.fibo + s.fvg + s.sweep + s.vp
         if s.fvg:
             assert s.fvg_low < s.fvg_high
     key = lambda s: (s.confirm_idx, s.direction)  # noqa: E731
     flipped = {key(s): s for s in mirr}
     for s in orig:
         t = flipped[(s.confirm_idx, "BUY" if s.direction == "SELL" else "SELL")]
-        assert (t.fibo, t.fvg, t.sweep) == (s.fibo, s.fvg, s.sweep)
+        assert (t.fibo, t.fvg, t.sweep, t.vp) == (s.fibo, s.fvg, s.sweep, s.vp)
         assert t.retrace == pytest.approx(s.retrace)
 
 
@@ -108,3 +108,14 @@ def test_require_filters():
     from signalbot.strategy import Params
     assert all(s.fvg for s in find_setups(df, Params(require=("fvg",))))
     assert all(s.score >= 2 for s in find_setups(df, Params(min_score=2)))
+
+
+def test_volume_profile_poc_and_value_area():
+    from signalbot.structure import volume_profile
+    # 50 świec handlujących wokół 100 z dużym wolumenem, 50 wokół 120 z małym
+    rows = [(100, 101, 99, 100, 1000)] * 50 + [(120, 121, 119, 120, 10)] * 50
+    df = pd.DataFrame(rows, columns=["open", "high", "low", "close", "volume"])
+    vp = volume_profile(df, len(df) - 1, lookback=100, bins=44)
+    assert 99 <= vp.poc <= 101
+    assert vp.val <= 100 <= vp.vah and vp.vah < 119
+    assert volume_profile(df.drop(columns="volume"), 99) is None

@@ -12,6 +12,7 @@ import pandas as pd  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
 from .strategy import Setup  # noqa: E402
+from .structure import volume_profile  # noqa: E402
 
 RED, GREEN, GREY = "#d32f2f", "#26a69a", "#555555"
 FUTURE_BARS = 28
@@ -101,6 +102,20 @@ def render_chart(df: pd.DataFrame, s: Setup, path: Path, title: str, timeframe: 
         _label(ax, right - 1, s.liq_target, ("SSL" if sell else "BSL") + " liquidity", "#ef6c00",
                ha="right")
         ax.set_ylim(min(ax.get_ylim()[0], s.liq_target - pad), max(ax.get_ylim()[1], s.liq_target + pad))
+
+    # profil wolumenu (z tych samych świec, które widział detektor)
+    prof = volume_profile(df, s.confirm_idx)
+    if prof is not None:
+        ylim = ax.get_ylim()
+        width = 18 * prof.volume / prof.volume.max()  # najdłuższy słupek = 18 świec
+        mids = (prof.edges[:-1] + prof.edges[1:]) / 2
+        in_va = (mids >= prof.val) & (mids <= prof.vah)
+        ax.barh(mids, width, height=(prof.edges[1] - prof.edges[0]) * 0.9, left=-1,
+                color=["#90a4ae" if v else "#cfd8dc" for v in in_va], alpha=0.55, zorder=0)
+        if ylim[0] <= prof.poc <= ylim[1]:
+            ax.hlines(prof.poc, -1, right, colors="#546e7a", lw=0.9, ls=(0, (6, 3)), zorder=2)
+            ax.text(0, prof.poc, "POC", color="#546e7a", fontsize=7, va="bottom", fontweight="bold")
+        ax.set_ylim(ylim)
 
     # strzałka do celu
     ax.annotate("", xy=(right - 8, s.tp), xytext=(last + 1, s.entry),

@@ -116,7 +116,7 @@ def backtest(cfg: Config, provider=None, charts: int = 0) -> pd.DataFrame:
             f"\nSygnały: {len(closed)}  TP: {(closed.outcome == 'tp').sum()}  "
             f"SL: {(closed.outcome == 'sl').sum()}  timeout: {(closed.outcome == 'timeout').sum()}"
             f"\nWinrate: {(closed.r > 0).mean():.0%}   Suma: {closed.r.sum():+.1f}R   "
-            f"Średnio: {closed.r.mean():+.2f}R   Max obsunięcie: {(eq - eq.cummax()).min():.1f}R"
+            f"Średnio: {closed.r.mean():+.2f}R   Max obsunięcie: {(eq - eq.cummax().clip(lower=0)).min():.1f}R"
         )
     return out
 

@@ -16,15 +16,22 @@ from .data import CSVProvider
 from .strategy import Params, find_setups
 from .tracker import evaluate
 
+OLD3 = ("fibo", "fvg", "sweep")
+
 VARIANTS = {
     "A bazowy (BOS/CHOCH + retest)": Params(),
     "B + wymagane Fibo 0.5–0.786": Params(require=("fibo",)),
     "C + wymagane FVG": Params(require=("fvg",)),
     "D + wymagany sweep płynności": Params(require=("sweep",)),
-    "E min. 1 konfluencja": Params(min_score=1),
-    "F min. 2 konfluencje": Params(min_score=2),
+    "E min. 1 z 3 (Fibo/FVG/sweep)": Params(min_score=1, score_factors=OLD3),
+    "F min. 2 z 3 (Fibo/FVG/sweep)": Params(min_score=2, score_factors=OLD3),
     "G bazowy, TP na płynności": Params(tp_mode="liquidity"),
-    "H min. 1 konfl. + TP płynność": Params(min_score=1, tp_mode="liquidity"),
+    "H min. 1 z 3 + TP płynność": Params(min_score=1, tp_mode="liquidity", score_factors=OLD3),
+    "I + wymagany Volume Profile": Params(require=("vp",)),
+    "J min. 2 z 4 (z VP)": Params(min_score=2),
+    "K min. 3 z 4 (z VP)": Params(min_score=3),
+    "L F + wymagany VP": Params(min_score=2, score_factors=OLD3, require=("vp",)),
+    "M bazowy, TP na POC": Params(tp_mode="poc"),
 }
 
 
@@ -47,7 +54,7 @@ def stats(t: pd.DataFrame) -> dict:
     gains, losses = t.loc[t.r > 0, "r"].sum(), -t.loc[t.r < 0, "r"].sum()
     return dict(n=len(t), win=f"{(t.r > 0).mean():.0%}", sumR=round(t.r.sum(), 1),
                 avgR=round(t.r.mean(), 2), PF=round(gains / losses, 2) if losses else "∞",
-                DD=round((eq - eq.cummax()).min(), 1))
+                DD=round((eq - eq.cummax().clip(lower=0)).min(), 1))
 
 
 def main() -> None:

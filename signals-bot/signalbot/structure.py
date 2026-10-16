@@ -48,3 +48,49 @@ def find_swings(df: pd.DataFrame, n: int = 3) -> tuple[list[Swing], list[Swing]]
 
 def confirmed_before(swings: list[Swing], t: int) -> list[Swing]:
     return [s for s in swings if s.confirmed_at <= t]
+
+
+@dataclass(frozen=True)
+class VolumeProfile:
+    edges: np.ndarray    # granice przedziałów cenowych (bins + 1)
+    volume: np.ndarray   # wolumen w każdym przedziale
+    poc: float           # cena z największym wolumenem
+    val: float           # dół Value Area (70% wolumenu)
+    vah: float           # góra Value Area
+
+    def hvn_ranges(self, pct: float = 80) -> list[tuple[float, float]]:
+        """Przedziały o wysokim wolumenie (High Volume Nodes)."""
+        thr = np.percentile(self.volume, pct)
+        return [(self.edges[i], self.edges[i + 1]) for i in np.flatnonzero(self.volume >= thr)]
+
+
+def volume_profile(df: pd.DataFrame, end: int, lookback: int = 200, bins: int = 50) -> VolumeProfile | None:
+    """Profil wolumenu ze świec [end-lookback, end]. Wolumen każdej świecy rozkładany
+    równo na jej zakres high-low. None, gdy dane nie mają wolumenu."""
+    if "volume" not in df.columns:
+        return None
+    w = df.iloc[max(0, end - lookback + 1) : end + 1]
+    if w["volume"].sum() <= 0:
+        return None
+    lo, hi = float(w["low"].min()), float(w["high"].max())
+    edges = np.linspace(lo, hi, bins + 1)
+    vol = np.zeros(bins)
+    for bl, bh, v in zip(w["low"].to_numpy(), w["high"].to_numpy(), w["volume"].to_numpy()):
+        overlap = np.clip(np.minimum(edges[1:], bh) - np.maximum(edges[:-1], bl), 0, None)
+        span = bh - bl
+        vol += v * overlap / span if span > 0 else v * ((edges[:-1] <= bl) & (bl <= edges[1:]))
+    poc_i = int(np.argmax(vol))
+    # Value Area: rozszerzaj od POC w stronę większego wolumenu, aż do 70%
+    lo_i = hi_i = poc_i
+    total, acc = vol.sum(), vol[poc_i]
+    while acc < 0.7 * total and (lo_i > 0 or hi_i < bins - 1):
+        down = vol[lo_i - 1] if lo_i > 0 else -1
+        up = vol[hi_i + 1] if hi_i < bins - 1 else -1
+        if up >= down:
+            hi_i += 1
+            acc += vol[hi_i]
+        else:
+            lo_i -= 1
+            acc += vol[lo_i]
+    return VolumeProfile(edges, vol, float((edges[poc_i] + edges[poc_i + 1]) / 2),
+                         float(edges[lo_i]), float(edges[hi_i + 1]))

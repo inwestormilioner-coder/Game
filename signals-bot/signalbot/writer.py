@@ -49,6 +49,8 @@ def _confluence(s: Setup) -> str:
         parts.append("FVG ✓")
     if s.sweep:
         parts.append(("BSL" if s.direction == "SELL" else "SSL") + " sweep ✓")
+    if s.vp:
+        parts.append("Volume Profile (POC/HVN) ✓")
     return f"\nConfluence: {' | '.join(parts)}" if parts else ""
 
 
@@ -80,7 +82,9 @@ why SL and TP sit where they do (both come from market structure).
 Mention the confluences that are true in the JSON: fibo (retest reached the 0.5-0.786
 retracement of the impulse, value in `retrace`), fvg (retest filled a fair value gap left
 by the impulse), sweep (retest took liquidity above/below a prior swing before rejecting),
-liq_target (next liquidity pool beyond TP). Never claim a confluence that is false.
+liq_target (next liquidity pool beyond TP), vp (the zone overlaps the volume profile POC or a
+high-volume node; `poc` is the point of control, built from tick volume). Never claim a
+confluence that is false.
 Rules:
 - Do not repeat the entry/SL/TP numbers as a list; they are printed separately.
 - No hype, no promises, no "guaranteed". Be factual and brief.

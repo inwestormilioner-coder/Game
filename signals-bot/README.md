@@ -28,9 +28,10 @@ Bot śledzi złoto (domyślnie M30). Po zamknięciu każdej świecy szuka setupu
 | **Fibo 0.5–0.786** | Retest sięgnął strefy premium/discount impulsu (OTE). |
 | **FVG** | Retest wszedł w lukę (Fair Value Gap) zostawioną przez impuls. |
 | **Sweep (BSL/SSL)** | Retest wybił wcześniejszy szczyt lub dołek, czyli zebrał płynność, i wrócił. |
+| **Volume Profile** | Strefa pokrywa się z POC albo węzłem dużego wolumenu (HVN) z ostatnich 200 świec. Wymaga wolumenu (tick volume z MT5); z Twelve Data może go nie być. |
 | **Liquidity target** | Następna pula płynności za TP. Przy `TP_MODE=liquidity` staje się celem. |
 
-`MIN_SCORE=0..3` pozwala publikować tylko setupy z określoną liczbą konfluencji.
+`MIN_SCORE=0..4` pozwala publikować tylko setupy z określoną liczbą konfluencji.
 
 ### Porównanie wariantów
 

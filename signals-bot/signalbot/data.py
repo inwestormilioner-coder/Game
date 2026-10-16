@@ -40,7 +40,8 @@ class MT5Provider:
         df = pd.DataFrame(rates)
         # Czas świec w MT5 to czas serwera brokera (Exness = UTC).
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
-        df = df[["time", "open", "high", "low", "close"]].iloc[:-1]  # ostatnia świeca jeszcze się tworzy
+        df["volume"] = df["tick_volume"]  # forex/złoto: wolumen tickowy
+        df = df[["time", "open", "high", "low", "close", "volume"]].iloc[:-1]  # ostatnia świeca jeszcze się tworzy
         return df.reset_index(drop=True)
 
 
@@ -69,7 +70,11 @@ class TwelveDataProvider:
         df["time"] = pd.to_datetime(df["datetime"], utc=True)
         for k in ("open", "high", "low", "close"):
             df[k] = df[k].astype(float)
-        return _only_closed(df[["time", "open", "high", "low", "close"]], timeframe)
+        cols = ["time", "open", "high", "low", "close"]
+        if "volume" in df.columns:  # Twelve Data nie zawsze podaje wolumen dla XAU/USD
+            df["volume"] = df["volume"].astype(float)
+            cols.append("volume")
+        return _only_closed(df[cols], timeframe)
 
 
 class CSVProvider:
@@ -85,7 +90,13 @@ class CSVProvider:
             if "time" not in df.columns and alt in df.columns:
                 df["time"] = df[alt]
         df["time"] = pd.to_datetime(df["time"], utc=True)
-        df = df[["time", "open", "high", "low", "close"]].sort_values("time").reset_index(drop=True)
+        if "volume" not in df.columns:
+            for alt in ("tickvol", "tick_volume", "vol"):
+                if alt in df.columns:
+                    df["volume"] = df[alt]
+                    break
+        cols = ["time", "open", "high", "low", "close"] + (["volume"] if "volume" in df.columns else [])
+        df = df[cols].sort_values("time").reset_index(drop=True)
         return df.tail(count).reset_index(drop=True) if count else df
 
 
@@ -108,7 +119,8 @@ class SyntheticProvider:
         end = pd.Timestamp(datetime.now(timezone.utc)).floor(f"{TF_MINUTES[timeframe]}min")
         times = pd.date_range(end=end - timedelta(minutes=TF_MINUTES[timeframe]),
                               periods=count, freq=f"{TF_MINUTES[timeframe]}min")
-        return pd.DataFrame(dict(time=times, open=open_, high=high, low=low, close=close))
+        volume = (100 + 40 * (high - low) + rng.integers(0, 50, count)).astype(float)
+        return pd.DataFrame(dict(time=times, open=open_, high=high, low=low, close=close, volume=volume))
 
 
 def make_provider(cfg) -> object:

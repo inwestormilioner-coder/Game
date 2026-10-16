@@ -15,7 +15,9 @@ Logika SELL (BUY to lustrzane odbicie, liczone na zanegowanych cenach):
 Konfluencje (liczone zawsze, filtrowane opcjonalnie przez `require` / `min_score`):
 - fibo:  retest sięgnął 50–78,6% impulsu (strefa premium / OTE),
 - fvg:   retest wszedł w lukę (Fair Value Gap) zostawioną przez impuls,
-- sweep: retest wybił wcześniejszy swing high (zebrał płynność BSL) i wrócił pod poziom.
+- sweep: retest wybił wcześniejszy swing high (zebrał płynność BSL) i wrócił pod poziom,
+- vp:    strefa pokrywa się z POC albo węzłem dużego wolumenu (HVN) w profilu wolumenu
+         z ostatnich `vp_lookback` świec (wymaga kolumny `volume`, np. tick volume z MT5).
 Cel płynnościowy (SSL): najbliższy starszy swing low poniżej dołka impulsu
 — używany jako TP, gdy `tp_mode="liquidity"`.
 """
@@ -26,9 +28,9 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import pandas as pd
 
-from .structure import atr, find_swings
+from .structure import atr, find_swings, volume_profile
 
-FACTORS = ("fibo", "fvg", "sweep")
+FACTORS = ("fibo", "fvg", "sweep", "vp")
 
 
 @dataclass
@@ -42,7 +44,10 @@ class Params:
     min_rr: float = 1.5
     fibo_min: float = 0.5
     fibo_max: float = 0.786
-    tp_mode: str = "impulse"      # impulse | liquidity
+    tp_mode: str = "impulse"      # impulse | liquidity | poc
+    vp_lookback: int = 200        # ile świec do profilu wolumenu
+    vp_hvn_pct: float = 80        # HVN = przedziały powyżej tego percentyla wolumenu
+    score_factors: tuple[str, ...] = FACTORS  # które konfluencje liczą się do score
     require: tuple[str, ...] = ()  # konfluencje wymagane, np. ("fibo",)
     min_score: int = 0            # minimalna liczba konfluencji
 
@@ -75,6 +80,8 @@ class Setup:
     sweep: bool = False
     sweep_price: float | None = None
     liq_target: float | None = None
+    vp: bool = False
+    poc: float | None = None
     score: int = 0
     confirm_time: pd.Timestamp | None = None
 
@@ -84,7 +91,8 @@ class Setup:
         return d
 
 
-PRICE_KEYS = ("level", "entry", "sl", "tp", "leg_start", "leg_end", "sweep_price", "liq_target")
+PRICE_KEYS = ("level", "entry", "sl", "tp", "leg_start", "leg_end", "sweep_price", "liq_target",
+              "poc")
 PAIR_KEYS = (("zone_low", "zone_high"), ("fvg_low", "fvg_high"))
 
 
@@ -128,7 +136,7 @@ def _scan_sell(df: pd.DataFrame, p: Params) -> list[dict]:
                     if h[t] > active["retest_high"]:
                         active["retest_high"], active["retest_idx"] = h[t], t
                 if active["touched"] and c[t] < active["level"] and c[t] < o[t]:
-                    raw = _build(active, t, c, h, l, a, swing_highs, swing_lows, p)
+                    raw = _build(df, active, t, c, h, l, a, swing_highs, swing_lows, p)
                     if raw is not None:
                         out.append(raw)
                     active = None
@@ -165,7 +173,7 @@ def _scan_sell(df: pd.DataFrame, p: Params) -> list[dict]:
     return out
 
 
-def _build(st: dict, t: int, c, h, l, a, swing_highs, swing_lows, p: Params) -> dict | None:
+def _build(df: pd.DataFrame, st: dict, t: int, c, h, l, a, swing_highs, swing_lows, p: Params) -> dict | None:
     entry = c[t]
     sl = st["retest_high"] + p.sl_buffer_atr * a[t]
     impulse = st["level"] - st["ext"]
@@ -193,13 +201,25 @@ def _build(st: dict, t: int, c, h, l, a, swing_highs, swing_lows, p: Params) -> 
              if x.confirmed_at <= t and x.idx < st["swing_idx"] and x.price < st["ext"]]
     liq_target = max(lower) if lower else None
 
-    tp = liq_target if (p.tp_mode == "liquidity" and liq_target is not None) else st["ext"]
+    # profil wolumenu: POC / HVN w strefie
+    prof = volume_profile(df, t, p.vp_lookback)
+    poc, vp = None, False
+    if prof is not None:
+        poc = prof.poc
+        zl, zh = st["level"], st["zone_top"]
+        vp = zl <= poc <= zh or any(lo <= zh and hi >= zl for lo, hi in prof.hvn_ranges(p.vp_hvn_pct))
+
+    tp = st["ext"]
+    if p.tp_mode == "liquidity" and liq_target is not None:
+        tp = liq_target
+    elif p.tp_mode == "poc" and poc is not None and poc < entry:
+        tp = poc
     risk, reward = sl - entry, entry - tp
     if risk <= 0 or reward <= 0 or reward / risk < p.min_rr:
         return None
 
-    flags = {"fibo": fibo, "fvg": fvg is not None, "sweep": sweep_price is not None}
-    score = sum(flags.values())
+    flags = {"fibo": fibo, "fvg": fvg is not None, "sweep": sweep_price is not None, "vp": vp}
+    score = sum(flags[f] for f in p.score_factors)
     if any(not flags[f] for f in p.require) or score < p.min_score:
         return None
 
@@ -212,7 +232,7 @@ def _build(st: dict, t: int, c, h, l, a, swing_highs, swing_lows, p: Params) -> 
         fibo=fibo, fvg=fvg is not None,
         fvg_low=fvg[0] if fvg else None, fvg_high=fvg[1] if fvg else None,
         sweep=sweep_price is not None, sweep_price=sweep_price,
-        liq_target=liq_target, score=score,
+        liq_target=liq_target, vp=vp, poc=poc, score=score,
     )
 
 
@@ -246,7 +266,7 @@ def find_setups(df: pd.DataFrame, p: Params | None = None) -> list[Setup]:
             v = getattr(s, k)
             if v is not None:
                 setattr(s, k, float(v))
-        s.fibo, s.fvg, s.sweep = bool(s.fibo), bool(s.fvg), bool(s.sweep)
+        s.fibo, s.fvg, s.sweep, s.vp = bool(s.fibo), bool(s.fvg), bool(s.sweep), bool(s.vp)
         if times is not None:
             s.confirm_time = pd.Timestamp(times.iloc[s.confirm_idx])
     setups.sort(key=lambda s: s.confirm_idx)
