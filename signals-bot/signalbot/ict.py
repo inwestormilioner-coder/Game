@@ -163,18 +163,31 @@ def _manage(tr: IctTrade, h, l, c, t: int, p: IctParams) -> None:
 
 
 def _manage_partials(tr: IctTrade, h, l, c, t: int, p: IctParams, levels: list[float]) -> None:
-    """Częściowe TP na poziomach Fibo, SL na wejście po pierwszym TP. Świeca wejścia: SL sprawdzany pierwszy."""
-    from .fibzone import FibParams, _simulate
-
-    if l[t] <= tr.sl:
-        tr.outcome, tr.r, tr.exit_idx, tr.closed = "sl", -1.0, t, True
-        return
-    fr = tuple(1 / len(levels) for _ in levels)
-    r, exits, closed = _simulate(h, l, c, t, tr.entry, tr.sl, levels,
-                                 FibParams(tps=tuple(levels), fractions=fr, be_after=0, max_hold=p.max_hold))
-    tr.r, tr.closed = r, closed
-    if exits:
-        tr.outcome, tr.exit_idx = exits[-1][0], exits[-1][1]
+    """Częściowe TP na poziomach Fibo, SL na wejście po pierwszym TP.
+    Świeca wejścia (limit): liczy się tylko SL - TP z tej świecy mógł paść przed wejściem."""
+    risk = tr.entry - tr.sl
+    n_lv = len(levels)
+    left, cur_sl, pnl, k = 1.0, tr.sl, 0.0, 0
+    end = t + p.max_hold
+    for u in range(t, min(len(c), end)):
+        if l[u] <= cur_sl:
+            pnl += left * (cur_sl - tr.entry)
+            tr.outcome, tr.r, tr.exit_idx, tr.closed = "sl" if k == 0 else "be", pnl / risk, u, True
+            return
+        if u == t:
+            continue
+        while k < n_lv and h[u] >= levels[k]:
+            pnl += (1 / n_lv) * (levels[k] - tr.entry)
+            left -= 1 / n_lv
+            k += 1
+            cur_sl = tr.entry                     # SL na wejście po pierwszym TP
+        if left <= 1e-9:
+            tr.outcome, tr.r, tr.exit_idx, tr.closed = "tp", pnl / risk, u, True
+            return
+    if len(c) >= end:
+        last = end - 1
+        pnl += left * (c[last] - tr.entry)
+        tr.outcome, tr.r, tr.exit_idx, tr.closed = "timeout", pnl / risk, last, True
 
 
 def find_ict_trades(df: pd.DataFrame, p: IctParams | None = None) -> list[IctTrade]:
