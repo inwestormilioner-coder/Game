@@ -16,7 +16,7 @@ log = logging.getLogger("signalbot")
 
 def fib_params(cfg: Config) -> FibParams:
     tps = cfg.tp_levels
-    return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0,
+    return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 

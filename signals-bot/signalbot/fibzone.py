@@ -40,7 +40,8 @@ class FibParams:
     be_after: int | None = None              # po którym TP (indeks od 0) SL na wejście
     max_wait: int = 24                       # świec od dotknięcia strefy na wejście
     max_hold: int = 96
-    min_range_atr: float = 1.0               # minimalny zakres Fibo (1 - 0) w ATR
+    min_range_atr: float = 2.0               # minimalny zakres Fibo (1 - 0) w ATR
+    min_risk: float = 0.0                    # minimalna odległość SL od wejścia (w cenie)
     trend_filter: bool = False
     vp_filter: bool = False                  # wymagaj, by strefa pokrywała się z POC / HVN profilu wolumenu
     vp_lookback: int = 200
@@ -158,7 +159,8 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                 f0, f1 = setup["f0"], setup["f1"]
                 rng = f1 - f0
                 stop = f0 + p.entry_fib * rng
-                if rng >= p.min_range_atr * a[t] and h[t] >= stop:
+                big_enough = rng >= p.min_range_atr * a[t] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk
+                if big_enough and h[t] >= stop:
                     entry = max(o[t], stop)
                     sl = f0 + p.sl_fib * rng
                     levels = [f0 + x * rng for x in p.tps]

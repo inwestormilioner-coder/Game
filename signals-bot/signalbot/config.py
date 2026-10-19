@@ -37,6 +37,8 @@ class Config:
     mt5_password: str = ""
     mt5_server: str = ""
     mt5_path: str = ""
+    mt5_utc_offset: float | None = None  # None = wykryj automatycznie
+    min_sl: float = 3.0                  # min. odległość SL od wejścia (w cenie, np. 3.0 = 3$ na złocie)
     twelvedata_api_key: str = ""
     csv_path: str = ""
 
@@ -91,6 +93,8 @@ def load_config(env_file: str | None = ".env") -> Config:
         mt5_password=_env("MT5_PASSWORD"),
         mt5_server=_env("MT5_SERVER"),
         mt5_path=_env("MT5_PATH"),
+        mt5_utc_offset=float(_env("MT5_UTC_OFFSET")) if _env("MT5_UTC_OFFSET") else None,
+        min_sl=float(_env("MIN_SL", "3.0")),
         twelvedata_api_key=_env("TWELVEDATA_API_KEY"),
         csv_path=_env("CSV_PATH"),
         min_rr=float(_env("MIN_RR", "1.5")),

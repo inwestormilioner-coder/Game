@@ -18,14 +18,16 @@ def _only_closed(df: pd.DataFrame, timeframe: str, now: datetime | None = None) 
 
 
 class MT5Provider:
-    """MetaTrader 5 (np. konto Exness). Pakiet `MetaTrader5` działa tylko na Windows
-    z zainstalowanym terminalem MT5. Symbol jak w terminalu, np. `XAUUSDm` na Exness."""
+    """MetaTrader 5 (RoboForex, Vantage, Exness...). Pakiet `MetaTrader5` działa tylko na Windows
+    z zainstalowanym i zalogowanym terminalem MT5. Symbol dokładnie jak w „Market Watch”,
+    np. `XAUUSD` (RoboForex), `XAUUSD` / `XAUUSD+` (Vantage), `XAUUSDm` (Exness)."""
 
     def __init__(self, login: int | None = None, password: str | None = None,
-                 server: str | None = None, path: str | None = None):
+                 server: str | None = None, path: str | None = None, utc_offset: float | None = None):
         import MetaTrader5 as mt5  # noqa: import tylko gdy używany
 
         self.mt5 = mt5
+        self.utc_offset = utc_offset  # godziny czasu serwera względem UTC; None = wykryj automatycznie
         kwargs = {k: v for k, v in dict(login=login, password=password, server=server).items() if v}
         ok = mt5.initialize(path, **kwargs) if path else mt5.initialize(**kwargs)
         if not ok:
@@ -38,11 +40,21 @@ class MT5Provider:
         if rates is None:
             raise RuntimeError(f"MT5 copy_rates failed: {self.mt5.last_error()}")
         df = pd.DataFrame(rates)
-        # Czas świec w MT5 to czas serwera brokera (Exness = UTC).
-        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        # Czas świec w MT5 to czas serwera brokera (często UTC+2/+3) - przeliczamy na UTC.
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True) - pd.Timedelta(hours=self._offset(symbol))
         df["volume"] = df["tick_volume"]  # forex/złoto: wolumen tickowy
         df = df[["time", "open", "high", "low", "close", "volume"]].iloc[:-1]  # ostatnia świeca jeszcze się tworzy
         return df.reset_index(drop=True)
+
+    def _offset(self, symbol: str) -> float:
+        if self.utc_offset is not None:
+            return self.utc_offset
+        tick = self.mt5.symbol_info_tick(symbol)
+        if tick is None or not tick.time:
+            return 0.0
+        diff = (tick.time - datetime.now(timezone.utc).timestamp()) / 3600
+        # rynek zamknięty (stary tick) - nie zgadujemy, liczymy jako UTC
+        return float(round(diff)) if abs(diff - round(diff)) < 0.1 and abs(diff) <= 14 else 0.0
 
 
 class TwelveDataProvider:
@@ -125,7 +137,7 @@ class SyntheticProvider:
 
 def make_provider(cfg) -> object:
     if cfg.data_source == "mt5":
-        return MT5Provider(cfg.mt5_login, cfg.mt5_password, cfg.mt5_server, cfg.mt5_path)
+        return MT5Provider(cfg.mt5_login, cfg.mt5_password, cfg.mt5_server, cfg.mt5_path, cfg.mt5_utc_offset)
     if cfg.data_source == "twelvedata":
         return TwelveDataProvider(cfg.twelvedata_api_key)
     if cfg.data_source == "csv":
