@@ -48,6 +48,7 @@ class Config:
     strategy: str = "fibzone"   # fibzone (strefa + Fibo) | smc (BOS/CHOCH + retest)
     invite_url: str = ""        # link do grupy Telegram w postach na X / Threads
     handle: str = ""            # znak wodny na wykresie, np. @TwojNick
+    chart_source: str = ""      # podpis źródła na wykresie, np. RoboForex
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
     tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
     language: str = "pl"
@@ -103,6 +104,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         strategy=_env("STRATEGY", "fibzone"),
         invite_url=_env("TELEGRAM_INVITE_URL"),
         handle=_env("CHART_HANDLE"),
+        chart_source=_env("CHART_SOURCE"),
         reply_losses=_bool("REPLY_LOSSES", False),
         tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
         language=_env("POST_LANGUAGE", "pl"),

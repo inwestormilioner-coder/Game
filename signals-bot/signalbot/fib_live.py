@@ -5,7 +5,8 @@ import logging
 
 import pandas as pd
 
-from .chart_fib import _trendline, render_fib
+from .chart_fib import _trendline
+from .chart_tv import render_post_chart
 from .config import Config
 from .fibzone import FibParams, FibTrade, find_fib_trades
 from .tracker import State
@@ -56,8 +57,8 @@ def _reached_one_r(df: pd.DataFrame, tr: FibTrade) -> float | None:
 
 def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -> dict:
     sid = tr.id.replace(":", "").replace(" ", "_").replace("+0000", "")
-    chart = render_fib(df, tr, cfg.data_dir / "charts" / f"{sid}.png", cfg.display_symbol, cfg.timeframe,
-                       handle=cfg.handle)
+    chart = render_post_chart(df, tr, cfg.data_dir / "charts" / f"{sid}.png", cfg.display_symbol,
+                              cfg.timeframe, handle=cfg.handle, source=cfg.chart_source)
     ctx = context(tr, trend_info(df, tr.entry_idx))
     post = build_fib_post(tr, chart, ctx, cfg.display_symbol, cfg.timeframe, cfg.use_ai, cfg.anthropic_model,
                           cfg.invite_url)

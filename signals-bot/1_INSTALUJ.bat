@@ -18,6 +18,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+python -m playwright install chromium
 pip install MetaTrader5 >nul 2>nul || echo (MetaTrader5 niedostepny - potrzebny tylko przy DATA_SOURCE=mt5)
 if not exist .env copy .env.example .env >nul
 echo.

@@ -5,4 +5,5 @@ mplfinance>=0.12.10b0
 requests>=2.31
 requests-oauthlib>=2.0
 anthropic>=1.14
+playwright>=1.48   # wykres w stylu TradingView (Lightweight Charts) -> PNG
 # MetaTrader5 (tylko Windows, gdy DATA_SOURCE=mt5) instaluje osobno install.bat
