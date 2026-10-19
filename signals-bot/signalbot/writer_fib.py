@@ -20,9 +20,11 @@ DISCLAIMER = "⚠️ Not financial advice. Trading leveraged products carries a 
 
 @dataclass
 class FibPost:
-    long: str     # Telegram (photo caption, max 1024 chars)
-    threads: str  # Threads (max 500)
-    short: str    # X (max 280)
+    long: str       # Telegram (photo caption, max 1024 chars)
+    threads: str    # Threads (max 500)
+    short: str      # X (max 280)
+    why_long: str = ""   # explanation, posted as a reply under the signal
+    why_short: str = ""
 
 
 def levels(tr: FibTrade, entry_fib: float = 0.1272) -> dict:
@@ -125,35 +127,34 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
     lv = levels(tr)
     icon = "🟢" if tr.direction == "BUY" else "🔴"
     tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
-    head = f"{symbol} {tr.direction} STOP {icon} | {timeframe}"
+    head = f"{symbol} {tr.direction} {icon} | {timeframe}"
     invite = f"\n\n📲 Live updates & results on Telegram: {invite_url}" if invite_url else ""
     long = (
         f"{head}\n\n"
-        f"📍 Entry ({tr.direction.lower()} stop): {lv['entry']:.2f} — Fib 0.1272\n"
-        f"🛑 Stop loss: {lv['sl']:.2f} — Fib -0.1272\n"
-        f"⚖️ 1:1 RR at {lv['one_r']:.2f}\n"
+        f"📍 Entry: {lv['entry']:.2f}\n"
+        f"🛑 Stop loss: {lv['sl']:.2f}\n"
         f"🎯 {tps}\n\n"
-        f"🧭 Why: {why_long}\n\n"
-        f"⚙️ Management: take partials at each TP, stop to breakeven after TP1 (1:1).\n\n"
+        f"⚙️ Take partials at each TP, stop to breakeven after TP1.\n\n"
         f"{DISCLAIMER}"
     )
     threads = (
         f"{head}\n"
-        f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f} | TP {lv['tps'][0]:.2f} → {lv['tps'][-1]:.2f}\n\n"
-        f"{why_short}{invite}\n\nNot financial advice."
+        f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f} | TP {lv['tps'][0]:.2f} → {lv['tps'][-1]:.2f}"
+        f"{invite}\n\nNot financial advice."
     )
     short = (
         f"{head}\n"
         f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f}\n"
-        f"TP1 {lv['tps'][0]:.2f} … TP{len(lv['tps'])} {lv['tps'][-1]:.2f}\n"
-        f"{why_short}" + (f"\n👉 {invite_url}" if invite_url else "") + "\nNFA"
+        f"TP1 {lv['tps'][0]:.2f} … TP{len(lv['tps'])} {lv['tps'][-1]:.2f}"
+        + (f"\n👉 {invite_url}" if invite_url else "") + "\nNFA"
     )
-    return FibPost(long=long[:1024], threads=threads[:500], short=short[:280])
+    return FibPost(long=long[:1024], threads=threads[:500], short=short[:280],
+                   why_long=f"🧭 {why_long}", why_short=f"🧭 {why_short}")
 
 
 def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
-    return (f"✅ {symbol} {tr.direction}: 1:1 RR reached at {price:.2f}.\n"
-            f"Risk is covered — stop to breakeven and let the rest run to the next targets.")
+    return (f"✅ {symbol} {tr.direction}: 1:1 RR secured.\n"
+            f"Stop to breakeven and let the rest run to the next targets.")
 
 
 def final_text(tr: FibTrade, r: float, tps_hit: int, symbol: str) -> str:

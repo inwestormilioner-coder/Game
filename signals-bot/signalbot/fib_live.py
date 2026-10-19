@@ -68,6 +68,8 @@ def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -
         try:
             ids[name] = pub.publish(kinds[kind], chart)
             log.info("Posted %s to %s (%s)", tr.id, name, ids[name])
+            # explanation goes as a reply under the signal
+            pub.publish(post.why_long if kind == "long" else post.why_short, reply_to=ids[name])
         except Exception as e:
             log.error("Publishing to %s failed: %s", name, e)
     return {"id": tr.id, "direction": tr.direction, "post_ids": ids, "status": "open", "chart": str(chart),

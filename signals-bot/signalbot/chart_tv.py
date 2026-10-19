@@ -179,10 +179,9 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
                         if prof.edges[i] >= min(prices) - pad and prof.edges[i + 1] <= max(prices) + pad])
 
     col = "#089981" if buy else "#f23645"
-    r1 = entry + (entry - tr.sl)
     header = (f"<b>{title} · {timeframe}</b>{(' · ' + source) if source else ''}<br>"
-              f"<span style='color:{col};font-weight:700'>{tr.direction} STOP</span> {entry:.2f} &nbsp;"
-              f"SL {tr.sl:.2f} &nbsp; 1:1 RR {r1:.2f}")
+              f"<span style='color:{col};font-weight:700'>{tr.direction}</span> {entry:.2f} &nbsp;"
+              f"SL {tr.sl:.2f}")
     data = dict(
         candles=candles, future=future, volume=volume, levels=levels, trendlines=trendlines, vp=vp,
         minPrice=float(min(prices) - pad), maxPrice=float(max(prices) + pad), handle=handle, header=header,
