@@ -11,7 +11,7 @@ import pandas as pd
 from .compare import stats
 from .data import CSVProvider
 from .fibzone import SIGNAL_TPS, FibParams, find_fib_trades
-from .ict import IctParams, find_ict_trades
+from .ict import IctFibParams, IctParams, find_ict_trades, find_ictfib_trades
 
 VARIANTS = {
     "ICT pełny: liq+BOS+FVG, wejście góra FVG, TP płynność": IctParams(),
@@ -23,6 +23,8 @@ VARIANTS = {
     "ICT: SL za lokalnym dołkiem/szczytem": IctParams(sl_mode="swing"),
     "ICT: SL za swingiem, min RR 1.0": IctParams(sl_mode="swing", min_rr=1.0),
     "ICT: SL za swingiem, TP 2R": IctParams(sl_mode="swing", tp_mode="rr", rr=2.0),
+    "ICT limit + SL swing + TP Fibo impulsu (1/1.272/1.618)": IctParams(sl_mode="swing", tp_mode="fibext"),
+    "ICT limit + SL za FVG + TP Fibo impulsu": IctParams(tp_mode="fibext"),
 }
 
 
@@ -48,6 +50,19 @@ def main() -> None:
     for name, p in VARIANTS.items():
         p.max_hold, p.min_risk = args.max_hold, args.min_risk
         tr = [x for x in find_ict_trades(df, p) if x.closed]
+        add(name, [(df["time"].iloc[x.entry_idx], x.r - args.spread / abs(x.entry - x.sl)) for x in tr])
+
+    hyb = {
+        "HYBRYDA ICT+Fibo: stop 0.1272, SL -0.1272, 5 TP, BE po TP1": IctFibParams(),
+        "HYBRYDA: SL za lokalnym swingiem": IctFibParams(sl_mode="swing"),
+        "HYBRYDA: 1 TP na 1.0": IctFibParams(tps=(1.0,), fractions=(1.0,), be_after=None),
+        "HYBRYDA: 1 TP na 1.272": IctFibParams(tps=(1.272,), fractions=(1.0,), be_after=None),
+        "HYBRYDA: SL swing, 1 TP na 1.272": IctFibParams(sl_mode="swing", tps=(1.272,), fractions=(1.0,),
+                                                         be_after=None),
+    }
+    for name, q in hyb.items():
+        q.ict.max_hold, q.ict.min_risk = args.max_hold, args.min_risk
+        tr = [x for x in find_ictfib_trades(df, q) if x.closed]
         add(name, [(df["time"].iloc[x.entry_idx], x.r - args.spread / abs(x.entry - x.sl)) for x in tr])
 
     fp = FibParams(tps=SIGNAL_TPS, fractions=(0.2,) * 5, be_after=0, max_hold=args.max_hold, min_risk=args.min_risk)
