@@ -124,6 +124,11 @@ def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
 
 
 def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
+    return _scan_buy_full(df, p)[0]
+
+
+def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibTrade | None]:
+    """Transakcje z historii + zlecenie oczekujące na ostatniej świecy (jeszcze nieaktywowane)."""
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
     a = _atr(h, l, c)
     swing_highs, _ = find_swings(df, p.swing_n)
@@ -195,7 +200,44 @@ def _scan_buy(df: pd.DataFrame, p: FibParams) -> list[FibTrade]:
                 setup = {"zone": z, "touch": t, "f0": l[t], "f1": last_sh.price, "f1_idx": last_sh.idx,
                          "vp": vp, "poc": poc}
                 break
-    return trades
+    pending = None
+    if setup is not None:
+        t = len(df) - 1
+        f0, f1 = setup["f0"], setup["f1"]
+        rng = f1 - f0
+        stop = f0 + p.entry_fib * rng
+        if rng >= p.min_range_atr * a[t] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk:
+            z = setup["zone"]
+            pending = FibTrade("BUY", setup["touch"], t, f0, f1, stop, f0 + p.sl_fib * rng, 0.0, [],
+                               z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], False,
+                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "", tuple(p.tps))
+    return trades, pending
+
+
+def _flip(s: FibTrade) -> FibTrade:
+    s.direction = "SELL"
+    s.fib0, s.fib1, s.entry, s.sl = -s.fib0, -s.fib1, -s.entry, -s.sl
+    s.exits = [(n, i, -px, f) for n, i, px, f in s.exits]
+    s.zone_bot, s.zone_top = -s.zone_top, -s.zone_bot
+    s.poc = -s.poc if s.poc is not None else None
+    return s
+
+
+def _mirror_df(df: pd.DataFrame) -> pd.DataFrame:
+    m = df.copy()
+    m["open"], m["close"] = -df["open"], -df["close"]
+    m["high"], m["low"] = -df["low"], -df["high"]
+    return m
+
+
+def scan_live(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], list[FibTrade]]:
+    """(transakcje, zlecenia oczekujące na ostatniej świecy) dla BUY i SELL."""
+    df = df.reset_index(drop=True)
+    bt, bp = _scan_buy_full(df, p)
+    st, sp = _scan_buy_full(_mirror_df(df), p)
+    trades = sorted(bt + [_flip(s) for s in st], key=lambda x: x.entry_idx)
+    pending = [x for x in (bp, _flip(sp) if sp else None) if x is not None]
+    return trades, pending
 
 
 def find_fib_trades(df: pd.DataFrame, p: FibParams | None = None) -> list[FibTrade]:

@@ -8,9 +8,9 @@ import pandas as pd
 from .chart_fib import _trendline
 from .chart_tv import render_post_chart
 from .config import Config
-from .fibzone import FibParams, FibTrade, find_fib_trades
+from .fibzone import FibParams, FibTrade, find_fib_trades, scan_live
 from .tracker import State
-from .writer_fib import build_fib_post, context, final_text, levels, one_r_text
+from .writer_fib import build_fib_post, cancel_text, context, final_text, levels, one_r_text, update_text
 
 log = logging.getLogger("signalbot")
 
@@ -85,16 +85,49 @@ def _reply(publishers: dict, rec: dict, text: str) -> None:
 
 
 def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None) -> None:
-    trades = find_fib_trades(df, fib_params(cfg))
+    trades, pending = scan_live(df, fib_params(cfg))
+    by_id = {t.id: t for t in trades}
     last = df.iloc[-1]
-    open_n = sum(1 for r in state.signals.values() if r["status"] == "open")
-    log.info("Checked %s candle %s close %.2f | open signals: %d", cfg.timeframe,
-             pd.Timestamp(last["time"]).strftime("%Y-%m-%d %H:%M"), last["close"], open_n)
-    for tr in trades:
-        if tr.entry_idx >= len(df) - 2 and tr.id not in state.signals and only in (None, tr.id):
-            log.info("New %s signal %s @ %.2f", tr.direction, tr.id, levels(tr)["entry"])
-            state.signals[tr.id] = publish_fib(cfg, df, tr, publishers)
+    live_n = sum(1 for r in state.signals.values() if r["status"] in ("pending", "open"))
+    log.info("Checked %s candle %s close %.2f | active signals: %d", cfg.timeframe,
+             pd.Timestamp(last["time"]).strftime("%Y-%m-%d %H:%M"), last["close"], live_n)
+
+    # 1) zlecenie oczekujące: publikujemy ZANIM cena dojdzie do wejścia
+    pend_ids = set()
+    for pd_tr in pending:
+        pend_ids.add(pd_tr.id)
+        if only not in (None, pd_tr.id):
+            continue
+        rec = state.signals.get(pd_tr.id)
+        lv = levels(pd_tr)
+        late = last["close"] >= lv["entry"] if pd_tr.direction == "BUY" else last["close"] <= lv["entry"]
+        if rec is None and late:
+            continue  # cena już za wejściem - nie wysyłamy spóźnionego sygnału, czekamy na lepszy moment
+        if rec is None:
+            log.info("New pending %s %s @ %.2f", pd_tr.direction, pd_tr.id, lv["entry"])
+            rec = publish_fib(cfg, df, pd_tr, publishers)
+            rec["status"] = "pending"
+            state.signals[pd_tr.id] = rec
             state.save()
+        elif rec["status"] == "pending" and abs(rec["levels"]["entry"] - lv["entry"]) >= \
+                0.25 * abs(rec["levels"]["entry"] - rec["levels"]["sl"]):
+            # nowy dołek/szczyt w strefie przesunął Fibo -> aktualizacja poziomów
+            _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol))
+            rec["levels"] = {k: v for k, v in lv.items() if k != "tps"}
+            state.save()
+
+    # 2) oczekujące, które zniknęły: aktywowane (są w transakcjach) albo anulowane
+    for sid, rec in state.signals.items():
+        if rec["status"] != "pending" or sid in pend_ids:
+            continue
+        if sid in by_id:
+            rec["status"] = "open"
+            log.info("%s triggered @ %.2f", sid, by_id[sid].entry)
+        else:
+            _reply(publishers, rec, cancel_text(rec["direction"], cfg.display_symbol))
+            rec["status"] = "cancelled"
+            log.info("%s cancelled", sid)
+        state.save()
 
     for tr in trades:
         rec = state.signals.get(tr.id)
@@ -118,7 +151,7 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
 
 
 def live_replay(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict, state: State) -> None:
-    """Test: feed bars one by one from the signal bar until the trade closes, like the live bot would see them."""
+    """Test: feed bars one by one from the zone touch until the trade closes, like the live bot would see them."""
     end = tr.exits[-1][1] if tr.exits else tr.entry_idx
-    for i in range(tr.entry_idx, end + 1):
+    for i in range(tr.touch_idx, end + 1):
         run_once_fib(cfg, df.iloc[: i + 1].reset_index(drop=True), state, publishers, only=tr.id)

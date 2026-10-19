@@ -152,6 +152,17 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
                    why_long=f"🧭 {why_long}", why_short=f"🧭 {why_short}")
 
 
+def update_text(tr: FibTrade, symbol: str) -> str:
+    lv = levels(tr)
+    tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
+    return (f"🔄 {symbol} {tr.direction} update — new levels:\n"
+            f"📍 Entry: {lv['entry']:.2f}\n🛑 Stop loss: {lv['sl']:.2f}\n🎯 {tps}")
+
+
+def cancel_text(direction: str, symbol: str) -> str:
+    return f"❌ {symbol} {direction}: entry was not triggered — setup cancelled, remove the pending order."
+
+
 def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
     return (f"✅ {symbol} {tr.direction}: 1:1 RR secured.\n"
             f"Stop to breakeven and let the rest run to the next targets.")
