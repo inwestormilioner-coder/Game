@@ -20,6 +20,9 @@ VARIANTS = {
     "ICT: TP 3R": IctParams(tp_mode="rr", rr=3.0),
     "ICT: bez wymogu płynności": IctParams(require_liq=False),
     "ICT: bez wymogu BOS": IctParams(require_bos=False),
+    "ICT: SL za lokalnym dołkiem/szczytem": IctParams(sl_mode="swing"),
+    "ICT: SL za swingiem, min RR 1.0": IctParams(sl_mode="swing", min_rr=1.0),
+    "ICT: SL za swingiem, TP 2R": IctParams(sl_mode="swing", tp_mode="rr", rr=2.0),
 }
 
 

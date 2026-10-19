@@ -29,6 +29,7 @@ class IctParams:
     liq_max_atr: float = 4.0      # płynność nie dalej niż tyle ATR nad FVG
     entry: str = "top"            # top | mid  (krawędź albo połowa FVG)
     sl_buffer_atr: float = 0.15
+    sl_mode: str = "fvg"          # fvg = tuż za FVG | swing = za lokalnym dołkiem/szczytem (początek impulsu)
     tp_mode: str = "liquidity"    # liquidity | rr
     rr: float = 2.0               # dla tp_mode="rr" (i minimalne RR dla liquidity = min_rr)
     min_rr: float = 1.5
@@ -73,54 +74,65 @@ def _scan_buy(df: pd.DataFrame, p: IctParams) -> list[IctTrade]:
         bot, top = h[k - 1], l[k + 1]
         if top - bot < p.min_gap_atr * a[k]:
             continue
-        # BOS: w oknie impulsu zamknięcie nad ostatnim potwierdzonym swing high
+        made = k + 1                                   # FVG znane po zamknięciu świecy k+1
+        # BOS: w oknie impulsu zamknięcie nad ostatnim potwierdzonym swing high;
+        # zlecenie dopiero po świecy, na której BOS jest już znany
         if p.require_bos:
             prev = [s for s in highs if s.confirmed_at <= k - 1]
             if not prev:
                 continue
             lvl = prev[-1].price
-            if not any(c[j] > lvl for j in range(k - 1, min(n, k + 1 + p.bos_window))):
+            bos = [j for j in range(k - 1, min(n, k + 1 + p.bos_window)) if c[j] > lvl]
+            if not bos:
                 continue
-        made = k + 1                                   # FVG znane po zamknięciu świecy k+1
+            made = max(made, bos[0])
         entry = top if p.entry == "top" else (top + bot) / 2
-        sl = bot - p.sl_buffer_atr * a[made]
+        if p.sl_mode == "swing":
+            # lokalny dołek pod FVG, znany przy powstaniu luki (początek impulsu)
+            below = [s.price for s in lows if s.confirmed_at <= made and s.price < bot]
+            anchor = below[-1] if below else float(l[max(0, k - 10) : k + 1].min())
+            sl = min(anchor, bot) - p.sl_buffer_atr * a[made]
+        else:
+            sl = bot - p.sl_buffer_atr * a[made]
         risk = entry - sl
         if risk <= 0 or risk < p.min_risk:
             continue
 
-        placed = None
-        liq = None
+        placed = None                                   # świeca, po której zamknięciu wystawiono zlecenie
+        liq = tp = None
         for t in range(made + 1, min(n, made + 1 + p.max_wait)):
-            if c[t] < bot:                             # FVG przebite - koniec
-                break
-            if placed is None:
-                # płynność: swing low nad FVG, powstały po FVG, znany do świecy t-1
-                cand = [s for s in lows if s.idx > made and s.confirmed_at <= t - 1
-                        and top < s.price <= top + p.liq_max_atr * a[made]]
-                if p.require_liq and not cand:
-                    continue
-                liq = cand[-1].price if cand else None
-                if l[t] <= liq if liq is not None else False:
-                    continue                           # płynność zebrana zanim wystawiliśmy zlecenie
-                # TP
-                if p.tp_mode == "liquidity":
-                    above = [s.price for s in highs if s.confirmed_at <= t - 1 and s.price > c[t - 1]]
-                    tp = min(above) if above else entry + p.rr * risk
-                else:
-                    tp = entry + p.rr * risk
-                if (tp - entry) / risk < (p.min_rr if p.tp_mode == "liquidity" else 0):
+            if placed is not None:
+                # zlecenie już stoi: najpierw wejście (w trakcie świecy), potem anulowania po zamknięciu
+                if l[t] <= entry:
+                    fill = min(o[t], entry)
+                    tr = IctTrade("BUY", k, placed, t, fill, sl, tp, bot, top, liq)
+                    _manage(tr, h, l, c, t, p)
+                    out.append(tr)
                     break
-                placed = t - 1                         # zlecenie wystawione po zamknięciu t-1
-                out_tp = tp
-            if h[t] >= out_tp and l[t] > entry:        # cena poszła do celu bez nas
-                placed = None
+                if h[t] >= tp or c[t] < bot:           # cel osiągnięty bez nas albo FVG przebite
+                    break
+                continue
+            # zlecenia jeszcze nie ma: decyzja na podstawie danych do zamknięcia świecy t
+            if c[t] < bot:
                 break
-            if l[t] <= entry:                          # wejście
-                fill = min(o[t], entry)
-                tr = IctTrade("BUY", k, placed, t, fill, sl, out_tp, bot, top, liq)
-                _manage(tr, h, l, c, t, p)
-                out.append(tr)
-                break
+            if c[t] <= entry:
+                continue                               # cena już w FVG - limit byłby nad rynkiem
+            cand = [s for s in lows if s.idx > made and s.confirmed_at <= t
+                    and top < s.price <= top + p.liq_max_atr * a[made]]
+            if p.require_liq and not cand:
+                continue
+            liq_s = cand[-1] if cand else None
+            liq = liq_s.price if liq_s else None
+            if liq_s is not None and l[liq_s.idx + 1 : t + 1].min(initial=np.inf) <= liq:
+                continue                               # płynność już zebrana
+            if p.tp_mode == "liquidity":
+                above = [s.price for s in highs if s.confirmed_at <= t and s.price > c[t]]
+                tp = min(above) if above else entry + p.rr * risk
+                if (tp - entry) / risk < p.min_rr:
+                    break
+            else:
+                tp = entry + p.rr * risk
+            placed = t
     return out
 
 
