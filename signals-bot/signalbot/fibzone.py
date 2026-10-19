@@ -156,30 +156,34 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
 
         if setup is not None:
             z = setup["zone"]
-            if c[t] < z[0] or t - setup["touch"] > p.max_wait:
+            # zlecenie stoi na poziomach z ZAMKNIĘCIA poprzedniej świecy (tak jak w bocie na żywo)
+            f0, f1 = setup["f0"], setup["f1"]
+            rng = f1 - f0
+            stop = f0 + p.entry_fib * rng
+            sl = f0 + p.sl_fib * rng
+            big_enough = rng >= p.min_range_atr * a[t - 1] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk
+            if big_enough and h[t] >= stop:
+                entry = max(o[t], stop)
+                levels = [x for x in (f0 + f * rng for f in p.tps) if x > entry]
+                if levels:
+                    if l[t] <= sl:     # w tej samej świecy także SL - liczymy stratę (kolejność nieznana)
+                        r, exits, closed = -1.0, [("sl", t, sl, 1.0)], True
+                    else:
+                        r, exits, closed = _simulate(h, l, c, t, entry, sl, levels,
+                                                     FibParams(**{**p.__dict__,
+                                                                  "fractions": p.fractions[-len(levels):]}))
+                    trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
+                                           z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
+                                           str(df["time"].iloc[setup["touch"]]) if "time" in df else "",
+                                           tuple(p.tps)))
+                    busy_until = exits[-1][1] if closed else len(df)
+                    zones = [x for x in zones if x is not z]
+                setup = None
+            # bez wejścia: po zamknięciu świecy anulowanie albo przesunięcie 0 na nowy dołek
+            elif c[t] < z[0] or t - setup["touch"] > p.max_wait:
                 setup = None
             elif l[t] < setup["f0"]:
                 setup["f0"] = l[t]
-            else:
-                f0, f1 = setup["f0"], setup["f1"]
-                rng = f1 - f0
-                stop = f0 + p.entry_fib * rng
-                big_enough = rng >= p.min_range_atr * a[t] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk
-                if big_enough and h[t] >= stop:
-                    entry = max(o[t], stop)
-                    sl = f0 + p.sl_fib * rng
-                    levels = [f0 + x * rng for x in p.tps]
-                    levels = [x for x in levels if x > entry]
-                    if levels:
-                        r, exits, closed = _simulate(h, l, c, t, entry, sl, levels,
-                                             FibParams(**{**p.__dict__, "fractions": p.fractions[-len(levels):]}))
-                        trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
-                                               z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
-                                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "",
-                                               tuple(p.tps)))
-                        busy_until = exits[-1][1] if closed else len(df)
-                        zones = [x for x in zones if x is not z]
-                    setup = None
             continue
 
         if t <= busy_until or last_sh is None:
