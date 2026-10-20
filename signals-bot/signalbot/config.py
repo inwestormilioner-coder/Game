@@ -49,6 +49,10 @@ class Config:
     invite_url: str = ""        # link do grupy Telegram w postach na X / Threads
     handle: str = ""            # znak wodny na wykresie, np. @TwojNick
     chart_source: str = ""      # podpis źródła na wykresie, np. RoboForex
+    chart_mode: str = "render"  # render = własny wykres | tradingview = zrzut Twojego layoutu TV
+    tv_chart_url: str = ""      # adres Twojego layoutu, np. https://www.tradingview.com/chart/AbCdEfGh/
+    tv_symbol: str = "OANDA:XAUUSD"
+    tv_profile_dir: str = "tv_profile"
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
     tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
     language: str = "pl"
@@ -105,6 +109,10 @@ def load_config(env_file: str | None = ".env") -> Config:
         invite_url=_env("TELEGRAM_INVITE_URL"),
         handle=_env("CHART_HANDLE"),
         chart_source=_env("CHART_SOURCE"),
+        chart_mode=_env("CHART_MODE", "render"),
+        tv_chart_url=_env("TV_CHART_URL"),
+        tv_symbol=_env("TV_SYMBOL", "OANDA:XAUUSD"),
+        tv_profile_dir=_env("TV_PROFILE_DIR", "tv_profile"),
         reply_losses=_bool("REPLY_LOSSES", False),
         tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
         language=_env("POST_LANGUAGE", "pl"),
