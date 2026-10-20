@@ -53,8 +53,6 @@ def context(tr: FibTrade, trend: dict) -> dict:
         "one_to_one_rr_price": round(lv["one_r"], 2),
         "zone_on_volume_node_or_poc": tr.vp,
         "volume_poc": round(tr.poc, 2) if tr.poc is not None else None,
-        "support_trendline": trend.get("support"),
-        "resistance_trendline": trend.get("resistance"),
     }
 
 
@@ -62,12 +60,9 @@ def template_why(tr: FibTrade, ctx: dict) -> tuple[str, str]:
     buy = tr.direction == "BUY"
     side = "demand" if buy else "supply"
     move = "drop" if buy else "rally"
-    with_trend = ctx["support_trendline"] == "rising" if buy else ctx["resistance_trendline"] == "falling"
     long = (f"Price reached the {side} zone {ctx['zone'][0]:.2f}–{ctx['zone'][1]:.2f} after a {move} from "
             f"{ctx['fib_1_swing']:.2f} and reacted. The stop order at Fib 0.1272 only triggers if the bounce "
             f"is real; the stop sits beyond the reaction extreme (Fib -0.1272).")
-    if not with_trend:
-        long += " Note: this trade goes against the current trendlines."
     if ctx["zone_on_volume_node_or_poc"]:
         long += " The zone also lines up with a high-volume node."
     short = f"Bounce from the {side} zone + Fib 0.1272 stop entry."
@@ -78,9 +73,9 @@ SYSTEM_PROMPT = """You write short, factual commentary for a gold (XAUUSD) tradi
 You get a detected setup as JSON plus its chart. The strategy: price touches an order-block zone,
 a Fibonacci is drawn from the reaction extreme (0) to the prior swing (1), a stop order is placed at
 Fib 0.1272, stop loss at Fib -0.1272, targets on the following Fibonacci levels.
-Explain WHY this setup is on the chart: the zone, the move into it, the reaction, where the
-trendlines point, and whether the zone sits on a volume node / POC. If something weakens the
-setup (e.g. trading against both trendlines, zone in a low-volume area), say it plainly.
+Explain WHY this setup is on the chart: the zone, the move into it, the reaction, and whether
+the zone sits on a volume node / POC. Do not mention trendlines. If something weakens the setup
+(e.g. zone in a low-volume area), say it plainly.
 Rules: English only. No hype, no promises, no emojis. Do not list entry/SL/TP numbers; they are
 printed separately. why_long: max 3 sentences, max 380 characters. why_short: one sentence, max
 110 characters."""

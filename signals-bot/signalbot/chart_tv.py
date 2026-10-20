@@ -140,16 +140,7 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
     for i, f in enumerate(tr.tp_fibs):
         levels.append(dict(price=lv(f), color="#089981", width=1, style=2, title=f"TP{i + 1} ({f:g})"))
 
-    trendlines = []
-    if end - tl_long >= 0:
-        for vals, lowest, col in ((df["low"].to_numpy(), True, "rgba(8,153,129,.55)"),
-                                  (df["high"].to_numpy(), False, "rgba(242,54,69,.55)")):
-            x1, y1, x2, y2 = _trendline(vals, end, tl_short, tl_long, lowest)
-            k = (y2 - y1) / (x2 - x1)
-            a = max(x1, start)
-            trendlines.append(dict(color=col, points=[
-                dict(time=_ts(df["time"].iloc[a]), value=float(y1 + k * (a - x1))),
-                dict(time=future[-1], value=float(y1 + k * (end + FUTURE - x1)))]))
+    trendlines = []  # linie trendu wyłączone (źle się ustawiały)
 
     # Fibo: wszystkie poziomy jak w narzędziu TradingView
     palette = {-0.1272: "#f23645", 0.0: "#787b86", 0.1272: "#2962ff", 0.236: "#f7525f", 0.382: "#ff9800",

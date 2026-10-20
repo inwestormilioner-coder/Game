@@ -66,7 +66,7 @@ def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -
     if chart is None:
         chart = render_post_chart(df, tr, chart_path, cfg.display_symbol,
                                   cfg.timeframe, handle=cfg.handle, source=cfg.chart_source)
-    ctx = context(tr, trend_info(df, tr.entry_idx))
+    ctx = context(tr, {})
     post = build_fib_post(tr, chart, ctx, cfg.display_symbol, cfg.timeframe, cfg.use_ai, cfg.anthropic_model,
                           cfg.invite_url)
     kinds = {"long": post.long, "threads": post.threads, "short": post.short}

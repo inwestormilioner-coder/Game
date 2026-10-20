@@ -84,15 +84,6 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     ax.text(last * 0.45, (tr.zone_bot + tr.zone_top) / 2, "BUY ZONE" if buy else "SELL ZONE", color=zc,
             fontsize=11, fontweight="bold", va="center", ha="center", alpha=0.9)
 
-    # trendlines (data up to the entry bar only)
-    for vals, lowest, col in ((df["low"].to_numpy(), True, GREEN), (df["high"].to_numpy(), False, RED)):
-        if end - tl_long >= 0:
-            x1, y1, x2, y2 = _trendline(vals, end, tl_short, tl_long, lowest)
-            k = (y2 - y1) / (x2 - x1)
-            xa, xb = max(x1, start), end + FUTURE
-            ax.plot([x(xa), x(xb)], [y1 + k * (xa - x1), y1 + k * (xb - x1)], color=col, lw=1.2, alpha=0.45,
-                    ls="-", zorder=1)
-
     # fibonacci levels: lines + non-overlapping labels on the right
     fx = x(max(tr.fib1_idx, start))
     rows = []
