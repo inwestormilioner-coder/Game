@@ -50,6 +50,11 @@ Search these, preferring trusted crypto sources:
   for the last day.
 - Trending narratives (AI tokens, memecoins, RWA, L2s, etc.).
 
+For the most promising results, open the full article with WebFetch (load
+it with ToolSearch if needed) and read it, so facts come from the article
+itself, not just the search snippet. If WebFetch is blocked, use snippets
+and say so in the output.
+
 Output: a list of 10–15 candidate stories. For each: headline, key facts
 and numbers, exact publication time if known, and 1–3 source URLs
 (different outlets where possible). Plus the market snapshot with sources.
@@ -64,6 +69,8 @@ Brief: Take the researcher's list. For each story:
   records, huge liquidations, hacks, drama, "first ever").
 - Give the angle: one sharp take/opinion a smart trader would have, plus
   why it matters for the audience.
+Drop stories whose key numbers conflict between sources or that are too
+uncertain to state plainly; do not write hedged "maybe/reportedly" posts.
 Pick the best 5–6 stories plus the best one for a thread. At most 2 chosen
 stories may rely on the same article. Output the ranked shortlist with
 facts, sources, verification status, and angle.
@@ -78,7 +85,8 @@ Brief: Write, in English, style "news + comment":
 4. 1 engagement post (question or poll: question + 2–4 options).
 Rules: hook first, facts and numbers next, then ONE short take. Short lines
 with line breaks. ≤280 characters per tweet. Max 1–2 $cashtags/hashtags.
-No links in the text, no "not financial advice", vary the openers (don't
+No links and no source names in parentheses inside the post text (sources
+go below the post), no "not financial advice", vary the openers (don't
 start every post with 🚨). Write 2 variants of the hook for each post.
 
 ## Agent 4 — CRITIC ("Krytyk")
@@ -113,7 +121,14 @@ Different posts must not sound templated. Stay ≤280 chars per tweet.
 2. Count characters of every tweet with Bash
    (python3 -c "print(len('''...'''))"); shorten any that exceed 280.
 3. Final read for AI tone; fix leftovers.
-4. Deliver the final message below. Reply in Polish around the posts,
+4. Write an IMAGE PROMPT (English, 1–3 sentences) for every news post, the
+   market post and tweet 1/ of the thread, for an AI image generator
+   (Midjourney / Higgsfield / DALL·E). Rules: concrete scene, style and
+   mood that fit the story (e.g. cinematic 3D render, dark trading-desk
+   neon, editorial illustration), aspect ratio 16:9, no real people's
+   faces, no company logos, at most 1–3 large words of on-image text
+   (e.g. "$766M", "LIQUIDATED"). Vary styles across the pack.
+5. Deliver the final message below. Reply in Polish around the posts,
    posts in English.
 
 Final message format, exactly:
@@ -123,10 +138,14 @@ Final message format, exactly:
 **📊 Rynek**
 <post in a code block>
 Źródło: <site name + URL>
+🎨 Prompt do obrazka:
+<image prompt in its own code block>
 
 **1. <short Polish title of the story>**  ⭐ <critic score>/10
 <post in a code block>
 Źródło: <site name + URL> (✅ potwierdzone / ⚠️ jedno źródło)
+🎨 Prompt do obrazka:
+<image prompt in its own code block>
 💡 Najlepszy czas: <teraz / za ~2h / wieczorem>
 
 ... (each news post the same way)
@@ -134,6 +153,8 @@ Final message format, exactly:
 **🧵 Wątek: <Polish title>**
 <each tweet in its own code block, numbered 1/, 2/, ...>
 Źródła: <URLs>
+🎨 Prompt do obrazka (do tweeta 1/):
+<image prompt in its own code block>
 
 **💬 Engagement**
 <post in a code block>
