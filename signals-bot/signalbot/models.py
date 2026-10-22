@@ -122,14 +122,31 @@ def _scan_buy(df: pd.DataFrame, p: ModelParams) -> list[ModelTrade]:
             continue
         hi_s = known_highs[-1]
         # MSS: zamknięcie nad hi_s; dołek sweepu = najniższy low do MSS
-        m, low_i = None, t
-        for u in range(t, min(n, t + p.mss_window + 1)):
-            if l[u] < l[low_i]:
-                low_i = u
-            if c[u] > hi_s.price:
-                m = u
-                break
-        z = _zone(p.model, o, h, l, c, hi_s, t, low_i, m)
+        m, low_i, z = None, t, None
+        if p.model == "bpr":
+            # BPR liczony na bieżąco: dołek tylko z dotychczasowych świec (bez zaglądania w przyszłość)
+            bears = _bear_fvgs(h, l, hi_s.idx, t)
+            for u in range(t + 1, min(n - 1, t + p.mss_window + 1)):
+                if l[u] < l[low_i]:
+                    low_i = u
+                    continue
+                k = u - 1                                   # FVG ze środkową świecą k, znany na świecy u
+                if k - 1 > low_i - 1 and l[u] > h[k - 1]:
+                    for b_bot, b_top, _ in bears:
+                        lo, hi = max(h[k - 1], b_bot), min(l[u], b_top)
+                        if hi > lo:
+                            z = (lo, hi, u)
+                            break
+                if z:
+                    break
+        else:
+            for u in range(t, min(n, t + p.mss_window + 1)):
+                if l[u] < l[low_i]:
+                    low_i = u
+                if c[u] > hi_s.price:
+                    m = u
+                    break
+            z = _zone(p.model, o, h, l, c, hi_s, t, low_i, m)
         if z is None:
             continue
         bot, top, known = z
