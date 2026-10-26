@@ -123,7 +123,7 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
     icon = "🟢" if tr.direction == "BUY" else "🔴"
     tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
     head = f"{symbol} {tr.direction} {icon} | {timeframe}"
-    invite = f"\n\n📲 Live updates & results on Telegram: {invite_url}" if invite_url else ""
+    invite = "\n\n📲 Do you wanna join for free? Check my profile for the link."
     long = (
         f"{head}\n\n"
         f"📍 Entry: {lv['entry']:.2f}\n"
@@ -141,7 +141,7 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
         f"{head}\n"
         f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f}\n"
         f"TP1 {lv['tps'][0]:.2f} … TP{len(lv['tps'])} {lv['tps'][-1]:.2f}"
-        + (f"\n👉 {invite_url}" if invite_url else "") + "\nNFA"
+        + "\n📲 Join for free, link in my profile.\nNFA"
     )
     return FibPost(long=long[:1024], threads=threads[:500], short=short[:280],
                    why_long=f"🧭 {why_long}", why_short=f"🧭 {why_short}")
