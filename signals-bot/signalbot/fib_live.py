@@ -10,7 +10,7 @@ from .chart_tv import render_post_chart
 from .config import Config
 from .fibzone import FibParams, FibTrade, find_fib_trades, scan_live
 from .tracker import State
-from .writer_fib import build_fib_post, cancel_text, context, final_text, levels, one_r_text, update_text
+from .writer_fib import build_fib_post, cancel_text, context, exit_text, levels, update_text
 
 log = logging.getLogger("signalbot")
 
@@ -140,19 +140,18 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         rec = state.signals.get(tr.id)
         if rec is None or rec["status"] != "open":
             continue
-        if not rec["one_r_sent"]:
-            price = _reached_one_r(df, tr)
-            if price is not None:
-                _reply(publishers, rec, one_r_text(tr, price, cfg.display_symbol))
-                rec["one_r_sent"] = True
-                state.save()
+        # każde nowe wyjście (TP1..TPn, SL, zamknięcie) -> odpowiedź z pipsami od ceny wejścia z sygnału
+        entry = rec.get("levels", {}).get("entry", levels(tr)["entry"])
+        sent = rec.setdefault("exits_sent", 0)
+        for name, _, price, _ in tr.exits[sent:]:
+            _reply(publishers, rec, exit_text(tr, name, price, entry, cfg.pip_size, cfg.display_symbol))
+            log.info("%s %s @ %.2f", tr.id, name, price)
+        if len(tr.exits) > sent:
+            rec["exits_sent"] = len(tr.exits)
+            state.save()
         if tr.closed:
             tps_hit = sum(1 for e in tr.exits if e[0].startswith("tp"))
             rec.update(status="closed", r=round(tr.r, 2), tps_hit=tps_hit)
-            if rec["one_r_sent"] and tr.r >= 1.0:
-                _reply(publishers, rec, final_text(tr, tr.r, tps_hit, cfg.display_symbol))
-            elif cfg.reply_losses:
-                _reply(publishers, rec, f"{cfg.display_symbol} {tr.direction} closed: {tr.r:+.1f}R.")
             log.info("%s closed: %+.2fR, %d TPs", tr.id, tr.r, tps_hit)
             state.save()
 

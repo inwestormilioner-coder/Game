@@ -54,6 +54,7 @@ class Config:
     tv_symbol: str = "OANDA:XAUUSD"
     tv_profile_dir: str = "tv_profile"
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
+    pip_size: float = 0.1       # wielkość pipsa (złoto: 0.10$)
     tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
     language: str = "pl"
     use_ai: bool = True
@@ -114,6 +115,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         tv_symbol=_env("TV_SYMBOL", "OANDA:XAUUSD"),
         tv_profile_dir=_env("TV_PROFILE_DIR", "tv_profile"),
         reply_losses=_bool("REPLY_LOSSES", False),
+        pip_size=float(_env("PIP_SIZE", "0.1")),
         tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
         language=_env("POST_LANGUAGE", "pl"),
         use_ai=_bool("USE_AI", True),

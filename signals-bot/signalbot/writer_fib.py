@@ -158,6 +158,26 @@ def cancel_text(direction: str, symbol: str) -> str:
     return f"❌ {symbol} {direction}: entry was not triggered — setup cancelled, remove the pending order."
 
 
+def pips(direction: str, entry: float, price: float, pip_size: float) -> float:
+    """Wynik w pipsach od ceny wejścia z sygnału (dodatni = zysk)."""
+    move = price - entry if direction == "BUY" else entry - price
+    return move / pip_size
+
+
+def exit_text(tr: FibTrade, name: str, price: float, entry: float, pip_size: float, symbol: str) -> str:
+    """Odpowiedź pod sygnałem po TP / SL / zamknięciu."""
+    p = pips(tr.direction, entry, price, pip_size)
+    if name.startswith("tp"):
+        k = int(name[2:])
+        extra = "\nStop to breakeven 🔒" if k == 1 else ""
+        return f"🎯 {symbol} {tr.direction} TP{k} hit @ {price:.2f}\n💰 +{p:.0f} pips 💪{extra}"
+    if name == "sl" and abs(p) < 0.5:
+        return f"🔒 {symbol} {tr.direction} closed at breakeven @ {price:.2f} — 0 pips"
+    if name == "sl":
+        return f"🛑 {symbol} {tr.direction} SL hit @ {price:.2f}\n📉 {p:.0f} pips"
+    return f"⏹ {symbol} {tr.direction} closed @ {price:.2f} — {p:+.0f} pips"
+
+
 def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
     return (f"✅ {symbol} {tr.direction}: 1:1 RR secured.\n"
             f"Stop to breakeven and let the rest run to the next targets.")
