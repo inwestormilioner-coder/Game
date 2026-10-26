@@ -64,7 +64,23 @@ for (const L of D.levels) {
 chart.timeScale().fitContent();
 document.getElementById('hdr').innerHTML = D.header;
 
-setTimeout(() => {
+// Nakładki rysujemy dopiero, gdy oś czasu jest już dopasowana do całego wykresu
+// (na wolniejszym komputerze dopasowanie trwa dłużej - stały czas oczekiwania nie wystarczał).
+function settled() {
+  const ts = chart.timeScale();
+  const x0 = ts.timeToCoordinate(D.candles[0].time);
+  const xl = ts.timeToCoordinate(D.candles[D.candles.length - 1].time);
+  const w = ts.width();
+  return w > 0 && x0 !== null && xl !== null && x0 < 40 && xl > w * 0.5 && xl < w;
+}
+let tries = 0;
+function drawWhenReady() {
+  if (!settled() && tries++ < 100) { chart.timeScale().fitContent(); return setTimeout(drawWhenReady, 100); }
+  drawOverlays();
+}
+setTimeout(drawWhenReady, 100);
+
+function drawOverlays() {
   const ts = chart.timeScale(), paneW = ts.width();
   const box = (x1, x2, yTop, yBot, css) => {
     const d = document.createElement('div'); d.className = 'ov';
@@ -102,7 +118,7 @@ setTimeout(() => {
     el.appendChild(svg);
   }
   window.__done = true;
-}, 400);
+}
 </script></body></html>"""
 
 
@@ -194,7 +210,7 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
         browser = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
         page = browser.new_page(viewport={"width": W, "height": H}, device_scale_factor=2)
         page.set_content(html)
-        page.wait_for_function("window.__done === true", timeout=15000)
+        page.wait_for_function("window.__done === true", timeout=30000)
         page.locator("#c").screenshot(path=str(path))
         browser.close()
     return path
