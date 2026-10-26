@@ -91,7 +91,18 @@ def _reply(publishers: dict, rec: dict, text: str) -> None:
             log.error("Reply on %s failed: %s", name, e)
 
 
-def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None) -> None:
+def _trade(trader, action: str, *args) -> None:
+    """Błąd po stronie brokera nie może zatrzymać publikacji sygnałów."""
+    if trader is None:
+        return
+    try:
+        getattr(trader, action)(*args)
+    except Exception as e:
+        log.error("Auto-trading (%s) nieudany: %s", action, e)
+
+
+def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None,
+                 trader=None) -> None:
     trades, pending = scan_live(df, fib_params(cfg))
     by_id = {t.id: t for t in trades}
     last = df.iloc[-1]
@@ -115,12 +126,14 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
             rec = publish_fib(cfg, df, pd_tr, publishers)
             rec["status"] = "pending"
             state.signals[pd_tr.id] = rec
+            _trade(trader, "place", rec, pd_tr.direction, lv["entry"], lv["sl"], lv["tps"])
             state.save()
         elif rec["status"] == "pending" and abs(rec["levels"]["entry"] - lv["entry"]) >= \
                 0.25 * abs(rec["levels"]["entry"] - rec["levels"]["sl"]):
             # nowy dołek/szczyt w strefie przesunął Fibo -> aktualizacja poziomów
             _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol))
             rec["levels"] = {k: v for k, v in lv.items() if k != "tps"}
+            _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
             state.save()
 
     # 2) oczekujące, które zniknęły: aktywowane (są w transakcjach) albo anulowane
@@ -132,6 +145,7 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
             log.info("%s triggered @ %.2f", sid, by_id[sid].entry)
         else:
             _reply(publishers, rec, cancel_text(rec["direction"], cfg.display_symbol))
+            _trade(trader, "cancel", rec)
             rec["status"] = "cancelled"
             log.info("%s cancelled", sid)
         state.save()
@@ -146,6 +160,10 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         for name, _, price, _ in tr.exits[sent:]:
             _reply(publishers, rec, exit_text(tr, name, price, entry, cfg.pip_size, cfg.display_symbol))
             log.info("%s %s @ %.2f", tr.id, name, price)
+            if name == "tp1":
+                _trade(trader, "breakeven", rec)
+            elif name == "timeout":
+                _trade(trader, "close_all", rec)
         if len(tr.exits) > sent:
             rec["exits_sent"] = len(tr.exits)
             state.save()

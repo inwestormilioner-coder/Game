@@ -17,6 +17,26 @@ def _only_closed(df: pd.DataFrame, timeframe: str, now: datetime | None = None) 
     return df[close_time <= pd.Timestamp(now)].reset_index(drop=True)
 
 
+_MT5_CURRENT: tuple | None = None   # do którego terminala MT5 jest teraz podłączony pakiet
+
+
+def mt5_connect(mt5, path: str = "", login: int | None = None, password: str = "", server: str = "") -> None:
+    """Podłącza pakiet MetaTrader5 do wskazanego terminala. Pakiet obsługuje jeden terminal naraz,
+    więc przy dwóch brokerach (dane z jednego, handel na drugim) przełączamy się przy każdym cyklu."""
+    global _MT5_CURRENT
+    key = (path or "", login, server or "")
+    if _MT5_CURRENT == key and mt5.terminal_info() is not None:
+        return
+    if _MT5_CURRENT is not None:
+        mt5.shutdown()
+    kwargs = {k: v for k, v in dict(login=login, password=password, server=server).items() if v}
+    ok = mt5.initialize(path, **kwargs) if path else mt5.initialize(**kwargs)
+    if not ok:
+        _MT5_CURRENT = None
+        raise RuntimeError(f"MT5 initialize failed ({path or 'domyślny terminal'}): {mt5.last_error()}")
+    _MT5_CURRENT = key
+
+
 class MT5Provider:
     """MetaTrader 5 (RoboForex, Vantage, Exness...). Pakiet `MetaTrader5` działa tylko na Windows
     z zainstalowanym i zalogowanym terminalem MT5. Symbol dokładnie jak w „Market Watch”,
@@ -28,12 +48,14 @@ class MT5Provider:
 
         self.mt5 = mt5
         self.utc_offset = utc_offset  # godziny czasu serwera względem UTC; None = wykryj automatycznie
-        kwargs = {k: v for k, v in dict(login=login, password=password, server=server).items() if v}
-        ok = mt5.initialize(path, **kwargs) if path else mt5.initialize(**kwargs)
-        if not ok:
-            raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
+        self.conn = (path or "", login, password or "", server or "")
+        self.connect()
+
+    def connect(self) -> None:
+        mt5_connect(self.mt5, *self.conn)
 
     def get_bars(self, symbol: str, timeframe: str, count: int = 500) -> pd.DataFrame:
+        self.connect()
         tf = getattr(self.mt5, f"TIMEFRAME_{timeframe}")
         self.mt5.symbol_select(symbol, True)
         rates = self.mt5.copy_rates_from_pos(symbol, tf, 0, count + 1)

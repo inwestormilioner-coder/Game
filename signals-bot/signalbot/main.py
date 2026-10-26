@@ -50,10 +50,10 @@ def publish_signal(cfg: Config, df: pd.DataFrame, s: Setup, publishers: dict) ->
     return {"setup": s.to_dict(), "post_ids": ids, "status": "open", "chart": str(chart)}
 
 
-def run_once(cfg: Config, provider, state: State, publishers: dict) -> None:
+def run_once(cfg: Config, provider, state: State, publishers: dict, trader=None) -> None:
     df = provider.get_bars(cfg.symbol, cfg.timeframe, cfg.bars)
     if cfg.strategy == "fibzone":
-        run_once_fib(cfg, df, state, publishers)
+        run_once_fib(cfg, df, state, publishers, trader=trader)
         return
     setups = find_setups(df, strategy_params(cfg))
 
@@ -90,12 +90,15 @@ def run_loop(cfg: Config) -> None:
     provider = make_provider(cfg)
     state = State(cfg.data_dir / "state.json")
     publishers = make_publishers(cfg)
+    from .trader import make_trader
+
+    trader = make_trader(cfg)
     log.info("Start: %s %s, źródło %s, kanały: %s%s", cfg.symbol, cfg.timeframe, cfg.data_source,
              ", ".join(publishers), " (DRY RUN)" if cfg.dry_run else "")
     step = TF_MINUTES[cfg.timeframe] * 60
     while True:
         try:
-            run_once(cfg, provider, state, publishers)
+            run_once(cfg, provider, state, publishers, trader)
         except Exception:
             log.exception("Błąd w cyklu")
         now = datetime.now(timezone.utc).timestamp()
@@ -167,7 +170,7 @@ def threads_check(cfg: Config) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="signalbot")
-    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest", "threadscheck"])
+    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest", "threadscheck", "tradecheck"])
     ap.add_argument("--csv", help="fibtest: plik z historią (time,open,high,low,close[,volume])")
     ap.add_argument("--at", help="fibtest: czas świecy wejścia, np. '2026-07-08 15:45'")
     ap.add_argument("--only", help="fibtest: wyślij tylko na ten kanał (telegram | threads | x)")
@@ -183,6 +186,10 @@ def main() -> None:
         run_once(cfg, make_provider(cfg), State(cfg.data_dir / "state.json"), make_publishers(cfg))
     elif args.command == "fibtest":
         fibtest(cfg, args.csv, args.at, args.only)
+    elif args.command == "tradecheck":
+        from .trader import trade_check
+
+        trade_check(cfg)
     elif args.command == "threadscheck":
         threads_check(cfg)
     elif args.command == "backtest":

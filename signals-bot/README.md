@@ -114,6 +114,17 @@ wysyłając wiadomość w grupie i otwierając
    (albo imgbb.com, jeśli podasz `IMGBB_API_KEY`). Token odświeża się sam co 3 dni (`data/threads_token.json`),
    więc wystarczy, że bot chodzi przynajmniej raz na ~2 miesiące.
 
+**Auto-trading (MT5, np. Vantage demo).**
+1. Zainstaluj MT5 od Vantage, zaloguj się na konto **demo** i włącz w terminalu *Algo Trading*
+   (Narzędzia → Opcje → Doradcy Expert → „Zezwalaj na handel algorytmiczny”).
+2. W `.env`: `TRADE_ENABLED=true`, `TRADE_RISK_PCT=1.0`, `TRADE_SYMBOL` jak w „Market Watch” Vantage.
+   Dane z RoboForex, a handel na Vantage? Wpisz `TRADE_MT5_PATH` (terminal64.exe Vantage) i dane logowania
+   `TRADE_MT5_LOGIN/PASSWORD/SERVER`. Bot przełącza się między terminalami w każdym cyklu.
+3. `6_TEST_VANTAGE.bat` pokaże konto i lot, postawi testowe zlecenie daleko od ceny i od razu je usunie.
+4. Każdy sygnał to tyle zleceń BUY/SELL STOP, ile TP (każde z innym TP, wspólny SL). Po TP1 SL pozostałych
+   pozycji idzie na cenę otwarcia; aktualizacja sygnału przesuwa zlecenia, anulowanie je usuwa.
+   Na koncie realnym bot nie zagra bez `TRADE_ALLOW_REAL=true`.
+
 **X.**
 1. Utwórz projekt w developer.x.com i ustaw uprawnienia aplikacji na *Read and Write*.
 2. Wygeneruj 4 klucze OAuth 1.0a.

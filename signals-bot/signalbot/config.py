@@ -76,6 +76,17 @@ class Config:
     x_access_token: str = ""
     x_access_secret: str = ""
 
+    trade_enabled: bool = False       # auto-trading sygnałów na koncie MT5
+    trade_symbol: str = ""            # symbol u brokera do handlu (puste = SYMBOL)
+    trade_risk_pct: float = 1.0       # ryzyko na sygnał w % salda (dzielone na wszystkie TP)
+    trade_lot: float = 0.0            # >0 = stały lot na każde zlecenie zamiast % ryzyka
+    trade_magic: int = 770077
+    trade_allow_real: bool = False    # bez tego bot gra wyłącznie na koncie demo
+    trade_mt5_path: str = ""          # osobny terminal do handlu (np. Vantage), puste = ten sam co dane
+    trade_mt5_login: int | None = None
+    trade_mt5_password: str = ""
+    trade_mt5_server: str = ""
+
     dry_run: bool = True
     data_dir: Path = field(default_factory=lambda: Path("data"))
 
@@ -134,6 +145,16 @@ def load_config(env_file: str | None = ".env") -> Config:
         x_api_secret=_env("X_API_SECRET"),
         x_access_token=_env("X_ACCESS_TOKEN"),
         x_access_secret=_env("X_ACCESS_SECRET"),
+        trade_enabled=_bool("TRADE_ENABLED"),
+        trade_symbol=_env("TRADE_SYMBOL"),
+        trade_risk_pct=float(_env("TRADE_RISK_PCT", "1.0")),
+        trade_lot=float(_env("TRADE_LOT", "0") or 0),
+        trade_magic=int(_env("TRADE_MAGIC", "770077")),
+        trade_allow_real=_bool("TRADE_ALLOW_REAL"),
+        trade_mt5_path=_env("TRADE_MT5_PATH"),
+        trade_mt5_login=int(_env("TRADE_MT5_LOGIN")) if _env("TRADE_MT5_LOGIN") else None,
+        trade_mt5_password=_env("TRADE_MT5_PASSWORD"),
+        trade_mt5_server=_env("TRADE_MT5_SERVER"),
         dry_run=_bool("DRY_RUN", True),
         data_dir=Path(_env("DATA_DIR", "data")),
     )
