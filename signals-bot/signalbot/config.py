@@ -68,6 +68,7 @@ class Config:
     threads_user_id: str = ""
     threads_access_token: str = ""
     public_image_base_url: str = ""   # Threads wymaga obrazka pod publicznym URL
+    imgbb_api_key: str = ""           # bez publicznego URL: upload na imgbb (z kluczem) albo catbox
 
     x_enabled: bool = False
     x_api_key: str = ""
@@ -127,6 +128,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         threads_user_id=_env("THREADS_USER_ID"),
         threads_access_token=_env("THREADS_ACCESS_TOKEN"),
         public_image_base_url=_env("PUBLIC_IMAGE_BASE_URL").rstrip("/"),
+        imgbb_api_key=_env("IMGBB_API_KEY"),
         x_enabled=_bool("X_ENABLED"),
         x_api_key=_env("X_API_KEY"),
         x_api_secret=_env("X_API_SECRET"),

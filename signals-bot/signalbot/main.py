@@ -140,7 +140,7 @@ def demo(cfg: Config) -> None:
           f"\n\n--- X ---\n{post.short}")
 
 
-def fibtest(cfg: Config, csv: str | None, at: str | None) -> None:
+def fibtest(cfg: Config, csv: str | None, at: str | None, only: str | None = None) -> None:
     df = CSVProvider(csv).get_bars(cfg.symbol, cfg.timeframe) if csv else \
         SyntheticProvider(seed=1).get_bars(cfg.symbol, cfg.timeframe, 3000)
     trades = [t for t in find_fib_trades(df, fib_params(cfg)) if t.closed]
@@ -151,14 +151,26 @@ def fibtest(cfg: Config, csv: str | None, at: str | None) -> None:
     cfg.display_symbol = f"[TEST] {cfg.display_symbol}"  # żeby testu nie pomylić z prawdziwym sygnałem
     state_path = cfg.data_dir / "fibtest_state.json"
     state_path.unlink(missing_ok=True)
-    live_replay(cfg, df, tr, make_publishers(cfg), State(state_path))
+    live_replay(cfg, df, tr, make_publishers(cfg, only), State(state_path))
+
+
+def threads_check(cfg: Config) -> None:
+    from .publishers.threads import ThreadsPublisher
+
+    if not cfg.threads_access_token:
+        raise SystemExit("Brak THREADS_ACCESS_TOKEN w .env")
+    pub = ThreadsPublisher(cfg.threads_user_id, cfg.threads_access_token, cfg.public_image_base_url,
+                           cfg.data_dir, cfg.imgbb_api_key)
+    me = pub.me()
+    print(f"Threads OK: @{me.get('username')}  (THREADS_USER_ID={me['id']})")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="signalbot")
-    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest"])
+    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest", "threadscheck"])
     ap.add_argument("--csv", help="fibtest: plik z historią (time,open,high,low,close[,volume])")
     ap.add_argument("--at", help="fibtest: czas świecy wejścia, np. '2026-07-08 15:45'")
+    ap.add_argument("--only", help="fibtest: wyślij tylko na ten kanał (telegram | threads | x)")
     ap.add_argument("--env", default=".env")
     ap.add_argument("--charts", type=int, default=0, help="backtest: ile wykresów zapisać")
     args = ap.parse_args()
@@ -170,7 +182,9 @@ def main() -> None:
     elif args.command == "once":
         run_once(cfg, make_provider(cfg), State(cfg.data_dir / "state.json"), make_publishers(cfg))
     elif args.command == "fibtest":
-        fibtest(cfg, args.csv, args.at)
+        fibtest(cfg, args.csv, args.at, args.only)
+    elif args.command == "threadscheck":
+        threads_check(cfg)
     elif args.command == "backtest":
         backtest(cfg, charts=args.charts)
     else:

@@ -102,11 +102,17 @@ wysyłając wiadomość w grupie i otwierając
 `https://api.telegram.org/bot<TOKEN>/getUpdates`. ID grupy zaczyna się od `-100`.
 
 **Threads.**
-1. Utwórz aplikację w developers.facebook.com, dodaj produkt *Threads API* z uprawnieniami
-   `threads_basic` i `threads_content_publish`.
-2. Wygeneruj long-lived token (ważny 60 dni, trzeba go odświeżać) i wpisz go razem z `THREADS_USER_ID`.
-3. Threads pobiera obrazek z publicznego URL, więc katalog `data/` musi być dostępny
-   z internetu (np. nginx) pod adresem z `PUBLIC_IMAGE_BASE_URL`. Bez tego bot publikuje sam tekst.
+1. developers.facebook.com → *Create app* → przypadek użycia *Access the Threads API*.
+   Uprawnienia: `threads_basic`, `threads_content_publish`, `threads_manage_replies`.
+2. *App roles → Roles → Add people → Threads Tester*: dodaj swoje konto Threads, potem zaakceptuj
+   zaproszenie w aplikacji Threads (Ustawienia → Konto → Uprawnienia witryn).
+3. *Use cases → Threads API → Settings → User Token Generator*: wygeneruj token i wpisz go do
+   `THREADS_ACCESS_TOKEN`, a w `.env` ustaw `THREADS_ENABLED=true`.
+4. Uruchom `5_TEST_THREADS.bat`. Skrypt pokaże `THREADS_USER_ID` (możesz go wpisać do `.env`, ale nie musisz)
+   i wyśle testowy sygnał `[TEST]` tylko na Threads.
+5. Wykres trafia na Threads z publicznego URL. Bez własnego serwera bot sam wgrywa go na catbox.moe
+   (albo imgbb.com, jeśli podasz `IMGBB_API_KEY`). Token odświeża się sam co 3 dni (`data/threads_token.json`),
+   więc wystarczy, że bot chodzi przynajmniej raz na ~2 miesiące.
 
 **X.**
 1. Utwórz projekt w developer.x.com i ustaw uprawnienia aplikacji na *Read and Write*.
