@@ -35,7 +35,7 @@ def _rows(signals: dict, start: pd.Timestamp, end: pd.Timestamp) -> list[tuple[d
     for rec in signals.values():
         d = sum(p for t, p in rec.get("pip_log", []) if start < pd.Timestamp(t) <= end)
         if any(start < pd.Timestamp(t) <= end for t, _ in rec.get("pip_log", [])):
-            out.append((rec, d))
+            out.append((rec, round(d)))   # całe pipsy, żeby suma zgadzała się z liniami
     return out
 
 
