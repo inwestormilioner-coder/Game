@@ -171,8 +171,6 @@ def exit_text(tr: FibTrade, name: str, price: float, entry: float, pip_size: flo
         k = int(name[2:])
         extra = "\nStop to breakeven 🔒" if k == 1 else ""
         return f"🎯 {symbol} {tr.direction} TP{k} hit @ {price:.2f}\n💰 +{p:.0f} pips 💪{extra}"
-    if name == "sl" and abs(p) < 0.5:
-        return f"🔒 {symbol} {tr.direction} closed at breakeven @ {price:.2f} — 0 pips"
     if name == "sl":
         return f"🛑 {symbol} {tr.direction} SL hit @ {price:.2f}\n📉 {p:.0f} pips"
     return f"⏹ {symbol} {tr.direction} closed @ {price:.2f} — {p:+.0f} pips"
