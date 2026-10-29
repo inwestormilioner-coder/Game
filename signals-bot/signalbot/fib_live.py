@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import pandas as pd
 
@@ -12,7 +13,8 @@ from .fibzone import FibParams, FibTrade, find_fib_trades, scan_live
 from .tracker import State
 from .summary import book_exit, due_summaries, summary_text
 from .structure import find_swings
-from .writer_fib import build_fib_post, cancel_text, context, exit_text, levels, pips, rev_text, update_text
+from .writer_fib import (ai_close_text, ai_move_text, ai_partial_text, ai_stop_text, build_fib_post, cancel_text,
+                         context, exit_text, levels, pips, rev_text, update_text)
 
 log = logging.getLogger("signalbot")
 
@@ -20,7 +22,7 @@ log = logging.getLogger("signalbot")
 def fib_params(cfg: Config) -> FibParams:
     tps = cfg.tp_levels
     return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
-                     rev_exit=cfg.ai_exit, rev_min_r=cfg.ai_exit_min_r,
+                     rev_exit=cfg.ai_exit and not manager_active(cfg), rev_min_r=cfg.ai_exit_min_r,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 
@@ -84,6 +86,65 @@ def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -
             log.error("Publishing to %s failed: %s", name, e)
     return {"id": tr.id, "direction": tr.direction, "post_ids": ids, "status": "open", "chart": str(chart),
             "levels": {k: v for k, v in levels(tr).items() if k != "tps"}, "one_r_sent": False}
+
+
+def manager_active(cfg: Config) -> bool:
+    """AI-menedżer działa, gdy jest włączony i jest klucz API; inaczej zostaje prosta reguła AI_EXIT."""
+    return cfg.ai_manager and cfg.use_ai and bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+
+def _ai_stop_hit(df: pd.DataFrame, direction: str, ai: dict) -> int | None:
+    """Indeks świecy, w której cena dotknęła SL ustawionego przez AI (świece po decyzji)."""
+    if ai.get("sl") is None:
+        return None
+    after = df.index[df["time"] > pd.Timestamp(ai["sl_bar"])]
+    for i in after:
+        if (direction == "BUY" and df["low"].iloc[i] <= ai["sl"]) or \
+                (direction == "SELL" and df["high"].iloc[i] >= ai["sl"]):
+            return int(i)
+    return None
+
+
+def manage_with_ai(cfg: Config, df: pd.DataFrame, tr: FibTrade, rec: dict, entry: float, publishers: dict,
+                   trader) -> None:
+    """Raz na świecę: AI ocenia strukturę rynku i trzyma / przesuwa SL / realizuje część / zamyka."""
+    from .ai_manager import decide
+
+    ai = rec.setdefault("ai", {})
+    bar = str(df["time"].iloc[-1])
+    if ai.get("last_bar") == bar:
+        return
+    ai["last_bar"] = bar
+    price = float(df["close"].iloc[-1])
+    buy = tr.direction == "BUY"
+    risk = abs(entry - tr.sl)
+    profit_r = ((price - entry) if buy else (entry - price)) / risk
+    if not rec.get("tp_hit") and profit_r < cfg.ai_manager_min_r:
+        return                                   # AI zarządza dopiero pozycją na zysku
+    sent = tr.exits[: rec.get("exits_sent", 0)]
+    k = sum(1 for e in sent if e[0].startswith("tp"))
+    left = (1 - sum(e[3] for e in sent if e[0].startswith("tp"))) * ai.get("left_mult", 1.0)
+    cur_sl = ai.get("sl", entry if k else tr.sl)
+    rec["tps_left"] = levels(tr)["tps"][k:]
+    d = decide(cfg, df, tr, rec, cur_sl, left, entry)
+    sym, when = cfg.display_symbol, df["time"].iloc[-1]
+    p_now = pips(tr.direction, entry, price, cfg.pip_size)
+    if d.action == "move_sl":
+        ai.update(sl=float(d.new_sl), sl_bar=bar)
+        _reply(publishers, rec, ai_move_text(tr, d.new_sl, pips(tr.direction, entry, d.new_sl, cfg.pip_size),
+                                             d.reason, sym))
+        _trade(trader, "move_sl", rec, float(d.new_sl))
+    elif d.action == "partial":
+        ai["left_mult"] = ai.get("left_mult", 1.0) * (1 - d.close_pct / 100)
+        book_exit(rec, "ai_partial", p_now, when)
+        _reply(publishers, rec, ai_partial_text(tr, price, d.close_pct, p_now, d.reason, sym))
+        _trade(trader, "partial", rec, d.close_pct)
+    elif d.action == "close":
+        book_exit(rec, "ai_close", p_now, when)
+        _reply(publishers, rec, ai_close_text(tr, price, rec["pips"], d.reason, sym))
+        _trade(trader, "close_all", rec)
+        rec.update(status="closed", tps_hit=rec.get("tp_hit", 0))
+        log.info("%s closed by AI @ %.2f", tr.id, price)
 
 
 def reversal_level(df: pd.DataFrame, tr: FibTrade, idx: int, n: int = 3) -> float | None:
@@ -174,7 +235,10 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         # każde nowe wyjście (TP1..TPn, SL, zamknięcie) -> odpowiedź z pipsami od ceny wejścia z sygnału
         entry = rec.get("levels", {}).get("entry", levels(tr)["entry"])
         sent = rec.setdefault("exits_sent", 0)
-        for name, idx, price, _ in tr.exits[sent:]:
+        ai = rec.get("ai", {})
+        stop_idx = _ai_stop_hit(df, tr.direction, ai)
+        new_exits = [e for e in tr.exits[sent:] if stop_idx is None or e[1] < stop_idx]
+        for name, idx, price, _ in new_exits:
             after_tp = bool(rec.get("tp_hit"))
             book_exit(rec, name, pips(tr.direction, entry, price, cfg.pip_size), df["time"].iloc[idx])
             if name == "rev":
@@ -188,13 +252,24 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
                 _trade(trader, "breakeven", rec)
             elif name in ("timeout", "rev"):
                 _trade(trader, "close_all", rec)
-        if len(tr.exits) > sent:
-            rec["exits_sent"] = len(tr.exits)
+        if new_exits:
+            rec["exits_sent"] = sent + len(new_exits)
             state.save()
-        if tr.closed:
+        if stop_idx is not None:
+            # stop przesunięty przez AI został trafiony
+            book_exit(rec, "ai_sl", pips(tr.direction, entry, ai["sl"], cfg.pip_size), df["time"].iloc[stop_idx])
+            _reply(publishers, rec, ai_stop_text(tr, ai["sl"], rec["pips"], cfg.display_symbol))
+            _trade(trader, "close_all", rec)
+            rec.update(status="closed", tps_hit=rec.get("tp_hit", 0))
+            log.info("%s AI stop hit @ %.2f", tr.id, ai["sl"])
+            state.save()
+        elif tr.closed and rec["exits_sent"] >= len(tr.exits):
             tps_hit = sum(1 for e in tr.exits if e[0].startswith("tp"))
             rec.update(status="closed", r=round(tr.r, 2), tps_hit=tps_hit)
             log.info("%s closed: %+.2fR, %d TPs", tr.id, tr.r, tps_hit)
+            state.save()
+        elif manager_active(cfg):
+            manage_with_ai(cfg, df, tr, rec, entry, publishers, trader)
             state.save()
 
     if only is None:

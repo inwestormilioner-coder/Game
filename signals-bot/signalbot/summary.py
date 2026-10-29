@@ -14,7 +14,7 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 def book_exit(rec: dict, name: str, pips: float, when: pd.Timestamp) -> None:
     """Zapisz wynik po wyjściu (TPk / sl / timeout) do dziennika pipsów sygnału."""
     best = rec.get("pips")
-    if name.startswith("tp") or name == "rev":
+    if name.startswith("tp") or name == "rev" or name.startswith("ai"):
         # najdalszy TP albo zamknięcie przez AI - liczy się to, co dalej od wejścia
         new = pips if best is None else max(best, pips)
     elif rec.get("tp_hit"):
@@ -25,7 +25,7 @@ def book_exit(rec: dict, name: str, pips: float, when: pd.Timestamp) -> None:
         rec["tp_hit"] = int(name[2:])
     elif name == "sl":
         rec["sl_hit"] = True
-    elif name == "rev":
+    elif name == "rev" or name.startswith("ai"):
         rec["ai_exit"] = True
     delta = new - (best or 0.0)
     rec["pips"] = new

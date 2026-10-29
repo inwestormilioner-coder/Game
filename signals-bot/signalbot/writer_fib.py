@@ -186,6 +186,28 @@ def rev_text(tr: FibTrade, price: float, total_pips: float, level: float | None,
             f"💰 +{total_pips:.0f} pips secured 💪")
 
 
+def ai_move_text(tr: FibTrade, sl: float, locked: float, reason: str, symbol: str) -> str:
+    lock = f"💰 Locked in: +{locked:.0f} pips" if locked > 0.5 else f"🛡 Risk cut to {locked:.0f} pips"
+    return f"🤖 {symbol} {tr.direction}: AI moved the stop to {sl:.2f} 🔒\nWhy: {reason}\n{lock}"
+
+
+def ai_partial_text(tr: FibTrade, price: float, pct: int, p_now: float, reason: str, symbol: str) -> str:
+    return (f"🤖 {symbol} {tr.direction}: AI took {pct}% profit @ {price:.2f}\nWhy: {reason}\n"
+            f"💰 +{p_now:.0f} pips banked, the rest keeps running 💪")
+
+
+def ai_close_text(tr: FibTrade, price: float, total: float, reason: str, symbol: str) -> str:
+    return (f"🤖 {symbol} {tr.direction}: AI closed the position @ {price:.2f}\nWhy: {reason}\n"
+            f"💰 +{total:.0f} pips secured 💪" if total > 0 else
+            f"🤖 {symbol} {tr.direction}: AI closed the position @ {price:.2f}\nWhy: {reason}\n📉 {total:.0f} pips")
+
+
+def ai_stop_text(tr: FibTrade, sl: float, total: float, symbol: str) -> str:
+    if total > 0:
+        return f"🔒 {symbol} {tr.direction}: AI stop hit @ {sl:.2f}\n💰 +{total:.0f} pips locked in 💪"
+    return f"🔒 {symbol} {tr.direction}: AI stop hit @ {sl:.2f}\n📉 {total:.0f} pips (risk was reduced by AI)"
+
+
 def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
     return (f"✅ {symbol} {tr.direction}: 1:1 RR secured.\n"
             f"Stop to breakeven and let the rest run to the next targets.")

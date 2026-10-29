@@ -62,12 +62,20 @@ def test_trader_flow():
 
     # wypełnione: pozycje z identifier = numer zlecenia; TP1 zamknął pierwszą
     mt5.orders = []
-    mt5.positions = [NS(ticket=900 + i, identifier=o, magic=770077, sl=4006.0, price_open=4011.2, tp=0.0,
+    mt5.positions = [NS(ticket=900 + i, identifier=o, magic=770077, sl=4006.0, price_open=4011.2, tp=4015.0 + i,
                         type=0, volume=0.04) for i, o in enumerate(rec["mt5_orders"][1:])]
     mt5.positions.append(NS(ticket=999, identifier=1, magic=770077, sl=1, price_open=1, tp=1, type=0, volume=1))
     t.breakeven(rec)
     be = [r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_SLTP]
     assert len(be) == 4 and all(r["sl"] == 4011.2 for r in be)   # obca pozycja nietknięta
+
+    mt5.sent.clear()
+    t.partial(rec, 50)   # 4 x 0.04 = 0.16 -> 0.08: dwie pozycje z najbliższym TP
+    deals = [r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_DEAL]
+    assert [(r["position"], r["volume"]) for r in deals] == [(900, 0.04), (901, 0.04)]
+    mt5.sent.clear()
+    t.move_sl(rec, 4013.0)
+    assert len([r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_SLTP and r["sl"] == 4013.0]) == 4
 
     t.close_all(rec)
     assert len([r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_DEAL]) == 4

@@ -136,6 +136,36 @@ class MT5Trader:
                         "sl": round(p.price_open, d), "tp": p.tp})
         log.info("Auto-trading: SL na breakeven")
 
+    def move_sl(self, rec: dict, sl: float) -> None:
+        """SL wszystkich pozycji sygnału na poziom wskazany przez AI-menedżera."""
+        self.connect()
+        d = self._info().digits
+        for p in self._positions(rec):
+            self._send({"action": self.mt5.TRADE_ACTION_SLTP, "position": p.ticket, "symbol": self.symbol,
+                        "sl": round(sl, d), "tp": p.tp})
+        log.info("Auto-trading: SL przesunięty przez AI na %.2f", sl)
+
+    def partial(self, rec: dict, pct: float) -> None:
+        """Zamknij pct% otwartego wolumenu - najpierw pozycje z najbliższym TP."""
+        self.connect()
+        info = self._info()
+        pos = self._positions(rec)
+        if not pos:
+            return
+        buy = pos[0].type == self.mt5.POSITION_TYPE_BUY
+        pos.sort(key=lambda p: p.tp if buy else -p.tp)
+        todo = math.floor(sum(p.volume for p in pos) * pct / 100 / info.volume_step + 1e-9) * info.volume_step
+        tick = self.mt5.symbol_info_tick(self.symbol)
+        for p in pos:
+            vol = round(min(p.volume, todo), 8)
+            if vol < info.volume_min:
+                break
+            self._send({"action": self.mt5.TRADE_ACTION_DEAL, "position": p.ticket, "symbol": self.symbol,
+                        "volume": vol, "type": self.mt5.ORDER_TYPE_SELL if buy else self.mt5.ORDER_TYPE_BUY,
+                        "price": tick.bid if buy else tick.ask, "deviation": 50, "magic": self.cfg.trade_magic})
+            todo = round(todo - vol, 8)
+        log.info("Auto-trading: AI zamknęło %s%% pozycji", pct)
+
     def close_all(self, rec: dict) -> None:
         self.connect()
         self.cancel(rec)
