@@ -11,7 +11,8 @@ from .config import Config
 from .fibzone import FibParams, FibTrade, find_fib_trades, scan_live
 from .tracker import State
 from .summary import book_exit, due_summaries, summary_text
-from .writer_fib import build_fib_post, cancel_text, context, exit_text, levels, pips, update_text
+from .structure import find_swings
+from .writer_fib import build_fib_post, cancel_text, context, exit_text, levels, pips, rev_text, update_text
 
 log = logging.getLogger("signalbot")
 
@@ -19,6 +20,7 @@ log = logging.getLogger("signalbot")
 def fib_params(cfg: Config) -> FibParams:
     tps = cfg.tp_levels
     return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
+                     rev_exit=cfg.ai_exit, rev_min_r=cfg.ai_exit_min_r,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 
@@ -84,6 +86,13 @@ def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -
             "levels": {k: v for k, v in levels(tr).items() if k != "tps"}, "one_r_sent": False}
 
 
+def reversal_level(df: pd.DataFrame, tr: FibTrade, idx: int, n: int = 3) -> float | None:
+    """Swing złamany przy wyjściu AI: dla BUY ostatni swing low po wejściu, dla SELL swing high."""
+    highs, lows = find_swings(df.iloc[: idx + 1], n)
+    sw = [s for s in (lows if tr.direction == "BUY" else highs) if s.idx > tr.entry_idx and s.confirmed_at <= idx]
+    return sw[-1].price if sw else None
+
+
 def _reply(publishers: dict, rec: dict, text: str) -> None:
     for name, (pub, _) in publishers.items():
         try:
@@ -135,6 +144,13 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
             _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol))
             rec["levels"] = {k: v for k, v in lv.items() if k != "tps"}
             _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
+            rec["mt5_entry"] = lv["entry"]
+            state.save()
+        elif rec["status"] == "pending" and trader is not None and \
+                abs(rec.get("mt5_entry", rec["levels"]["entry"]) - lv["entry"]) >= 0.01:
+            # małe przesunięcie (bez posta) - zlecenia na MT5 i tak idą za poziomami bota
+            _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
+            rec["mt5_entry"] = lv["entry"]
             state.save()
 
     # 2) oczekujące, które zniknęły: aktywowane (są w transakcjach) albo anulowane
@@ -161,13 +177,16 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         for name, idx, price, _ in tr.exits[sent:]:
             after_tp = bool(rec.get("tp_hit"))
             book_exit(rec, name, pips(tr.direction, entry, price, cfg.pip_size), df["time"].iloc[idx])
+            if name == "rev":
+                _reply(publishers, rec, rev_text(tr, price, rec["pips"], reversal_level(df, tr, idx),
+                                                 cfg.timeframe, cfg.display_symbol))
             # po TP nie informujemy o zamknięciu reszty (BE / czas) - każdy zarządza pozycją po swojemu
-            if not (after_tp and not name.startswith("tp")):
+            elif not (after_tp and not name.startswith("tp")):
                 _reply(publishers, rec, exit_text(tr, name, price, entry, cfg.pip_size, cfg.display_symbol))
             log.info("%s %s @ %.2f", tr.id, name, price)
             if name == "tp1":
                 _trade(trader, "breakeven", rec)
-            elif name == "timeout":
+            elif name in ("timeout", "rev"):
                 _trade(trader, "close_all", rec)
         if len(tr.exits) > sent:
             rec["exits_sent"] = len(tr.exits)

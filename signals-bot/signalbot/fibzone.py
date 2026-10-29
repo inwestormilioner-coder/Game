@@ -47,6 +47,8 @@ class FibParams:
     vp_lookback: int = 200
     tl_short: int = 30
     tl_long: int = 100
+    rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
+    rev_min_r: float = 0.3                   # minimalny zysk (w R) na zamknięciu, żeby wyjść
 
 
 @dataclass
@@ -100,6 +102,7 @@ def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
     """Zarządzanie pozycją BUY od świecy wejścia. Zwraca (wynik w R, wyjścia, czy zamknięta)."""
     risk = entry - sl
     left, cur_sl, pnl, k, exits = 1.0, sl, 0.0, 0, []
+    last_low = None
     for u in range(start, min(len(c), start + p.max_hold)):
         if u > start and l[u] <= cur_sl:     # SL przed TP (konserwatywnie)
             pnl += left * (cur_sl - entry)
@@ -115,6 +118,16 @@ def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
             k += 1
             if left <= 1e-9:
                 return pnl / risk, exits, True
+        # odwrócenie: swing low potwierdzony po wejściu, zamknięcie pod nim, a pozycja wciąż na zysku
+        n = p.swing_n
+        j = u - n
+        if p.rev_exit and j > start and l[j] == l[j - n : u + 1].min():
+            last_low = l[j]
+        if p.rev_exit and u > start and last_low is not None and c[u] < last_low \
+                and c[u] - entry >= p.rev_min_r * risk:
+            pnl += left * (c[u] - entry)
+            exits.append(("rev", u, c[u], left))
+            return pnl / risk, exits, True
     if len(c) < start + p.max_hold:          # dane się skończyły - pozycja otwarta
         return pnl / risk, exits, False
     last = start + p.max_hold - 1

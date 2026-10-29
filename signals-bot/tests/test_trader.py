@@ -52,6 +52,14 @@ def test_trader_flow():
     mods = [r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_MODIFY]
     assert len(mods) == 5 and mods[0]["price"] == 4011.0 and mods[-1]["tp"] == 4021.0
 
+    # część już wypełniona przed aktualizacją: stara pozycja dostaje nowy SL i swój TP
+    mt5.positions = [NS(ticket=800, identifier=rec["mt5_orders"][0], magic=770077)]
+    t.update(rec, 4011.5, 4006.5, [4013.5, 4015.5, 4017.5, 4019.5, 4021.5])
+    moved = [r for r in mt5.sent if r["action"] == mt5.TRADE_ACTION_SLTP]
+    assert moved == [{"action": mt5.TRADE_ACTION_SLTP, "position": 800, "symbol": "XAUUSD", "sl": 4006.5,
+                      "tp": 4013.5, "type_filling": mt5.ORDER_FILLING_RETURN}]
+    mt5.sent.clear()
+
     # wypełnione: pozycje z identifier = numer zlecenia; TP1 zamknął pierwszą
     mt5.orders = []
     mt5.positions = [NS(ticket=900 + i, identifier=o, magic=770077, sl=4006.0, price_open=4011.2, tp=0.0,

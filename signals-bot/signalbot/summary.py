@@ -14,7 +14,8 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 def book_exit(rec: dict, name: str, pips: float, when: pd.Timestamp) -> None:
     """Zapisz wynik po wyjściu (TPk / sl / timeout) do dziennika pipsów sygnału."""
     best = rec.get("pips")
-    if name.startswith("tp"):
+    if name.startswith("tp") or name == "rev":
+        # najdalszy TP albo zamknięcie przez AI - liczy się to, co dalej od wejścia
         new = pips if best is None else max(best, pips)
     elif rec.get("tp_hit"):
         return                      # po TP: BE / zamknięcie nie zmienia wyniku
@@ -24,6 +25,8 @@ def book_exit(rec: dict, name: str, pips: float, when: pd.Timestamp) -> None:
         rec["tp_hit"] = int(name[2:])
     elif name == "sl":
         rec["sl_hit"] = True
+    elif name == "rev":
+        rec["ai_exit"] = True
     delta = new - (best or 0.0)
     rec["pips"] = new
     if abs(delta) >= 0.05:
@@ -44,8 +47,8 @@ def summary_text(signals: dict, start: pd.Timestamp, end: pd.Timestamp, symbol: 
     if not rows:
         return None
     total = sum(d for _, d in rows)
-    wins = sum(1 for rec, _ in rows if rec.get("tp_hit"))
-    losses = sum(1 for rec, _ in rows if not rec.get("tp_hit") and rec.get("pips", 0) < 0)
+    wins = sum(1 for rec, _ in rows if rec.get("pips", 0) > 0)
+    losses = sum(1 for rec, _ in rows if rec.get("pips", 0) < 0)
     if weekly:
         head = f"📅 {symbol} weekly recap · {start + pd.Timedelta(days=1):%d %b} – {end:%d %b}"
     else:
@@ -54,7 +57,8 @@ def summary_text(signals: dict, start: pd.Timestamp, end: pd.Timestamp, symbol: 
     if not weekly:
         for rec, d in rows:
             lv = rec.get("levels", {})
-            res = f"TP{rec['tp_hit']}" if rec.get("tp_hit") else ("SL" if rec.get("sl_hit") else "closed")
+            res = ("AI exit" if rec.get("ai_exit") else f"TP{rec['tp_hit']}") if rec.get("tp_hit") or rec.get("ai_exit") \
+                else ("SL" if rec.get("sl_hit") else "closed")
             lines.append(f"{'🟢' if rec['direction'] == 'BUY' else '🔴'} {rec['direction']} "
                          f"{lv.get('entry', 0):.2f} → {res} {d:+.0f} pips")
         lines.append("")

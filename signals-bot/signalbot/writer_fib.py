@@ -176,6 +176,16 @@ def exit_text(tr: FibTrade, name: str, price: float, entry: float, pip_size: flo
     return f"⏹ {symbol} {tr.direction} closed @ {price:.2f} — {p:+.0f} pips"
 
 
+def rev_text(tr: FibTrade, price: float, total_pips: float, level: float | None, timeframe: str,
+             symbol: str) -> str:
+    """Wyjście AI na odwróceniu struktury; total_pips = wynik sygnału (najdalszy TP albo to zamknięcie)."""
+    side = "below the swing low" if tr.direction == "BUY" else "above the swing high"
+    lvl = f" {level:.2f}" if level is not None else ""
+    return (f"🤖 {symbol} {tr.direction}: AI closing the position @ {price:.2f}\n"
+            f"Why: trend reversal — {timeframe} candle closed {side}{lvl}, structure turned against the trade.\n"
+            f"💰 +{total_pips:.0f} pips secured 💪")
+
+
 def one_r_text(tr: FibTrade, price: float, symbol: str) -> str:
     return (f"✅ {symbol} {tr.direction}: 1:1 RR secured.\n"
             f"Stop to breakeven and let the rest run to the next targets.")

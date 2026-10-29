@@ -25,3 +25,15 @@ def test_due():
     assert due_summaries({}, T("2026-10-31 21:15"), 21) == []           # sobota
     meta = {"daily_at": T("2026-10-30 21:00").isoformat(), "weekly_at": T("2026-10-30 21:00").isoformat()}
     assert due_summaries(meta, fri, 21) == []
+
+
+def test_ai_exit_counts_furthest():
+    a = {"direction": "SELL", "levels": {"entry": 4290.0}}
+    book_exit(a, "tp3", 260, T("2026-10-26 10:00"))
+    book_exit(a, "rev", 86, T("2026-10-26 12:00"))        # AI bliżej niż TP3 -> zostaje 260
+    b = {"direction": "BUY", "levels": {"entry": 4000.0}}
+    book_exit(b, "tp1", 40, T("2026-10-26 10:00"))
+    book_exit(b, "rev", 95, T("2026-10-26 12:00"))        # AI dalej niż TP1 -> 95
+    assert a["pips"] == 260 and b["pips"] == 95
+    text = summary_text({"a": a, "b": b}, T("2026-10-25 21:00"), T("2026-10-26 21:00"), "XAUUSD", False)
+    assert "BUY 4000.00 → AI exit +95 pips" in text and "Total: +355 pips" in text

@@ -53,6 +53,8 @@ class Config:
     tv_chart_url: str = ""      # adres Twojego layoutu, np. https://www.tradingview.com/chart/AbCdEfGh/
     tv_symbol: str = "OANDA:XAUUSD"
     tv_profile_dir: str = "tv_profile"
+    ai_exit: bool = True        # zamknij na zysku przy odwróceniu struktury (z info pod sygnałem)
+    ai_exit_min_r: float = 0.5  # minimalny zysk w R, żeby wyjść
     summary_hour_utc: int = 21  # godzina (UTC) podsumowania dnia; w piątek także tygodnia
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
     pip_size: float = 0.1       # wielkość pipsa (złoto: 0.10$)
@@ -127,6 +129,8 @@ def load_config(env_file: str | None = ".env") -> Config:
         tv_chart_url=_env("TV_CHART_URL"),
         tv_symbol=_env("TV_SYMBOL", "OANDA:XAUUSD"),
         tv_profile_dir=_env("TV_PROFILE_DIR", "tv_profile"),
+        ai_exit=_bool("AI_EXIT", True),
+        ai_exit_min_r=float(_env("AI_EXIT_MIN_R", "0.5")),
         summary_hour_utc=int(_env("SUMMARY_HOUR_UTC", "21")),
         reply_losses=_bool("REPLY_LOSSES", False),
         pip_size=float(_env("PIP_SIZE", "0.1")),

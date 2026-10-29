@@ -114,6 +114,10 @@ class MT5Trader:
             self._send({"action": self.mt5.TRADE_ACTION_MODIFY, "order": o.ticket, "symbol": self.symbol,
                         "price": round(entry, d), "sl": round(sl, d), "tp": round(tp_by_ticket[o.ticket], d),
                         "type_time": self.mt5.ORDER_TIME_GTC})
+        # zlecenia już wypełnione (cena dotknęła starego wejścia): stara pozycja dostaje nowy SL i TP
+        for p in self._positions(rec):
+            self._send({"action": self.mt5.TRADE_ACTION_SLTP, "position": p.ticket, "symbol": self.symbol,
+                        "sl": round(sl, d), "tp": round(tp_by_ticket[p.identifier], d)})
         log.info("Auto-trading: zlecenia przesunięte na %.2f / SL %.2f", entry, sl)
 
     def cancel(self, rec: dict) -> None:
