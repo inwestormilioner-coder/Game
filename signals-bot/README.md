@@ -125,7 +125,11 @@ wysyłając wiadomość w grupie i otwierając
    pozycji idzie na cenę otwarcia; aktualizacja sygnału przesuwa zlecenia, anulowanie je usuwa.
    Na koncie realnym bot nie zagra bez `TRADE_ALLOW_REAL=true`.
    Gdy zlecenie zdążyło się wypełnić, a struktura przesunęła wejście, otwarta pozycja dostaje nowy SL i TP.
-5. Wyjście AI (`AI_EXIT=true`): gdy świeca zamknie się za ostatnim swingiem przeciw pozycji, a pozycja ma
+5. AI-menedżer (`AI_MANAGER=true`, wymaga klucza Anthropic): gdy pozycja ma `AI_MANAGER_MIN_R` zysku albo
+   trafiła TP1, po każdej świecy Claude ocenia całą strukturę (M15 + H1, swingi, BOS/CHoCH, strefy, Volume
+   Profile, ostatnie świece, wykres) i trzyma, przesuwa SL na istotny poziom, realizuje część albo zamyka.
+   Kod pilnuje, żeby SL był tylko zacieśniany. Bez klucza działa prosta reguła poniżej.
+6. Wyjście AI bez klucza (`AI_EXIT=true`): gdy świeca zamknie się za ostatnim swingiem przeciw pozycji, a pozycja ma
    co najmniej `AI_EXIT_MIN_R` (domyślnie 0.5R) zysku, bot zamyka resztę na MT5 i pisze pod sygnałem
    dlaczego i ile pipsów. Wynik sygnału = najdalszy trafiony TP albo zamknięcie AI, zależnie co dalej od wejścia.
 
