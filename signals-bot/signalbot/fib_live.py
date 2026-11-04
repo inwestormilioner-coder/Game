@@ -14,7 +14,8 @@ from .tracker import State
 from .summary import book_exit, due_summaries, summary_text
 from .structure import find_swings
 from .writer_fib import (ai_close_text, ai_move_text, ai_partial_text, ai_stop_text, build_fib_post, cancel_text,
-                         context, exit_text, levels, pips, rev_text, update_text)
+                         context, exit_text, levels, pips, rev_text, triggered_text,
+                         update_text)
 
 log = logging.getLogger("signalbot")
 
@@ -203,7 +204,7 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
                                              or abs(rec["levels"]["sl"] - lv["sl"]) >= cfg.pip_size):
             # nowy dołek/szczyt w strefie przesunął Fibo -> każda zmiana wejścia/SL (od 1 pipsa) idzie na kanał
             # i na MT5, żeby SL trafiony na kanale był zawsze tym ogłoszonym
-            _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol))
+            _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol, cfg.timeframe))
             rec["levels"] = {k: v for k, v in lv.items() if k != "tps"}
             _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
             state.save()
@@ -215,6 +216,7 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         if sid in by_id:
             rec["status"] = "open"
             log.info("%s triggered @ %.2f", sid, by_id[sid].entry)
+            _reply(publishers, rec, triggered_text(rec["direction"], rec["levels"]["entry"], cfg.display_symbol))
         else:
             _reply(publishers, rec, cancel_text(rec["direction"], cfg.display_symbol))
             _trade(trader, "cancel", rec)

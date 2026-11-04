@@ -111,6 +111,25 @@ def ai_why(ctx: dict, chart: Path, symbol: str, timeframe: str, model: str) -> t
     return data["why_long"].strip(), data["why_short"].strip()
 
 
+def _order(tr: FibTrade) -> str:
+    return "Buy stop" if tr.direction == "BUY" else "Sell stop"
+
+
+def _head(tr: FibTrade, symbol: str, timeframe: str) -> str:
+    icon = "🟢" if tr.direction == "BUY" else "🔴"
+    return f"{symbol} {tr.direction} STOP {icon} | {timeframe}"
+
+
+def _levels_block(tr: FibTrade, lv: dict) -> str:
+    """Wspólny blok poziomów dla sygnału i każdej aktualizacji."""
+    tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
+    side = "rises" if tr.direction == "BUY" else "drops"
+    return (f"📍 Entry ({_order(tr).lower()}): {lv['entry']:.2f}\n"
+            f"🛑 Stop loss: {lv['sl']:.2f}\n"
+            f"🎯 {tps}\n\n"
+            f"⏳ Pending order: it opens only if price {side} to {lv['entry']:.2f}.")
+
+
 def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe: str,
                    use_ai: bool, model: str, invite_url: str = "") -> FibPost:
     why_long, why_short = template_why(tr, ctx)
@@ -120,26 +139,17 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
         except Exception as e:  # no key, network, rate limit -> template
             log.warning("AI unavailable, using template: %s", e)
     lv = levels(tr)
-    icon = "🟢" if tr.direction == "BUY" else "🔴"
-    tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
-    head = f"{symbol} {tr.direction} {icon} | {timeframe}"
+    head = _head(tr, symbol, timeframe)
     invite = "\n\n📲 Do you wanna join for free? Check my profile for the link."
-    long = (
-        f"{head}\n\n"
-        f"📍 Entry: {lv['entry']:.2f}\n"
-        f"🛑 Stop loss: {lv['sl']:.2f}\n"
-        f"🎯 {tps}\n\n"
-        f"⚙️ Take partials at each TP, stop to breakeven after TP1.\n\n"
-        f"{DISCLAIMER}"
-    )
+    long = f"{head}\n\n{_levels_block(tr, lv)}\n\n⚙️ Take partials at each TP, stop to breakeven after TP1.\n\n{DISCLAIMER}"
     threads = (
         f"{head}\n"
-        f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f} | TP {lv['tps'][0]:.2f} → {lv['tps'][-1]:.2f}"
+        f"{_order(tr)} {lv['entry']:.2f} | SL {lv['sl']:.2f} | TP {lv['tps'][0]:.2f} → {lv['tps'][-1]:.2f}"
         f"{invite}\n\nNot financial advice."
     )
     short = (
         f"{head}\n"
-        f"Entry {lv['entry']:.2f} | SL {lv['sl']:.2f}\n"
+        f"{_order(tr)} {lv['entry']:.2f} | SL {lv['sl']:.2f}\n"
         f"TP1 {lv['tps'][0]:.2f} … TP{len(lv['tps'])} {lv['tps'][-1]:.2f}"
         + "\n📲 Join for free, link in my profile.\nNFA"
     )
@@ -147,15 +157,20 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
                    why_long=f"🧭 {why_long}", why_short=f"🧭 {why_short}")
 
 
-def update_text(tr: FibTrade, symbol: str) -> str:
-    lv = levels(tr)
-    tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
-    return (f"🔄 {symbol} {tr.direction} update — structure moved, order adjusted:\n"
-            f"📍 Entry: {lv['entry']:.2f}\n🛑 Stop loss: {lv['sl']:.2f}\n🎯 {tps}")
+def update_text(tr: FibTrade, symbol: str, timeframe: str) -> str:
+    """Aktualizacja w tym samym układzie co sygnał - nowe poziomy zlecenia oczekującego."""
+    return (f"🔄 UPDATE · {_head(tr, symbol, timeframe)}\n\n{_levels_block(tr, levels(tr))}\n\n"
+            f"✏️ Structure moved: move your pending order to these levels.")
+
+
+def triggered_text(direction: str, price: float, symbol: str) -> str:
+    order = "Buy stop" if direction == "BUY" else "Sell stop"
+    return f"✅ {symbol} {direction}: {order.lower()} triggered @ {price:.2f} — position is open."
 
 
 def cancel_text(direction: str, symbol: str) -> str:
-    return f"❌ {symbol} {direction}: entry was not triggered — setup cancelled, remove the pending order."
+    order = "buy stop" if direction == "BUY" else "sell stop"
+    return f"❌ {symbol} {direction}: {order} was not triggered — setup cancelled, remove the pending order."
 
 
 def pips(direction: str, entry: float, price: float, pip_size: float) -> float:
