@@ -199,19 +199,13 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
             state.signals[pd_tr.id] = rec
             _trade(trader, "place", rec, pd_tr.direction, lv["entry"], lv["sl"], lv["tps"])
             state.save()
-        elif rec["status"] == "pending" and abs(rec["levels"]["entry"] - lv["entry"]) >= \
-                0.25 * abs(rec["levels"]["entry"] - rec["levels"]["sl"]):
-            # nowy dołek/szczyt w strefie przesunął Fibo -> aktualizacja poziomów
+        elif rec["status"] == "pending" and (abs(rec["levels"]["entry"] - lv["entry"]) >= cfg.pip_size
+                                             or abs(rec["levels"]["sl"] - lv["sl"]) >= cfg.pip_size):
+            # nowy dołek/szczyt w strefie przesunął Fibo -> każda zmiana wejścia/SL (od 1 pipsa) idzie na kanał
+            # i na MT5, żeby SL trafiony na kanale był zawsze tym ogłoszonym
             _reply(publishers, rec, update_text(pd_tr, cfg.display_symbol))
             rec["levels"] = {k: v for k, v in lv.items() if k != "tps"}
             _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
-            rec["mt5_entry"] = lv["entry"]
-            state.save()
-        elif rec["status"] == "pending" and trader is not None and \
-                abs(rec.get("mt5_entry", rec["levels"]["entry"]) - lv["entry"]) >= 0.01:
-            # małe przesunięcie (bez posta) - zlecenia na MT5 i tak idą za poziomami bota
-            _trade(trader, "update", rec, lv["entry"], lv["sl"], lv["tps"])
-            rec["mt5_entry"] = lv["entry"]
             state.save()
 
     # 2) oczekujące, które zniknęły: aktywowane (są w transakcjach) albo anulowane

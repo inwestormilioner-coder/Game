@@ -150,7 +150,7 @@ def build_fib_post(tr: FibTrade, chart: Path, ctx: dict, symbol: str, timeframe:
 def update_text(tr: FibTrade, symbol: str) -> str:
     lv = levels(tr)
     tps = " · ".join(f"TP{i + 1} {p:.2f}" for i, p in enumerate(lv["tps"]))
-    return (f"🔄 {symbol} {tr.direction} update — new levels:\n"
+    return (f"🔄 {symbol} {tr.direction} update — structure moved, order adjusted:\n"
             f"📍 Entry: {lv['entry']:.2f}\n🛑 Stop loss: {lv['sl']:.2f}\n🎯 {tps}")
 
 
