@@ -24,6 +24,7 @@ def fib_params(cfg: Config) -> FibParams:
     tps = cfg.tp_levels
     return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
                      rev_exit=cfg.ai_exit and not manager_active(cfg), rev_min_r=cfg.ai_exit_min_r,
+                     ema_len=cfg.ema_filter, ema_slope=cfg.ema_slope,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 
@@ -64,22 +65,31 @@ def _reached_one_r(df: pd.DataFrame, tr: FibTrade) -> float | None:
 def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -> dict:
     sid = tr.id.replace(":", "").replace(" ", "_").replace("+0000", "")
     chart_path = cfg.data_dir / "charts" / f"{sid}.png"
-    chart = None
-    if cfg.chart_mode == "tradingview":
+    chart, extra = None, []
+    if cfg.chart_mode in ("tradingview", "both"):
         from .tvshot import capture_for
 
-        chart = capture_for(cfg, chart_path)
+        tv = capture_for(cfg, chart_path.with_name(f"{sid}_tv.png"))
+        if cfg.chart_mode == "tradingview":
+            chart = tv
+        elif tv is not None:
+            extra = [tv]
     if chart is None:
         chart = render_post_chart(df, tr, chart_path, cfg.display_symbol,
-                                  cfg.timeframe, handle=cfg.handle, source=cfg.chart_source)
+                                  cfg.timeframe, handle=cfg.handle, source=cfg.chart_source,
+                                  ema_len=cfg.ema_filter)
     ctx = context(tr, {})
+    if cfg.ema_filter:
+        ema = float(df["close"].ewm(span=cfg.ema_filter, adjust=False).mean().iloc[-1])
+        ctx[f"ema{cfg.ema_filter}"] = round(ema, 2)
+        ctx["trend_filter"] = f"price {'above' if df['close'].iloc[-1] > ema else 'below'} EMA {cfg.ema_filter}"
     post = build_fib_post(tr, chart, ctx, cfg.display_symbol, cfg.timeframe, cfg.use_ai, cfg.anthropic_model,
                           cfg.invite_url)
     kinds = {"long": post.long, "threads": post.threads, "short": post.short}
     ids = {}
     for name, (pub, kind) in publishers.items():
         try:
-            ids[name] = pub.publish(kinds[kind], chart)
+            ids[name] = pub.publish(kinds[kind], chart, extra_images=extra if name == "telegram" else None)
             log.info("Posted %s to %s (%s)", tr.id, name, ids[name])
             # explanation goes as a reply under the signal
             pub.publish(post.why_long if kind == "long" else post.why_short, reply_to=ids[name])

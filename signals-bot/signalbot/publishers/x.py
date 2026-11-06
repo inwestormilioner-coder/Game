@@ -22,7 +22,8 @@ class XPublisher:
         r.raise_for_status()
         return r.json()["data"]["id"]
 
-    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None) -> str:
+    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None,
+                extra_images: list | None = None) -> str:
         body: dict = {"text": text[:280]}
         if image:
             body["media"] = {"media_ids": [self._upload(image)]}

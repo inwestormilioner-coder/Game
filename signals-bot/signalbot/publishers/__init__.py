@@ -13,8 +13,9 @@ class DryRunPublisher:
     def __init__(self, name: str):
         self.name = name
 
-    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None) -> str:
-        log.info("[DRY RUN %s] reply_to=%s image=%s\n%s", self.name, reply_to, image, text)
+    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None,
+                extra_images: list | None = None) -> str:
+        log.info("[DRY RUN %s] reply_to=%s image=%s extra=%s\n%s", self.name, reply_to, image, extra_images, text)
         return f"dry-{self.name}"
 
 

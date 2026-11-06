@@ -47,6 +47,8 @@ class FibParams:
     vp_lookback: int = 200
     tl_short: int = 30
     tl_long: int = 100
+    ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
+    ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
     rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
     rev_min_r: float = 0.3                   # minimalny zysk (w R) na zamknięciu, żeby wyjść
 
@@ -144,6 +146,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     """Transakcje z historii + zlecenie oczekujące na ostatniej świecy (jeszcze nieaktywowane)."""
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
     a = _atr(h, l, c)
+    ema = pd.Series(c).ewm(span=p.ema_len, adjust=False).mean().to_numpy() if p.ema_len else None
     swing_highs, _ = find_swings(df, p.swing_n)
     conf = [s.confirmed_at for s in swing_highs]
     trades: list[FibTrade] = []
@@ -203,6 +206,9 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
             continue
         for z in zones:
             if t > z[2] and l[t] <= z[1] and last_sh.price > z[1]:
+                if ema is not None and (c[t - 1] <= ema[t - 1] or
+                                        (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
+                    break
                 if p.trend_filter:
                     slope = _support_slope(l, t, p.tl_short, p.tl_long)
                     if slope is None or slope <= 0:

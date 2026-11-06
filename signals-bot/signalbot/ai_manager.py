@@ -176,7 +176,7 @@ def decide(cfg, df: pd.DataFrame, tr: FibTrade, rec: dict, cur_sl: float, left: 
 
         chart = render_post_chart(df, replace(tr, entry_idx=len(df) - 1),
                                   cfg.data_dir / "charts" / "ai_manage.png", cfg.display_symbol, cfg.timeframe,
-                                  handle=cfg.handle, source=cfg.chart_source)
+                                  handle=cfg.handle, source=cfg.chart_source, ema_len=cfg.ema_filter)
     except Exception as e:  # wykres pomocniczy - bez niego AI i tak ma pełne dane
         log.warning("AI: wykres niedostępny: %s", e)
     try:

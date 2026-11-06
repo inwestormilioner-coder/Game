@@ -55,6 +55,8 @@ class Config:
     tv_profile_dir: str = "tv_profile"
     ai_exit: bool = True        # zamknij na zysku przy odwróceniu struktury (z info pod sygnałem)
     ai_exit_min_r: float = 0.5  # minimalny zysk w R, żeby wyjść
+    ema_filter: int = 0         # >0: BUY tylko nad EMA o tej długości, SELL pod (np. 200)
+    ema_slope: int = 20         # i EMA musi rosnąć / spadać przez tyle świec (0 = bez tego warunku)
     ai_manager: bool = True     # AI-trader zarządza pozycją na zysku (SL na poziomy, partiale, wyjście)
     ai_manager_min_r: float = 0.5
     summary_hour_utc: int = 21  # godzina (UTC) podsumowania dnia; w piątek także tygodnia
@@ -133,6 +135,8 @@ def load_config(env_file: str | None = ".env") -> Config:
         tv_profile_dir=_env("TV_PROFILE_DIR", "tv_profile"),
         ai_exit=_bool("AI_EXIT", True),
         ai_exit_min_r=float(_env("AI_EXIT_MIN_R", "0.5")),
+        ema_filter=int(_env("EMA_FILTER", "0")),
+        ema_slope=int(_env("EMA_SLOPE", "20")),
         ai_manager=_bool("AI_MANAGER", True),
         ai_manager_min_r=float(_env("AI_MANAGER_MIN_R", "0.5")),
         summary_hour_utc=int(_env("SUMMARY_HOUR_UTC", "21")),

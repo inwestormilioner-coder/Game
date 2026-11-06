@@ -128,7 +128,7 @@ def _ts(t) -> int:
 
 def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe: str,
                   lookback: int = 90, tl_short: int = 30, tl_long: int = 100, handle: str = "",
-                  source: str = "") -> Path:
+                  source: str = "", ema_len: int = 0) -> Path:
     from playwright.sync_api import sync_playwright
 
     end = tr.entry_idx
@@ -156,7 +156,11 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
     for i, f in enumerate(tr.tp_fibs):
         levels.append(dict(price=lv(f), color="#089981", width=1, style=2, title=f"TP{i + 1} ({f:g})"))
 
-    trendlines = []  # linie trendu wyłączone (źle się ustawiały)
+    trendlines = []  # linie trendu wyłączone (źle się ustawiały); tu tylko EMA filtra kierunku
+    if ema_len:
+        ema = df["close"].ewm(span=ema_len, adjust=False).mean()
+        trendlines.append(dict(color="#2962ff", points=[dict(time=_ts(t), value=float(v)) for t, v in
+                                                        zip(win["time"], ema.iloc[start : end + 1])]))
 
     # Fibo: wszystkie poziomy jak w narzędziu TradingView
     palette = {-0.1272: "#f23645", 0.0: "#787b86", 0.1272: "#2962ff", 0.236: "#f7525f", 0.382: "#ff9800",
@@ -188,7 +192,8 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
     col = "#089981" if buy else "#f23645"
     header = (f"<b>{title} · {timeframe}</b>{(' · ' + source) if source else ''}<br>"
               f"<span style='color:{col};font-weight:700'>{tr.direction}</span> {entry:.2f} &nbsp;"
-              f"SL {tr.sl:.2f}")
+              f"SL {tr.sl:.2f}"
+              + (f" &nbsp;<span style='color:#2962ff'>EMA {ema_len}</span>" if ema_len else ""))
     data = dict(
         candles=candles, future=future, volume=volume, levels=levels, trendlines=trendlines, vp=vp,
         minPrice=float(min(prices) - pad), maxPrice=float(max(prices) + pad), handle=handle, header=header,
@@ -217,10 +222,10 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
 
 
 def render_post_chart(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe: str,
-                      handle: str = "", source: str = "") -> Path:
+                      handle: str = "", source: str = "", ema_len: int = 0) -> Path:
     """TradingView-style chart; falls back to matplotlib if the browser is not available."""
     try:
-        return render_fib_tv(df, tr, path, title, timeframe, handle=handle, source=source)
+        return render_fib_tv(df, tr, path, title, timeframe, handle=handle, source=source, ema_len=ema_len)
     except Exception as e:  # noqa: BLE001 - any browser problem -> simple chart
         import logging
 

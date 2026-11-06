@@ -43,3 +43,24 @@ def test_publish_uploads_image_and_waits(tmp_path: Path):
     with mock.patch.object(th.requests, "get", get):
         assert th.ThreadsPublisher("42", "OLDTOKEN", "", tmp_path).token == "NEW"
         assert th.ThreadsPublisher("42", "FRESHTOKEN", "", tmp_path).token == "FRESHTOKEN"
+
+
+def test_telegram_album(tmp_path: Path):
+    import json
+
+    from signalbot.publishers import telegram as tg
+
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    a.write_bytes(b"1")
+    b.write_bytes(b"2")
+    sent = {}
+
+    def post(url, data=None, files=None, timeout=None):
+        sent.update(url=url, data=data, files=sorted(files))
+        return R({"ok": True, "result": [{"message_id": 7}, {"message_id": 8}]})
+
+    with mock.patch.object(tg.requests, "post", post):
+        mid = tg.TelegramPublisher("T", "-100").publish("caption", a, extra_images=[b])
+    media = json.loads(sent["data"]["media"])
+    assert mid == "7" and sent["url"].endswith("/sendMediaGroup") and sent["files"] == ["p0", "p1"]
+    assert media[0]["caption"] == "caption" and "caption" not in media[1]

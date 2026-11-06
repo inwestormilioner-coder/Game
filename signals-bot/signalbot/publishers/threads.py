@@ -90,7 +90,8 @@ class ThreadsPublisher:
                 raise RuntimeError(f"Threads: kontener {status.get('status')}: {status.get('error_message')}")
         raise RuntimeError("Threads: kontener nie przetworzył się w 60 s")
 
-    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None) -> str:
+    def publish(self, text: str, image: Path | None = None, reply_to: str | None = None,
+                extra_images: list | None = None) -> str:
         self._refresh()
         params = {"text": text[:500], "media_type": "TEXT"}
         if reply_to:
