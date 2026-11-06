@@ -49,6 +49,7 @@ class FibParams:
     tl_long: int = 100
     ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
     ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
+    osc: str = ""                            # filtr oscylatora: rsi_trend | rsi_dipNN | macd_zero | macd_hist
     rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
     rev_min_r: float = 0.3                   # minimalny zysk (w R) na zamknięciu, żeby wyjść
 
@@ -99,6 +100,23 @@ def _support_slope(l: np.ndarray, t: int, short: int, long: int) -> float | None
     return (l[x2] - l[x1]) / (x2 - x1)
 
 
+def _osc_filter(c: np.ndarray, kind: str) -> np.ndarray:
+    """Czy na danej świecy oscylator pozwala na BUY (SELL liczy się na lustrze cen, więc jest symetryczny).
+    rsi_trend: RSI(14) > 50 | rsi_dipNN: RSI(14) < NN (kupno korekty) | macd_zero: MACD(12,26) > 0 |
+    macd_hist: histogram MACD (12,26,9) > 0"""
+    s = pd.Series(c)
+    if kind.startswith("rsi"):
+        d = s.diff()
+        up = d.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+        dn = (-d.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+        rsi = (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50).to_numpy()
+        return rsi > 50 if kind == "rsi_trend" else rsi < float(kind[7:])
+    macd = s.ewm(span=12, adjust=False).mean() - s.ewm(span=26, adjust=False).mean()
+    if kind == "macd_zero":
+        return (macd > 0).to_numpy()
+    return (macd - macd.ewm(span=9, adjust=False).mean() > 0).to_numpy()
+
+
 def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
               p: FibParams) -> tuple[float, list, bool]:
     """Zarządzanie pozycją BUY od świecy wejścia. Zwraca (wynik w R, wyjścia, czy zamknięta)."""
@@ -147,6 +165,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
     a = _atr(h, l, c)
     ema = pd.Series(c).ewm(span=p.ema_len, adjust=False).mean().to_numpy() if p.ema_len else None
+    osc_ok = _osc_filter(c, p.osc) if p.osc else None
     swing_highs, _ = find_swings(df, p.swing_n)
     conf = [s.confirmed_at for s in swing_highs]
     trades: list[FibTrade] = []
@@ -208,6 +227,8 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
             if t > z[2] and l[t] <= z[1] and last_sh.price > z[1]:
                 if ema is not None and (c[t - 1] <= ema[t - 1] or
                                         (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
+                    break
+                if osc_ok is not None and not osc_ok[t - 1]:
                     break
                 if p.trend_filter:
                     slope = _support_slope(l, t, p.tl_short, p.tl_long)
