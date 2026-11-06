@@ -49,6 +49,7 @@ class FibParams:
     tl_long: int = 100
     ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
     ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
+    h1: str = ""                             # potwierdzenie z H1: h1_hl | h1_struct | h1_candle | h1_zone
     osc: str = ""                            # filtr oscylatora: rsi_trend | rsi_dipNN | macd_zero | macd_hist
     rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
     rev_min_r: float = 0.3                   # minimalny zysk (w R) na zamknięciu, żeby wyjść
@@ -98,6 +99,60 @@ def _support_slope(l: np.ndarray, t: int, short: int, long: int) -> float | None
     x2 = t - short + int(np.argmin(near))
     x1 = t - long + int(np.argmin(far))
     return (l[x2] - l[x1]) / (x2 - x1)
+
+
+def _h1_context(df: pd.DataFrame, kind: str):
+    """Potwierdzenie z H1 liczone tylko z ZAMKNIĘTYCH świec H1 (bez zaglądania w przyszłość).
+    Zwraca (tablica bool dla świec M15 albo None, lista stref H1 albo None)."""
+    t = pd.DatetimeIndex(df["time"])
+    h1 = df.set_index(t).resample("1h", label="left", closed="left").agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna().reset_index()
+    h1_close_time = h1["time"] + pd.Timedelta(hours=1)
+    step = t[1] - t[0] if len(t) > 1 else pd.Timedelta(minutes=15)
+    # dla świecy M15 i: ile świec H1 jest już zamkniętych w chwili zamknięcia świecy i
+    known = np.searchsorted(h1_close_time.to_numpy(), (t + step).to_numpy(), side="right")
+    if kind == "h1_zone":
+        return None, _h1_zones(h1, h1_close_time)
+    ho, hh, hl, hc = (h1[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
+    if kind == "h1_candle":
+        ok_h1 = hc > ho
+    else:
+        highs, lows = find_swings(h1.rename(columns={"time": "time"}), 2)
+        ok_h1 = np.zeros(len(h1), dtype=bool)
+        for k in range(len(h1)):
+            ls = [s.price for s in lows if s.confirmed_at <= k][-2:]
+            hs = [s.price for s in highs if s.confirmed_at <= k][-2:]
+            hl_up = len(ls) == 2 and ls[1] > ls[0]
+            ok_h1[k] = hl_up and (kind == "h1_hl" or (len(hs) == 2 and hs[1] > hs[0]))
+    out = np.zeros(len(df), dtype=bool)
+    m = known > 0
+    out[m] = ok_h1[known[m] - 1]
+    return out, None
+
+
+def _h1_zones(h1: pd.DataFrame, close_time: pd.Series) -> list:
+    """Strefy popytu H1 (order block przed wybiciem swing high), jak strefy M15: [dół, góra, od, do]."""
+    h, l, c = (h1[k].to_numpy(dtype=float) for k in ("high", "low", "close"))
+    highs, _ = find_swings(h1, 2)
+    zones, used, live = [], set(), []
+    for k in range(1, len(h1)):
+        known = [s for s in highs if s.confirmed_at <= k - 1]
+        if known and known[-1].idx not in used and c[k] > known[-1].price:
+            sh = known[-1]
+            used.add(sh.idx)
+            ob = sh.idx + int(np.argmin(l[sh.idx : k + 1]))
+            z = [l[ob], h[ob], close_time.iloc[k], pd.Timestamp.max.tz_localize("UTC")]
+            zones.append(z)
+            live.append(z)
+        for z in list(live):
+            if c[k] < z[0]:
+                z[3] = close_time.iloc[k]
+                live.remove(z)
+    return zones
+
+
+def _in_h1_zone(zones: list, now, z) -> bool:
+    return any(a[2] <= now < a[3] and a[0] <= z[1] and a[1] >= z[0] for a in zones)
 
 
 def _osc_filter(c: np.ndarray, kind: str) -> np.ndarray:
@@ -166,6 +221,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     a = _atr(h, l, c)
     ema = pd.Series(c).ewm(span=p.ema_len, adjust=False).mean().to_numpy() if p.ema_len else None
     osc_ok = _osc_filter(c, p.osc) if p.osc else None
+    h1_ok, h1_zones = _h1_context(df, p.h1) if p.h1 else (None, None)
     swing_highs, _ = find_swings(df, p.swing_n)
     conf = [s.confirmed_at for s in swing_highs]
     trades: list[FibTrade] = []
@@ -229,6 +285,10 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
                                         (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
                     break
                 if osc_ok is not None and not osc_ok[t - 1]:
+                    break
+                if h1_ok is not None and not h1_ok[t - 1]:
+                    break
+                if h1_zones is not None and not _in_h1_zone(h1_zones, df["time"].iloc[t - 1], z):
                     break
                 if p.trend_filter:
                     slope = _support_slope(l, t, p.tl_short, p.tl_long)
