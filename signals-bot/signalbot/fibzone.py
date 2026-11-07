@@ -49,6 +49,7 @@ class FibParams:
     tl_long: int = 100
     ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
     ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
+    trigger: str = "zone"                    # zone | sweep | both (strefa albo sweep) | zone_sweep (strefa ze sweepem)
     h1: str = ""                             # potwierdzenie z H1: h1_hl | h1_struct | h1_candle | h1_zone
     osc: str = ""                            # filtr oscylatora: rsi_trend | rsi_dipNN | macd_zero | macd_hist
     rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
@@ -223,8 +224,9 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     ema = pd.Series(c).ewm(span=p.ema_len, adjust=False).mean().to_numpy() if p.ema_len else None
     osc_ok = _osc_filter(c, p.osc) if p.osc else None
     h1_ok, h1_zones = _h1_context(df, p.h1) if p.h1 else (None, None)
-    swing_highs, _ = find_swings(df, p.swing_n)
+    swing_highs, swing_lows = find_swings(df, p.swing_n)
     conf = [s.confirmed_at for s in swing_highs]
+    swept: set[int] = set()
     trades: list[FibTrade] = []
     zones: list[list] = []        # [bot, top, created]
     used: set[int] = set()
@@ -267,7 +269,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
                     trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
                                            z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
                                            str(df["time"].iloc[setup["touch"]]) if "time" in df else "",
-                                           tuple(p.tps)))
+                                           tuple(p.tps), "sweep" if setup.get("sweep") else "fibzone"))
                     busy_until = exits[-1][1] if closed else len(df)
                     zones = [x for x in zones if x is not z]
                 setup = None
@@ -280,7 +282,23 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
 
         if t <= busy_until or last_sh is None:
             continue
+        # sweep: wybicie pod ostatni potwierdzony swing low i zamknięcie z powrotem nad nim
+        sw = None
+        if p.trigger != "zone":
+            lows_known = [x for x in swing_lows if x.confirmed_at <= t - 1][-3:]
+            sw = next((x for x in reversed(lows_known) if x.idx not in swept and l[t] < x.price < c[t]
+                       and last_sh.price > x.price), None)
+            if sw is not None:
+                swept.add(sw.idx)
+        if p.trigger in ("sweep", "both") and sw is not None:
+            setup = {"zone": [l[t], sw.price, t], "touch": t, "f0": l[t], "f1": last_sh.price,
+                     "f1_idx": last_sh.idx, "vp": False, "poc": None, "sweep": True}
+            continue
+        if p.trigger == "sweep":
+            continue
         for z in zones:
+            if p.trigger == "zone_sweep" and (sw is None or not (z[0] - a[t] <= sw.price <= z[1] + a[t])):
+                continue
             if t > z[2] and l[t] <= z[1] and last_sh.price > z[1]:
                 if ema is not None and (c[t - 1] <= ema[t - 1] or
                                         (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
@@ -315,7 +333,8 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
             z = setup["zone"]
             pending = FibTrade("BUY", setup["touch"], t, f0, f1, stop, f0 + p.sl_fib * rng, 0.0, [],
                                z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], False,
-                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "", tuple(p.tps))
+                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "", tuple(p.tps),
+                               "sweep" if setup.get("sweep") else "fibzone")
     return trades, pending
 
 
