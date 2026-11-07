@@ -43,6 +43,18 @@ def levels(tr: FibTrade, entry_fib: float = 0.1272) -> dict:
 
 def context(tr: FibTrade, trend: dict) -> dict:
     lv = levels(tr)
+    if tr.kind == "sweep":
+        return {
+            "setup": "liquidity sweep (fake-out): the candle traded beyond a swing "
+                     f"{'low' if tr.direction == 'BUY' else 'high'}, grabbed the stops and closed back inside "
+                     "with a long rejection wick",
+            "direction": tr.direction,
+            "swept_level": round(tr.zone_top if tr.direction == "BUY" else tr.zone_bot, 2),
+            "sweep_extreme": round(tr.zone_bot if tr.direction == "BUY" else tr.zone_top, 2),
+            "entry_stop_order": round(lv["entry"], 2),
+            "stop_loss": round(lv["sl"], 2),
+            "targets": "1R and 2R",
+        }
     return {
         "direction": tr.direction,
         "zone": [round(tr.zone_bot, 2), round(tr.zone_top, 2)],
@@ -58,6 +70,13 @@ def context(tr: FibTrade, trend: dict) -> dict:
 
 def template_why(tr: FibTrade, ctx: dict) -> tuple[str, str]:
     buy = tr.direction == "BUY"
+    if tr.kind == "sweep":
+        lvl = tr.zone_top if buy else tr.zone_bot
+        side = "below the swing low" if buy else "above the swing high"
+        long = (f"Price swept the liquidity {side} at {lvl:.2f}, triggering the stops resting there, and the "
+                f"candle closed back {'above' if buy else 'below'} it with a long rejection wick. The stop order "
+                f"only fills if price confirms the reversal; the stop sits beyond the sweep wick.")
+        return long, "Liquidity grab with a strong rejection wick - fake-out setup."
     side = "demand" if buy else "supply"
     move = "drop" if buy else "rally"
     long = (f"Price reached the {side} zone {ctx['zone'][0]:.2f}–{ctx['zone'][1]:.2f} after a {move} from "
@@ -70,9 +89,13 @@ def template_why(tr: FibTrade, ctx: dict) -> tuple[str, str]:
 
 
 SYSTEM_PROMPT = """You write short, factual commentary for a gold (XAUUSD) trading signals channel.
-You get a detected setup as JSON plus its chart. The strategy: price touches an order-block zone,
-a Fibonacci is drawn from the reaction extreme (0) to the prior swing (1), a stop order is placed at
-Fib 0.1272, stop loss at Fib -0.1272, targets on the following Fibonacci levels.
+You get a detected setup as JSON plus its chart. Two setup types exist.
+Zone + Fibonacci: price touches an order-block zone, a Fibonacci is drawn from the reaction extreme (0) to
+the prior swing (1), a stop order is placed at Fib 0.1272, stop loss at Fib -0.1272, targets on the
+following Fibonacci levels.
+Liquidity sweep (when the JSON has "setup"): price ran the stops beyond a swing low/high and closed back
+with a long rejection wick; a stop order beyond the sweep candle, stop loss beyond the wick, targets 1R/2R.
+For a sweep, explain the liquidity grab and the rejection instead of zones and Fibonacci.
 Explain WHY this setup is on the chart: the zone, the move into it, the reaction, and whether
 the zone sits on a volume node / POC. Do not mention trendlines. If something weakens the setup
 (e.g. zone in a low-volume area), say it plainly.
@@ -117,7 +140,8 @@ def _order(tr: FibTrade) -> str:
 
 def _head(tr: FibTrade, symbol: str, timeframe: str) -> str:
     icon = "🟢" if tr.direction == "BUY" else "🔴"
-    return f"{symbol} {tr.direction} STOP {icon} | {timeframe}"
+    setup = " · Liquidity sweep" if tr.kind == "sweep" else ""
+    return f"{symbol} {tr.direction} STOP {icon} | {timeframe}{setup}"
 
 
 def _levels_block(tr: FibTrade, lv: dict) -> str:

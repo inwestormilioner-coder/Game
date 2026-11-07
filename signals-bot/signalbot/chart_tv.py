@@ -109,7 +109,7 @@ function drawOverlays() {
     t.style.cssText += `right:${%(w)d - paneW + 8}px;top:${ys[i] - 17}px;font-size:12px;font-weight:${L.strong ? 700 : 500};color:${L.color};white-space:nowrap;background:rgba(255,255,255,.75);padding:0 3px`;
     t.textContent = `${L.label}${L.f} (${L.price.toFixed(2)})`; el.appendChild(t);
   });
-  const x0 = ts.timeToCoordinate(F.diag.t0), x1 = ts.timeToCoordinate(F.diag.t1);
+  const x0 = F.diag.t0 ? ts.timeToCoordinate(F.diag.t0) : null, x1 = F.diag.t1 ? ts.timeToCoordinate(F.diag.t1) : null;
   if (x0 !== null && x1 !== null) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'ov'); svg.setAttribute('width', paneW); svg.setAttribute('height', %(h)d);
@@ -166,11 +166,15 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
     palette = {-0.1272: "#f23645", 0.0: "#787b86", 0.1272: "#2962ff", 0.236: "#f7525f", 0.382: "#ff9800",
                0.5: "#4caf50", 0.618: "#089981", 0.705: "#00bcd4", 0.786: "#2196f3", 1.0: "#787b86",
                1.272: "#9c27b0", 1.618: "#673ab7"}
+    for f in tr.tp_fibs:                     # cele spoza palety (np. 0.636 = 2R w sygnałach sweep)
+        palette.setdefault(f, "#089981")
     fib_levels = []
     for f, c in sorted(palette.items(), key=lambda kv: lv(kv[0])):
         tag = "SL · " if f == -0.1272 else "ENTRY · " if f == 0.1272 else ""
         if f in tr.tp_fibs:
             tag = f"TP{list(tr.tp_fibs).index(f) + 1} · "
+        if tr.kind == "sweep" and not tag:
+            continue                         # sweep: tylko wejście, SL i TP (bez pośrednich poziomów Fibo)
         fib_levels.append(dict(f=f"{f:g}", price=float(lv(f)), color=c, label=tag, strong=bool(tag),
                                band=c + "14"))
     seg = df.iloc[tr.fib1_idx : end + 1]
@@ -178,7 +182,9 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
     fib = dict(from_=None, levels=fib_levels,
                diag=dict(t1=_ts(df["time"].iloc[max(start, tr.fib1_idx)]), p1=float(tr.fib1),
                          t0=_ts(df["time"].iloc[i0]), p0=float(tr.fib0)))
-    prices = [win["low"].min(), win["high"].max(), lv(-0.1272), lv(1.618)]
+    if tr.kind == "sweep":                   # rama Fibo sweepu jest umowna - bez ukośnej linii
+        fib["diag"] = dict(t1=None, p1=0.0, t0=None, p0=0.0)
+    prices = [win["low"].min(), win["high"].max(), lv(-0.1272), lv(max(tr.tp_fibs))]
     pad = (max(prices) - min(prices)) * 0.03
     vp = None
     prof = volume_profile(df, end, 200, bins=48)
@@ -198,7 +204,7 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
         candles=candles, future=future, volume=volume, levels=levels, trendlines=trendlines, vp=vp,
         minPrice=float(min(prices) - pad), maxPrice=float(max(prices) + pad), handle=handle, header=header,
         zone=dict(from_=None, top=float(tr.zone_top), bot=float(tr.zone_bot),
-                  label="BUY ZONE" if buy else "SELL ZONE",
+                  label=("LIQUIDITY SWEEP" if tr.kind == "sweep" else "BUY ZONE" if buy else "SELL ZONE"),
                   fill="rgba(8,153,129,.12)" if buy else "rgba(242,54,69,.10)", line=col),
     )
     zone_from = _ts(df["time"].iloc[max(start, tr.fib1_idx)])

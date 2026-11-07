@@ -83,7 +83,8 @@ class FibTrade:
 
     @property
     def id(self) -> str:
-        return f"{self.direction}-{self.touch_time}"
+        prefix = "SWEEP-" if self.kind == "sweep" else ""
+        return f"{prefix}{self.direction}-{self.touch_time}"
 
 
 def _atr(h, l, c, n=14):

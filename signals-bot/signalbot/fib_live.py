@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import replace
 
 import pandas as pd
 
@@ -26,6 +27,27 @@ def fib_params(cfg: Config) -> FibParams:
                      rev_exit=cfg.ai_exit and not manager_active(cfg), rev_min_r=cfg.ai_exit_min_r,
                      ema_len=cfg.ema_filter, ema_slope=cfg.ema_slope,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
+
+
+def sweep_params(cfg: Config):
+    from .sweep import SweepParams
+
+    return SweepParams(entry="stop", min_wick=cfg.sweep_min_wick, min_risk=cfg.min_sl)
+
+
+def sweep_fib_params(cfg: Config) -> FibParams:
+    """Sweep: TP 1R (Fibo 0.382) i 2R (0.636) po połowie, SL na wejście po TP1."""
+    return replace(fib_params(cfg), tps=(0.382, 0.636), fractions=(0.5, 0.5), be_after=0)
+
+
+def scan_all(cfg: Config, df: pd.DataFrame) -> tuple[list[FibTrade], list[FibTrade]]:
+    trades, pending = scan_live(df, fib_params(cfg))
+    if cfg.sweep_signals:
+        from .sweep import scan_live_sweep
+
+        t2, p2 = scan_live_sweep(df, sweep_params(cfg), sweep_fib_params(cfg))
+        trades, pending = trades + t2, pending + p2
+    return trades, pending
 
 
 def _tf_minutes(tf: str) -> int:
@@ -97,6 +119,19 @@ def publish_fib(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict) -
             log.error("Publishing to %s failed: %s", name, e)
     return {"id": tr.id, "direction": tr.direction, "post_ids": ids, "status": "open", "chart": str(chart),
             "levels": {k: v for k, v in levels(tr).items() if k != "tps"}, "one_r_sent": False}
+
+
+def _judge_sweep(cfg: Config, df: pd.DataFrame, tr: FibTrade):
+    """AI-filtr sweepu; None przy błędzie (wtedy sygnał idzie bez filtra)."""
+    from .ai_filter import judge, sweep_context
+
+    try:
+        chart = render_post_chart(df, tr, cfg.data_dir / "charts" / "ai_sweep.png", cfg.display_symbol,
+                                  cfg.timeframe, handle=cfg.handle, source=cfg.chart_source)
+        return judge(sweep_context(df, tr), chart, cfg.anthropic_model)
+    except Exception as e:
+        log.warning("AI-filtr sweepu niedostępny: %s", e)
+        return None
 
 
 def manager_active(cfg: Config) -> bool:
@@ -185,7 +220,7 @@ def _trade(trader, action: str, *args) -> None:
 
 def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, only: str | None = None,
                  trader=None) -> None:
-    trades, pending = scan_live(df, fib_params(cfg))
+    trades, pending = scan_all(cfg, df)
     by_id = {t.id: t for t in trades}
     last = df.iloc[-1]
     live_n = sum(1 for r in state.signals.values() if r["status"] in ("pending", "open"))
@@ -203,6 +238,14 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
         late = last["close"] >= lv["entry"] if pd_tr.direction == "BUY" else last["close"] <= lv["entry"]
         if rec is None and late:
             continue  # cena już za wejściem - nie wysyłamy spóźnionego sygnału, czekamy na lepszy moment
+        if rec is None and pd_tr.kind == "sweep" and cfg.sweep_ai_filter and manager_active(cfg):
+            verdict = _judge_sweep(cfg, df, pd_tr)
+            if verdict is not None and not verdict.take:
+                log.info("AI skipped %s: %s", pd_tr.id, verdict.reason)
+                state.signals[pd_tr.id] = {"id": pd_tr.id, "direction": pd_tr.direction, "status": "skipped",
+                                           "reason": verdict.reason, "post_ids": {}}
+                state.save()
+                continue
         if rec is None:
             log.info("New pending %s %s @ %.2f", pd_tr.direction, pd_tr.id, lv["entry"])
             rec = publish_fib(cfg, df, pd_tr, publishers)

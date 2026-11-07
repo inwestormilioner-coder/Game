@@ -151,6 +151,9 @@ def _scan_buy_live(df: pd.DataFrame, sp: SweepParams, fp: FibParams) -> tuple[li
         if target is None:
             continue
         used.add(target.idx)
+        body = abs(c[t] - o[t]) or 1e-9
+        if (min(o[t], c[t]) - l[t]) / body < sp.min_wick:     # za krótki dolny knot - brak odrzucenia
+            continue
         stop, sl = h[t] + 0.01, l[t] - sp.sl_buf_atr * a[t]
         if stop - sl < sp.min_risk:
             continue
