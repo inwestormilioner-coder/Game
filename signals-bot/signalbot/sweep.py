@@ -15,10 +15,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from .breakout import BrkTrade
-from .fibzone import FibParams, _atr, _simulate
+from .fibzone import FibParams, FibTrade, _atr, _flip, _mirror_df, _simulate
 from .structure import find_swings
 
 
@@ -79,10 +80,10 @@ def _scan_buy(df: pd.DataFrame, p: SweepParams) -> list[BrkTrade]:
         else:
             stop, v = h[t] + 0.01, None
             for u in range(t + 1, min(n, t + 1 + p.entry_wait)):
-                if l[u] <= sl:
-                    break
-                if h[u] >= stop:
+                if h[u] >= stop:           # świeca z wejściem i SL naraz = wejście i strata (konserwatywnie)
                     v, entry = u, max(o[u], stop)
+                    break
+                if l[u] <= sl:
                     break
             if v is None:
                 continue
@@ -118,3 +119,77 @@ def find_sweep_trades(df: pd.DataFrame, p: SweepParams) -> list[BrkTrade]:
         s.direction = "SELL"
         s.entry, s.sl = -s.entry, -s.sl
     return sorted(buys + sells, key=lambda x: x.entry_idx)
+
+
+# --- wersja dla bota: sygnały w formacie FibTrade ------------------------------------------------
+# Poziomy sweepu (wejście nad świecą sweepu, SL pod knotem) wpisujemy w ramę Fibo bota:
+# wejście = 0.1272, SL = -0.1272, więc TP na 0.382 / 0.618 / 1 / 1.272 / 1.618 = ok. 1 / 1.9 / 3.4 / 4.5 / 5.9R.
+# Dzięki temu cała reszta bota (posty, wykres, MT5, AI-menedżer, odpowiedzi o TP) działa bez zmian.
+
+def _frame(entry: float, sl: float) -> tuple[float, float]:
+    rng = (entry - sl) / 0.2544
+    f0 = entry - 0.1272 * rng
+    return f0, f0 + rng
+
+
+def _scan_buy_live(df: pd.DataFrame, sp: SweepParams, fp: FibParams) -> tuple[list[FibTrade], FibTrade | None]:
+    o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
+    n = len(c)
+    a = _atr(h, l, c)
+    _, lows = find_swings(df, sp.swing_n)
+    times = df["time"].astype(str).to_numpy() if "time" in df else [""] * n
+    trades: list[FibTrade] = []
+    pending = None
+    used: set[int] = set()
+    busy = -1
+    for t in range(1, n):
+        if t <= busy:
+            continue
+        known = [s for s in lows if s.confirmed_at <= t - 1][-sp.lookback:]
+        target = next((s for s in reversed(known) if s.idx not in used
+                       and l[t] < s.price - sp.min_depth_atr * a[t] and c[t] > s.price), None)
+        if target is None:
+            continue
+        used.add(target.idx)
+        stop, sl = h[t] + 0.01, l[t] - sp.sl_buf_atr * a[t]
+        if stop - sl < sp.min_risk:
+            continue
+        f0, f1 = _frame(stop, sl)
+        levels = [f0 + f * (f1 - f0) for f in fp.tps]
+        mk = lambda idx, entry, r, exits, closed: FibTrade(  # noqa: E731
+            "BUY", t, idx, f0, f1, entry, sl, r, exits, l[t], target.price, target.idx, False, None, closed,
+            times[t], tuple(fp.tps), "sweep")
+        filled = False
+        for u in range(t + 1, min(n, t + 1 + sp.entry_wait)):
+            if h[u] >= stop:
+                entry = max(o[u], stop)
+                if l[u] <= sl:
+                    r, exits, closed = -1.0, [("sl", u, sl, 1.0)], True
+                else:
+                    lv = [x for x in levels if x > entry]
+                    r, exits, closed = _simulate(h, l, c, u, entry, sl, lv,
+                                                 FibParams(**{**fp.__dict__, "fractions": fp.fractions[-len(lv):]}))
+                trades.append(mk(u, entry, r, exits, closed))
+                busy = exits[-1][1] if closed else n
+                filled = True
+                break
+            if l[u] <= sl:
+                break
+        else:
+            # okno na wejście jeszcze otwarte i cena nie zeszła pod SL -> zlecenie oczekujące
+            if not filled and t + sp.entry_wait > n - 1 and l[t + 1 : n].min(initial=np.inf) > sl:
+                pending = mk(n - 1, stop, 0.0, [], False)
+    return trades, pending
+
+
+def scan_live_sweep(df: pd.DataFrame, sp: SweepParams, fp: FibParams) -> tuple[list[FibTrade], list[FibTrade]]:
+    df = df.reset_index(drop=True)
+    bt, bp = _scan_buy_live(df, sp, fp)
+    st, spn = _scan_buy_live(_mirror_df(df), sp, fp)
+    trades = sorted(bt + [_flip(x) for x in st], key=lambda x: x.entry_idx)
+    pending = [x for x in (bp, _flip(spn) if spn else None) if x is not None]
+    return trades, pending
+
+
+def find_sweep_fib_trades(df: pd.DataFrame, sp: SweepParams, fp: FibParams) -> list[FibTrade]:
+    return [t for t in scan_live_sweep(df, sp, fp)[0]]

@@ -74,6 +74,7 @@ class FibTrade:
     closed: bool = True                      # False = pozycja wciąż otwarta (koniec danych)
     touch_time: str = ""
     tp_fibs: tuple = FIB_TPS                 # poziomy Fibo celów tej transakcji
+    kind: str = "fibzone"                    # fibzone | sweep
 
     @property
     def risk(self) -> float:

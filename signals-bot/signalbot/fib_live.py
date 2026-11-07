@@ -11,7 +11,7 @@ from .chart_tv import render_post_chart
 from .config import Config
 from .fibzone import FibParams, FibTrade, find_fib_trades, scan_live
 from .tracker import State
-from .summary import book_exit, due_summaries, summary_text
+from .summary import book_exit
 from .structure import find_swings
 from .writer_fib import (ai_close_text, ai_move_text, ai_partial_text, ai_stop_text, build_fib_post, cancel_text,
                          context, exit_text, levels, pips, rev_text, triggered_text,
@@ -278,24 +278,6 @@ def run_once_fib(cfg: Config, df: pd.DataFrame, state: State, publishers: dict, 
             manage_with_ai(cfg, df, tr, rec, entry, publishers, trader)
             state.save()
 
-    if only is None:
-        post_summaries(cfg, state, publishers, last["time"] + pd.Timedelta(minutes=_tf_minutes(cfg.timeframe)))
-
-
-def post_summaries(cfg: Config, state: State, publishers: dict, now: pd.Timestamp) -> None:
-    """Podsumowanie dnia (pn–pt) i tygodnia (piątek) w pipsach, jako osobny post na wszystkich kanałach."""
-    meta = state.data.setdefault("meta", {})
-    for kind, start, end in due_summaries(meta, pd.Timestamp(now), cfg.summary_hour_utc):
-        text = summary_text(state.signals, start, end, cfg.display_symbol, weekly=kind == "weekly")
-        if text:
-            for name, (pub, _) in publishers.items():
-                try:
-                    pub.publish(text)
-                except Exception as e:
-                    log.error("%s summary on %s failed: %s", kind, name, e)
-            log.info("Posted %s summary", kind)
-        meta[f"{kind}_at"] = end.isoformat()
-        state.save()
 
 
 def live_replay(cfg: Config, df: pd.DataFrame, tr: FibTrade, publishers: dict, state: State) -> None:

@@ -59,7 +59,6 @@ class Config:
     ema_slope: int = 20         # i EMA musi rosnąć / spadać przez tyle świec (0 = bez tego warunku)
     ai_manager: bool = True     # AI-trader zarządza pozycją na zysku (SL na poziomy, partiale, wyjście)
     ai_manager_min_r: float = 0.5
-    summary_hour_utc: int = 21  # godzina (UTC) podsumowania dnia; w piątek także tygodnia
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
     pip_size: float = 0.1       # wielkość pipsa (złoto: 0.10$)
     tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
@@ -139,7 +138,6 @@ def load_config(env_file: str | None = ".env") -> Config:
         ema_slope=int(_env("EMA_SLOPE", "20")),
         ai_manager=_bool("AI_MANAGER", True),
         ai_manager_min_r=float(_env("AI_MANAGER_MIN_R", "0.5")),
-        summary_hour_utc=int(_env("SUMMARY_HOUR_UTC", "21")),
         reply_losses=_bool("REPLY_LOSSES", False),
         pip_size=float(_env("PIP_SIZE", "0.1")),
         tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
