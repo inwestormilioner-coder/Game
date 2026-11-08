@@ -36,7 +36,7 @@ const chart = LightweightCharts.createChart(el, {
   width: %(w)d, height: %(h)d,
   layout: {background: {color: '#ffffff'}, textColor: '#131722', fontSize: 13},
   grid: {vertLines: {color: '#f0f3fa'}, horzLines: {color: '#f0f3fa'}},
-  rightPriceScale: {borderColor: '#d1d4dc', scaleMargins: {top: 0.08, bottom: 0.08}},
+  rightPriceScale: {borderColor: '#d1d4dc', scaleMargins: {top: 0.2, bottom: 0.06}},
   timeScale: {borderColor: '#d1d4dc', timeVisible: true, secondsVisible: false, rightOffset: 2},
   crosshair: {mode: 0},
   watermark: {visible: !!D.handle, text: D.handle, fontSize: 56, color: 'rgba(19,23,34,0.06)'},
