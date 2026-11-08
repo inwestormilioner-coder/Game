@@ -203,3 +203,46 @@ W `.env` ustaw:
 
 Żeby poznać ID, napisz cokolwiek do swojego bota i otwórz `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 ID jest w polu `"chat":{"id": ...}`.
+
+## Bot formacji: double/triple top i bottom, głowa z ramionami, harmoniczne
+
+Drugi bot w tym samym programie. Szuka formacji na wykresie, sprawdza je z Waszymi strefami i Fibo,
+a potem publikuje na te same kanały (Telegram, Threads, X) z własnym wykresem. Włączasz go
+`PATTERNS_ENABLED=true` (działa obok strategii) albo `STRATEGY=patterns` (tylko formacje).
+
+### Łańcuch agentów
+
+| Agent | Co robi |
+|---|---|
+| **Skaner** (kod, `patterns.py`) | ZigZag ATR w kilku skalach (`PATTERN_DEPTHS`) znajduje szczyty i dołki, a potem formacje. Bez zaglądania w przyszłość (test `test_no_lookahead`). |
+| **Konfluencje** (kod) | Strefy order block jak w `tpz_zones.pine` (M15 i H1), Wasze strefy z `ZONES_FILE`, poziom Fibo większego ruchu (0.5–0.886, 1.272–1.618), klaster Fibo w punkcie D, Volume Profile (POC, VAH, VAL, HVN), struktura H1. Każda trafiona konfluencja to +1 do wyniku (`PATTERN_MIN_SCORE`). |
+| **Wykres** (`chart_pattern.py`) | Styl TradingView: linie formacji z etykietami, neckline albo PRZ, proporcje Fibo, strefy, wejście, SL i TP. |
+| **Analityk AI** (`pattern_ai.py`) | Claude ogląda wykres i dane, wystawia ocenę A/B/C i odrzuca słabe formacje (`PATTERN_AI_FILTER`, `PATTERN_MIN_CONFIDENCE`). |
+| **Autor AI** | Pisze akapit „Why” pod postem. Liczby wstawia kod, więc AI nie może pomylić poziomów. |
+| **Publikacja i śledzenie** (`pattern_live.py`) | Post z wykresem, „Why” jako odpowiedź, a potem odpowiedzi pod postem po TP1 (SL na wejście), TP2, breakeven i SL (przy `REPLY_LOSSES=true`). |
+
+### Formacje i poziomy
+
+| Formacja | Potwierdzenie | SL | Cele |
+|---|---|---|---|
+| Double / Triple Top i Bottom | Zamknięcie świecy za neckline (najniższy dołek / najwyższy szczyt między szczytami / dołkami) | Za szczytami / dołkami + 0,25 ATR | Wysokość formacji od neckline x1.0 i x1.618 |
+| Head & Shoulders (i odwrócona) | Zamknięcie za neckline poprowadzoną przez oba dołki (może być pochyła) | Za prawym ramieniem | Jak wyżej |
+| Gartley, Bat, Alt Bat, Butterfly, Crab, Deep Crab, Cypher, Shark | D w PRZ (proporcje Fibo XA / XC, BC, AB/XA) i świeca odrzucenia | Za PRZ / D + 0,25 ATR | 0.382 i 0.618 ruchu A-D |
+
+Połowa pozycji na TP1, SL na wejście, reszta na ostatnim celu. Odpowiedzi pod postem liczy ta sama symulacja.
+
+### Wasze strefy
+
+Skopiuj `zones.example.json` do `zones.json` i wpisz strefy (np. z D1/H4 albo z TradingView).
+`side` to `supply` albo `demand`; bez `side` strefa działa w obie strony. Formacja, której szczyty,
+dołki albo PRZ wpadają w strefę, dostaje konfluencję z jej nazwą w poście.
+
+### Test na historii
+
+```bash
+python -m signalbot.main patterns --csv XAUUSD_M15.csv --charts 10   # tabela, wynik w R na formację i na liczbę konfluencji
+python -m signalbot.main patterns --csv XAUUSD_M15.csv --post-last   # ostatnia formacja przez cały łańcuch ([TEST])
+```
+
+Zanim włączysz publikację, sprawdź na kilku miesiącach danych, które formacje i jaki `PATTERN_MIN_SCORE`
+dają dodatni wynik, i zawęź `PATTERN_KINDS` do tych formacji.

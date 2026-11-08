@@ -3,3 +3,4 @@ tv_profile/
 data/
 __pycache__/
 .pytest_cache/
+zones.json

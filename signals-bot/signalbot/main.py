@@ -6,6 +6,10 @@
     python -m signalbot.main fibtest --csv plik.csv [--at "2026-07-08 15:45"]
                                         # testowy sygnał "strefa + Fibo" odtworzony świeca po świecy
                                         # (przy DRY_RUN=false naprawdę wysyła na włączone kanały)
+    python -m signalbot.main patterns [--csv plik.csv] [--charts 10] [--post-last]
+                                        # formacje (double/triple top, H&S, harmoniczne) na historii:
+                                        # tabela, statystyki, wykresy; --post-last = ostatnia formacja
+                                        # przez cały łańcuch agentów (AI + publikacja, jak DRY_RUN)
 """
 from __future__ import annotations
 
@@ -52,6 +56,15 @@ def publish_signal(cfg: Config, df: pd.DataFrame, s: Setup, publishers: dict) ->
 
 def run_once(cfg: Config, provider, state: State, publishers: dict, trader=None) -> None:
     df = provider.get_bars(cfg.symbol, cfg.timeframe, cfg.bars)
+    if cfg.patterns_enabled or cfg.strategy == "patterns":
+        from .pattern_live import run_once_patterns
+
+        try:
+            run_once_patterns(cfg, df, State(cfg.data_dir / "patterns_state.json"), publishers)
+        except Exception:
+            log.exception("Błąd w bocie formacji")
+        if cfg.strategy == "patterns":
+            return
     if cfg.strategy == "fibzone":
         run_once_fib(cfg, df, state, publishers, trader=trader)
         return
@@ -157,6 +170,45 @@ def fibtest(cfg: Config, csv: str | None, at: str | None, only: str | None = Non
     live_replay(cfg, df, tr, make_publishers(cfg, only), State(state_path))
 
 
+def patterns_cmd(cfg: Config, csv: str | None, charts: int, post_last: bool) -> None:
+    from .chart_pattern import render_pattern_chart
+    from .pattern_live import pattern_params, process_pattern
+    from .patterns import find_patterns, load_user_zones, simulate
+
+    df = CSVProvider(csv).get_bars(cfg.symbol, cfg.timeframe) if csv else \
+        SyntheticProvider(seed=1).get_bars(cfg.symbol, cfg.timeframe, 3000)
+    pats = find_patterns(df, pattern_params(cfg), load_user_zones(cfg.zones_file))
+    rows = []
+    for x in pats:
+        simulate(df, x)
+        rows.append(dict(time=str(df["time"].iloc[x.confirm_idx])[:16], pattern=x.name, dir=x.direction,
+                         entry=round(x.entry, 2), sl=round(x.sl, 2), tp=" / ".join(f"{t:.2f}" for t in x.tps),
+                         score=x.score, outcome=x.outcome, r=round(x.r, 2),
+                         confluence="; ".join(x.confluences)))
+    out = pd.DataFrame(rows)
+    if not len(out):
+        print("Brak formacji.")
+        return
+    with pd.option_context("display.max_colwidth", 70, "display.width", 250):
+        print(out.to_string(index=False))
+    closed = out[out["outcome"] != "open"]
+    print(f"\nŚwiece: {len(df)}  ({df['time'].iloc[0]:%Y-%m-%d} → {df['time'].iloc[-1]:%Y-%m-%d})  "
+          f"formacje: {len(out)}, zamknięte: {len(closed)}")
+    if len(closed):
+        print("\nWedług formacji (R: połowa na TP1, SL na wejście, reszta na TP2):")
+        print(closed.groupby("pattern")["r"].agg(["count", "sum", "mean"]).round(2).to_string())
+        print("\nWedług liczby konfluencji:")
+        print(closed.groupby("score")["r"].agg(["count", "sum", "mean"]).round(2).to_string())
+    for x in pats[-charts:] if charts else []:
+        print(render_pattern_chart(df, x, cfg.data_dir / "patterns" / f"{x.id}.png", cfg.display_symbol,
+                                   cfg.timeframe, handle=cfg.handle, source=cfg.chart_source))
+    if post_last:
+        cfg.display_symbol = f"[TEST] {cfg.display_symbol}"
+        cfg.pattern_min_score = 0
+        rec = process_pattern(cfg, df.iloc[: pats[-1].confirm_idx + 1], pats[-1], make_publishers(cfg))
+        print(f"\n{rec['id']}: {rec['status']} {rec.get('reason', '')}")
+
+
 def threads_check(cfg: Config) -> None:
     from .publishers.threads import ThreadsPublisher
 
@@ -170,12 +222,15 @@ def threads_check(cfg: Config) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="signalbot")
-    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest", "threadscheck", "tradecheck"])
+    ap.add_argument("command", choices=["run", "once", "backtest", "demo", "fibtest", "threadscheck", "tradecheck",
+                                       "patterns"])
     ap.add_argument("--csv", help="fibtest: plik z historią (time,open,high,low,close[,volume])")
     ap.add_argument("--at", help="fibtest: czas świecy wejścia, np. '2026-07-08 15:45'")
     ap.add_argument("--only", help="fibtest: wyślij tylko na ten kanał (telegram | threads | x)")
     ap.add_argument("--env", default=".env")
-    ap.add_argument("--charts", type=int, default=0, help="backtest: ile wykresów zapisać")
+    ap.add_argument("--charts", type=int, default=0, help="backtest / patterns: ile wykresów zapisać")
+    ap.add_argument("--post-last", action="store_true",
+                    help="patterns: ostatnia formacja przez AI i publikację (DRY_RUN=true tylko wypisuje)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load_config(args.env)
@@ -186,6 +241,8 @@ def main() -> None:
         run_once(cfg, make_provider(cfg), State(cfg.data_dir / "state.json"), make_publishers(cfg))
     elif args.command == "fibtest":
         fibtest(cfg, args.csv, args.at, args.only)
+    elif args.command == "patterns":
+        patterns_cmd(cfg, args.csv, args.charts, args.post_last)
     elif args.command == "tradecheck":
         from .trader import trade_check
 

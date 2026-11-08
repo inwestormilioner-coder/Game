@@ -96,6 +96,15 @@ class Config:
     trade_mt5_password: str = ""
     trade_mt5_server: str = ""
 
+    # bot formacji (double/triple top/bottom, H&S, harmoniczne) - patrz pattern_live.py
+    patterns_enabled: bool = False    # obok strategii; STRATEGY=patterns = tylko formacje
+    pattern_kinds: str = "all"        # all | chart | harmonic | lista, np. double_top,gartley,bat
+    pattern_depths: tuple = (2.0, 4.0)  # ZigZag w ATR (kilka skal = małe i duże formacje)
+    pattern_min_score: int = 1        # min. liczba konfluencji (strefy, Fibo, VP, struktura H1)
+    pattern_ai_filter: bool = True    # AI-analityk ocenia wykres przed publikacją
+    pattern_min_confidence: int = 60
+    zones_file: str = "zones.json"    # Wasze strefy: [{"bot":..,"top":..,"side":"supply|demand","label":".."}]
+
     dry_run: bool = True
     data_dir: Path = field(default_factory=lambda: Path("data"))
 
@@ -173,6 +182,13 @@ def load_config(env_file: str | None = ".env") -> Config:
         trade_mt5_login=int(_env("TRADE_MT5_LOGIN")) if _env("TRADE_MT5_LOGIN") else None,
         trade_mt5_password=_env("TRADE_MT5_PASSWORD"),
         trade_mt5_server=_env("TRADE_MT5_SERVER"),
+        patterns_enabled=_bool("PATTERNS_ENABLED", False),
+        pattern_kinds=_env("PATTERN_KINDS", "all"),
+        pattern_depths=tuple(float(x) for x in _env("PATTERN_DEPTHS", "2,4").split(",")),
+        pattern_min_score=int(_env("PATTERN_MIN_SCORE", "1")),
+        pattern_ai_filter=_bool("PATTERN_AI_FILTER", True),
+        pattern_min_confidence=int(_env("PATTERN_MIN_CONFIDENCE", "60")),
+        zones_file=_env("ZONES_FILE", "zones.json"),
         dry_run=_bool("DRY_RUN", True),
         data_dir=Path(_env("DATA_DIR", "data")),
     )

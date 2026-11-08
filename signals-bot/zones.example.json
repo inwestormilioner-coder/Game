@@ -1,0 +1,5 @@
+[
+  {"bot": 4380.0, "top": 4395.0, "side": "supply", "label": "H4 supply"},
+  {"bot": 4210.0, "top": 4222.5, "side": "demand", "label": "D1 demand"},
+  {"bot": 4300.0, "top": 4302.0, "label": "Weekly open"}
+]
