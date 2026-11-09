@@ -81,7 +81,7 @@ def template_why(tr: FibTrade, ctx: dict) -> tuple[str, str]:
     move = "drop" if buy else "rally"
     long = (f"Price reached the {side} zone {ctx['zone'][0]:.2f}–{ctx['zone'][1]:.2f} after a {move} from "
             f"{ctx['fib_1_swing']:.2f} and reacted. The stop order at Fib 0.1272 only triggers if the bounce "
-            f"is real; the stop sits beyond the reaction extreme (Fib -0.1272).")
+            f"is real; the stop sits beyond the reaction extreme.")
     if ctx["zone_on_volume_node_or_poc"]:
         long += " The zone also lines up with a high-volume node."
     short = f"Bounce from the {side} zone + Fib 0.1272 stop entry."
@@ -92,7 +92,7 @@ SYSTEM_PROMPT = """You write short, factual commentary for a gold (XAUUSD) tradi
 You get a detected setup as JSON plus its chart. Two setup types exist.
 Zone + Fibonacci: price touches an order-block zone, a Fibonacci is drawn from the reaction extreme (0) to
 the prior swing (1), a stop order is placed at Fib 0.1272, stop loss at Fib -0.1272, targets on the
-following Fibonacci levels.
+following Fibonacci levels (or, in ATR mode, stop loss at an ATR distance and targets in multiples of risk).
 Liquidity sweep (when the JSON has "setup"): price ran the stops beyond a swing low/high and closed back
 with a long rejection wick; a stop order beyond the sweep candle, stop loss beyond the wick, targets 1R/2R.
 For a sweep, explain the liquidity grab and the rejection instead of zones and Fibonacci.

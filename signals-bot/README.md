@@ -246,3 +246,25 @@ python -m signalbot.main patterns --csv XAUUSD_M15.csv --post-last   # ostatnia 
 
 Zanim włączysz publikację, sprawdź na kilku miesiącach danych, które formacje i jaki `PATTERN_MIN_SCORE`
 dają dodatni wynik, i zawęź `PATTERN_KINDS` do tych formacji.
+
+## SL i TP z ATR (domyślnie od wersji z formacjami)
+
+Strategia „strefa + Fibo” wchodzi tak jak wcześniej: zlecenie STOP na Fibo 0.1272 po reakcji w strefie.
+Zmieniły się SL i cele (`RISK_MODE=atr`):
+
+- **SL** = 2 × ATR(14) od wejścia (`SL_ATR`),
+- **cele** = 1R, 2R, 3R, 4R i 5R (`TP_R`) po równo, SL na wejście po TP1 (bez zmian).
+
+Porównanie na prawdziwych świecach M15 z MT5 (sty–kwi 2025 i sie–wrz 2026, spread 0,30 $ na transakcję, bez AI):
+
+| Wariant | 2025: transakcje / R / pipsy | 2026: transakcje / R / pipsy | Razem R | Razem pipsy |
+|---|---|---|---|---|
+| Fibo (stary): SL -0.1272, 5 TP Fibo | 58 / +2,7 / +415 | 45 / +7,4 / −114 | +10,1 | +301 |
+| **ATR: SL 2×ATR, TP 1–5R** | 100 / +12,4 / +1022 | 37 / +16,8 / +3453 | **+29,2** | **+4475** |
+| ATR: SL 2×ATR, TP 1/2/3R | 98 / +9,9 / +821 | 36 / +13,9 / +3244 | +23,8 | +4065 |
+| ATR: SL 1,5×ATR, TP 1–5R | 109 / +11,7 / +655 | 39 / +10,7 / +1731 | +22,4 | +2386 |
+| ATR: SL 1×ATR (za ciasny) | ok. 85 / ok. 0 | ok. 45 / ok. +1 | ok. 0 | ok. +400 |
+
+ATR wygrywa w obu okresach, a sąsiednie ustawienia (1,5–2,5 ATR) też są na plusie, więc to nie jest
+przypadkowo trafiony punkt. To wciąż tylko ok. 4,5 miesiąca danych, więc warto to powtórzyć na dłuższym
+eksporcie z MT5. Powrót do starego zachowania: `RISK_MODE=fib`. Sygnały sweep zostają na 1R/2R.

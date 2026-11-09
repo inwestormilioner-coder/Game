@@ -54,6 +54,9 @@ class FibParams:
     osc: str = ""                            # filtr oscylatora: rsi_trend | rsi_dipNN | macd_zero | macd_hist
     rev_exit: bool = False                   # wyjście na zysku po złamaniu struktury przeciw pozycji
     rev_min_r: float = 0.3                   # minimalny zysk (w R) na zamknięciu, żeby wyjść
+    risk_mode: str = "fib"                   # fib = SL -0.1272, TP na poziomach Fibo | atr = SL i TP z ATR
+    sl_atr: float = 1.5                      # atr: SL = wejście -/+ sl_atr x ATR
+    tp_r: tuple[float, ...] = (1.0, 2.0, 3.0)  # atr: cele jako wielokrotność ryzyka (R)
 
 
 @dataclass
@@ -175,6 +178,16 @@ def _osc_filter(c: np.ndarray, kind: str) -> np.ndarray:
     return (macd - macd.ewm(span=9, adjust=False).mean() > 0).to_numpy()
 
 
+def _risk_levels(f0: float, rng: float, atr_prev: float, p: FibParams) -> tuple[float, float, tuple]:
+    """(stop, SL, cele w jednostkach Fibo tej transakcji). W trybie ATR poziomy liczone z ATR przeliczamy
+    na współrzędne Fibo (f0 + x * rng), więc posty, wykres i MT5 działają bez zmian."""
+    stop = f0 + p.entry_fib * rng
+    if p.risk_mode != "atr":
+        return stop, f0 + p.sl_fib * rng, tuple(p.tps)
+    risk = p.sl_atr * atr_prev
+    return stop, stop - risk, tuple(float(round((stop + r * risk - f0) / rng, 4)) for r in p.tp_r)
+
+
 def _simulate(h, l, c, start: int, entry: float, sl: float, levels: list[float],
               p: FibParams) -> tuple[float, list, bool]:
     """Zarządzanie pozycją BUY od świecy wejścia. Zwraca (wynik w R, wyjścia, czy zamknięta)."""
@@ -254,12 +267,11 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
             # zlecenie stoi na poziomach z ZAMKNIĘCIA poprzedniej świecy (tak jak w bocie na żywo)
             f0, f1 = setup["f0"], setup["f1"]
             rng = f1 - f0
-            stop = f0 + p.entry_fib * rng
-            sl = f0 + p.sl_fib * rng
-            big_enough = rng >= p.min_range_atr * a[t - 1] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk
+            stop, sl, tp_fibs = _risk_levels(f0, rng, a[t - 1], p)
+            big_enough = rng >= p.min_range_atr * a[t - 1] and stop - sl >= p.min_risk
             if big_enough and h[t] >= stop:
                 entry = max(o[t], stop)
-                levels = [x for x in (f0 + f * rng for f in p.tps) if x > entry]
+                levels = [x for x in (f0 + f * rng for f in tp_fibs) if x > entry]
                 if levels:
                     if l[t] <= sl:     # w tej samej świecy także SL - liczymy stratę (kolejność nieznana)
                         r, exits, closed = -1.0, [("sl", t, sl, 1.0)], True
@@ -270,7 +282,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
                     trades.append(FibTrade("BUY", setup["touch"], t, f0, f1, entry, sl, r, exits,
                                            z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], closed,
                                            str(df["time"].iloc[setup["touch"]]) if "time" in df else "",
-                                           tuple(p.tps), "sweep" if setup.get("sweep") else "fibzone"))
+                                           tp_fibs, "sweep" if setup.get("sweep") else "fibzone"))
                     busy_until = exits[-1][1] if closed else len(df)
                     zones = [x for x in zones if x is not z]
                 setup = None
@@ -329,12 +341,12 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
         t = len(df) - 1
         f0, f1 = setup["f0"], setup["f1"]
         rng = f1 - f0
-        stop = f0 + p.entry_fib * rng
-        if rng >= p.min_range_atr * a[t] and (p.entry_fib - p.sl_fib) * rng >= p.min_risk:
+        stop, sl, tp_fibs = _risk_levels(f0, rng, a[t], p)
+        if rng >= p.min_range_atr * a[t] and stop - sl >= p.min_risk:
             z = setup["zone"]
-            pending = FibTrade("BUY", setup["touch"], t, f0, f1, stop, f0 + p.sl_fib * rng, 0.0, [],
+            pending = FibTrade("BUY", setup["touch"], t, f0, f1, stop, sl, 0.0, [],
                                z[0], z[1], setup["f1_idx"], setup["vp"], setup["poc"], False,
-                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "", tuple(p.tps),
+                               str(df["time"].iloc[setup["touch"]]) if "time" in df else "", tp_fibs,
                                "sweep" if setup.get("sweep") else "fibzone")
     return trades, pending
 

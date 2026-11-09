@@ -64,7 +64,10 @@ class Config:
     ai_manager_min_r: float = 0.5
     reply_losses: bool = False  # odpowiadać pod postem także przy stracie
     pip_size: float = 0.1       # wielkość pipsa (złoto: 0.10$)
-    tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone)
+    tp_levels: tuple = (0.382, 0.618, 1.0, 1.272, 1.618)  # cele Fibo (strategia fibzone, RISK_MODE=fib)
+    risk_mode: str = "atr"      # atr = SL i TP z ATR (lepsze w teście) | fib = SL -0.1272, TP na poziomach Fibo
+    sl_atr: float = 2.0         # SL = 2 x ATR od wejścia
+    tp_r: tuple = (1.0, 2.0, 3.0, 4.0, 5.0)  # cele: 1R ... 5R (po równo, SL na wejście po TP1)
     language: str = "pl"
     use_ai: bool = True
     anthropic_model: str = "claude-opus-5-5"
@@ -97,7 +100,7 @@ class Config:
     trade_mt5_server: str = ""
 
     # bot formacji (double/triple top/bottom, H&S, harmoniczne) - patrz pattern_live.py
-    patterns_enabled: bool = False    # obok strategii; STRATEGY=patterns = tylko formacje
+    patterns_enabled: bool = True     # obok strategii; STRATEGY=patterns = tylko formacje
     pattern_kinds: str = "all"        # all | chart | harmonic | lista, np. double_top,gartley,bat
     pattern_depths: tuple = (2.0, 4.0)  # ZigZag w ATR (kilka skal = małe i duże formacje)
     pattern_min_score: int = 1        # min. liczba konfluencji (strefy, Fibo, VP, struktura H1)
@@ -156,6 +159,9 @@ def load_config(env_file: str | None = ".env") -> Config:
         reply_losses=_bool("REPLY_LOSSES", False),
         pip_size=float(_env("PIP_SIZE", "0.1")),
         tp_levels=tuple(float(x) for x in _env("TP_LEVELS", "0.382,0.618,1.0,1.272,1.618").split(",")),
+        risk_mode=_env("RISK_MODE", "atr"),
+        sl_atr=float(_env("SL_ATR", "2.0")),
+        tp_r=tuple(float(x) for x in _env("TP_R", "1,2,3,4,5").split(",")),
         language=_env("POST_LANGUAGE", "pl"),
         use_ai=_bool("USE_AI", True),
         anthropic_model=_env("ANTHROPIC_MODEL", "claude-opus-5-5"),
@@ -182,7 +188,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         trade_mt5_login=int(_env("TRADE_MT5_LOGIN")) if _env("TRADE_MT5_LOGIN") else None,
         trade_mt5_password=_env("TRADE_MT5_PASSWORD"),
         trade_mt5_server=_env("TRADE_MT5_SERVER"),
-        patterns_enabled=_bool("PATTERNS_ENABLED", False),
+        patterns_enabled=_bool("PATTERNS_ENABLED", True),
         pattern_kinds=_env("PATTERN_KINDS", "all"),
         pattern_depths=tuple(float(x) for x in _env("PATTERN_DEPTHS", "2,4").split(",")),
         pattern_min_score=int(_env("PATTERN_MIN_SCORE", "1")),

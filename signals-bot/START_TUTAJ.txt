@@ -1,0 +1,19 @@
+XAUUSD Signal Bot - nowa wersja (formacje + SL/TP z ATR)
+=======================================================
+
+Masz juz stary bot (z plikiem .env):
+  1. Zatrzymaj stary bot (Ctrl+C w oknie 3_START_BOT).
+  2. 0_PRZENIES_USTAWIENIA.bat  - podaj sciezke do starego folderu (np. C:\SignalBot).
+     Przenosi .env, strefy, historie sygnalow i logowanie TradingView oraz dopisuje nowe ustawienia.
+  3. 1_INSTALUJ.bat             - instaluje biblioteki (kilka minut). Notatnik z .env mozesz od razu zamknac.
+  4. 3_START_BOT.bat            - bot dziala: strategia strefa + Fibo (SL/TP z ATR) i bot formacji.
+
+Pierwsza instalacja (bez starego bota):
+  1_INSTALUJ.bat, uzupelnij w .env token Telegrama i chat ID, potem 3_START_BOT.bat.
+
+Opcjonalnie:
+  7_TEST_FORMACJE.bat  - formacje na historii z wynikami i jeden post [TEST].
+  zones.example.json   - skopiuj jako zones.json i wpisz swoje strefy (D1/H4).
+
+Uwaga: analityk AI i opisy "Why" potrzebuja srodkow na koncie Anthropic
+(console.anthropic.com -> Plans and Billing). Bez nich bot dziala, ale z szablonem tekstu i bez filtra AI.

@@ -60,7 +60,8 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     lvl = lambda f: tr.fib0 + f * rng  # noqa: E731
 
     tps = tr.tp_fibs
-    ys = [lvl(-0.1272), lvl(max(tps)), win["low"].min(), win["high"].max()]
+    slf = round((tr.sl - tr.fib0) / rng, 4) if rng else -0.1272   # -0.1272 (Fibo) albo SL z ATR
+    ys = [lvl(slf), lvl(max(tps)), win["low"].min(), win["high"].max()]
     span = max(ys) - min(ys)
     ax.set_ylim(min(ys) - span * 0.05, max(ys) + span * 0.07)
     ylim = ax.get_ylim()
@@ -87,10 +88,10 @@ def render_fib(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timeframe
     # fibonacci levels: lines + non-overlapping labels on the right
     fx = x(max(tr.fib1_idx, start))
     rows = []
-    for f in (-0.1272, 0.0, 0.1272, *tps):
+    for f in (slf, 0.0, 0.1272, *tps):
         if f == 0.1272:
             rows.append((f, f"ENTRY  {lvl(f):.2f}", BLUE, 2.2, "-"))
-        elif f == -0.1272:
+        elif f == slf:
             rows.append((f, f"STOP LOSS  {lvl(f):.2f}", RED, 2.2, "-"))
         elif f in tps:
             rows.append((f, f"TP{tps.index(f) + 1}  {lvl(f):.2f}", GREEN, 1.4, "--"))

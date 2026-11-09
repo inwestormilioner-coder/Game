@@ -163,19 +163,25 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
                                                         zip(win["time"], ema.iloc[start : end + 1])]))
 
     # Fibo: wszystkie poziomy jak w narzędziu TradingView
-    palette = {-0.1272: "#f23645", 0.0: "#787b86", 0.1272: "#2962ff", 0.236: "#f7525f", 0.382: "#ff9800",
+    slf = round((tr.sl - tr.fib0) / rng, 4) if rng else -0.1272   # -0.1272 (Fibo) albo SL z ATR
+    atr_mode = abs(slf + 0.1272) > 1e-3 and tr.kind != "sweep"
+    palette = {slf: "#f23645", 0.0: "#787b86", 0.1272: "#2962ff", 0.236: "#f7525f", 0.382: "#ff9800",
                0.5: "#4caf50", 0.618: "#089981", 0.705: "#00bcd4", 0.786: "#2196f3", 1.0: "#787b86",
                1.272: "#9c27b0", 1.618: "#673ab7"}
     for f in tr.tp_fibs:                     # cele spoza palety (np. 0.636 = 2R w sygnałach sweep)
         palette.setdefault(f, "#089981")
     fib_levels = []
     for f, c in sorted(palette.items(), key=lambda kv: lv(kv[0])):
-        tag = "SL · " if f == -0.1272 else "ENTRY · " if f == 0.1272 else ""
+        tag = "SL · " if f == slf else "ENTRY · " if f == 0.1272 else ""
         if f in tr.tp_fibs:
             tag = f"TP{list(tr.tp_fibs).index(f) + 1} · "
-        if tr.kind == "sweep" and not tag:
-            continue                         # sweep: tylko wejście, SL i TP (bez pośrednich poziomów Fibo)
-        fib_levels.append(dict(f=f"{f:g}", price=float(lv(f)), color=c, label=tag, strong=bool(tag),
+        if (tr.kind == "sweep" or atr_mode) and not tag:
+            continue                         # sweep / ATR: tylko wejście, SL i TP (bez pośrednich poziomów Fibo)
+        name = f"{f:g}"
+        if atr_mode:                         # SL i cele z ATR opisujemy w R, nie w jednostkach Fibo
+            risk = abs(lv(0.1272) - tr.sl) or 1.0
+            name = "-1R" if f == slf else "0R" if f == 0.1272 else f"{abs(lv(f) - lv(0.1272)) / risk:.0f}R"
+        fib_levels.append(dict(f=name, price=float(lv(f)), color=c, label=tag, strong=bool(tag),
                                band=c + "14"))
     seg = df.iloc[tr.fib1_idx : end + 1]
     i0 = tr.fib1_idx + int(np.argmin(seg["low"].to_numpy()) if buy else np.argmax(seg["high"].to_numpy()))
@@ -184,7 +190,7 @@ def render_fib_tv(df: pd.DataFrame, tr: FibTrade, path: Path, title: str, timefr
                          t0=_ts(df["time"].iloc[i0]), p0=float(tr.fib0)))
     if tr.kind == "sweep":                   # rama Fibo sweepu jest umowna - bez ukośnej linii
         fib["diag"] = dict(t1=None, p1=0.0, t0=None, p0=0.0)
-    prices = [win["low"].min(), win["high"].max(), lv(-0.1272), lv(max(tr.tp_fibs))]
+    prices = [win["low"].min(), win["high"].max(), tr.sl, lv(max(tr.tp_fibs))]
     pad = (max(prices) - min(prices)) * 0.03
     vp = None
     prof = volume_profile(df, end, 200, bins=48)

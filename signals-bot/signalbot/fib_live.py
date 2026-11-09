@@ -23,7 +23,10 @@ log = logging.getLogger("signalbot")
 
 def fib_params(cfg: Config) -> FibParams:
     tps = cfg.tp_levels
+    if cfg.risk_mode == "atr":                     # SL = SL_ATR x ATR, cele = TP_R x ryzyko
+        tps = tuple(float(i) for i in range(len(cfg.tp_r)))
     return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
+                     risk_mode=cfg.risk_mode, sl_atr=cfg.sl_atr, tp_r=cfg.tp_r,
                      rev_exit=cfg.ai_exit and not manager_active(cfg), rev_min_r=cfg.ai_exit_min_r,
                      ema_len=cfg.ema_filter, ema_slope=cfg.ema_slope,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
@@ -37,7 +40,7 @@ def sweep_params(cfg: Config):
 
 def sweep_fib_params(cfg: Config) -> FibParams:
     """Sweep: TP 1R (Fibo 0.382) i 2R (0.636) po połowie, SL na wejście po TP1."""
-    return replace(fib_params(cfg), tps=(0.382, 0.636), fractions=(0.5, 0.5), be_after=0)
+    return replace(fib_params(cfg), tps=(0.382, 0.636), fractions=(0.5, 0.5), be_after=0, risk_mode="fib")
 
 
 def scan_all(cfg: Config, df: pd.DataFrame) -> tuple[list[FibTrade], list[FibTrade]]:
