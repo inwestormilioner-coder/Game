@@ -1,15 +1,24 @@
 XAUUSD Signal Bot - nowa wersja (formacje + SL/TP z ATR)
 =======================================================
 
-Masz juz stary bot (z plikiem .env):
+Masz juz stary bot:
   1. Zatrzymaj stary bot (Ctrl+C w oknie 3_START_BOT).
-  2. 0_PRZENIES_USTAWIENIA.bat  - podaj sciezke do starego folderu (np. C:\SignalBot).
-     Przenosi .env, strefy, historie sygnalow i logowanie TradingView oraz dopisuje nowe ustawienia.
-  3. 1_INSTALUJ.bat             - instaluje biblioteki (kilka minut). Notatnik z .env mozesz od razu zamknac.
-  4. 3_START_BOT.bat            - bot dziala: strategia strefa + Fibo (SL/TP z ATR) i bot formacji.
+  2. 1_INSTALUJ.bat  - instaluje biblioteki, SAM znajduje stary folder bota na dysku i przenosi
+                       Twoj .env (token Telegrama, chat ID, klucze), strefy, historie sygnalow
+                       i logowanie TradingView. Gdy nie znajdzie - zapyta o token Telegrama.
+  3. 3_START_BOT.bat - bot dziala: strategia strefa + Fibo (SL/TP z ATR) i bot formacji.
 
-Pierwsza instalacja (bez starego bota):
-  1_INSTALUJ.bat, uzupelnij w .env token Telegrama i chat ID, potem 3_START_BOT.bat.
+Pierwsza instalacja (bez starego bota): 1_INSTALUJ.bat (zapyta o token od @BotFather,
+chat ID znajdzie sam), potem 3_START_BOT.bat.
+
+Cos nie tak z Telegramem?
+  USTAW_TELEGRAM.bat        - wpisz token od @BotFather (chat ID znajdzie sam), wysyla wiadomosc testowa.
+  0_PRZENIES_USTAWIENIA.bat - jeszcze raz przenies ustawienia ze starego folderu.
+  Kazdy start (3_START_BOT.bat) pokazuje, co jest w .env. 'DRY_RUN: true' albo 'token (PUSTE)'
+  = bot nic nie wysle - uruchom USTAW_TELEGRAM.bat.
+
+Chcesz dokladnie jak wczesniej? W .env ustaw RISK_MODE=fib (stare SL/TP)
+i PATTERNS_ENABLED=false (bez formacji).
 
 Opcjonalnie:
   7_TEST_FORMACJE.bat  - formacje na historii z wynikami i jeden post [TEST].

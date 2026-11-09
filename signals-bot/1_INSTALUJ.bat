@@ -20,8 +20,11 @@ if errorlevel 1 (
 )
 python -m playwright install chromium
 pip install MetaTrader5 >nul 2>nul || echo (MetaTrader5 niedostepny - potrzebny tylko przy DATA_SOURCE=mt5)
+if not exist .env python -m signalbot.setup_env migrate
 if not exist .env copy .env.example .env >nul
 echo.
-echo Gotowe. Otwieram plik .env - uzupelnij token Telegrama, chat ID i zrodlo danych, zapisz i zamknij.
-notepad .env
+python -m signalbot.setup_env status
+findstr /r /b "TELEGRAM_BOT_TOKEN=." .env >nul || python -m signalbot.setup_env migrate
+echo.
+echo Gotowe. Uruchom 3_START_BOT.bat
 pause

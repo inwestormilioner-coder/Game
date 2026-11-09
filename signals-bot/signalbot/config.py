@@ -7,9 +7,14 @@ from pathlib import Path
 
 
 def _load_dotenv(path: Path) -> None:
+    from .setup_env import read_text
+
     if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
+        alt = [p for p in (path.with_name(".env.txt"), path.with_name("env.txt")) if p.exists()]
+        if not alt:
+            return
+        path = alt[0]                    # Notatnik zapisał jako .env.txt
+    for line in read_text(path).splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
