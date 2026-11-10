@@ -185,6 +185,49 @@ def telegram() -> None:
     check(send=True)
 
 
+def _ask_number(prompt: str, kind) -> str:
+    """Pyta do skutku o liczbę (Enter = puste). Przecinek dziesiętny też działa."""
+    while True:
+        v = input(prompt).strip().replace(",", ".")
+        try:
+            return str(kind(v)) if v else ""
+        except ValueError:
+            print("  To musi być liczba, spróbuj jeszcze raz.")
+
+
+def trade() -> None:
+    """Auto-trading na koncie demo MT5: zapisuje TRADE_* w .env (hasło zostaje tylko na tym komputerze)."""
+    print("=== Auto-trading na koncie DEMO (MT5) ===")
+    cur = parse(read_text(ENV)) if ENV.exists() else {}
+    same = cur.get("DATA_SOURCE", "") == "mt5"
+    print("Terminal MT5 musi być zainstalowany, zalogowany na konto demo i mieć włączony 'Algo Trading'.")
+    if same:
+        print(f"Dane bierzesz już z MT5 ({cur.get('MT5_SERVER') or 'zalogowany terminal'}).")
+    other = input("Grać na TYM SAMYM terminalu, z którego bot czyta dane? [T/n]: ").strip().lower() if same else "n"
+    vals = {"TRADE_ENABLED": "true", "TRADE_ALLOW_REAL": "false"}
+    if other in ("n", "nie", "no"):
+        print("Podaj konto demo do handlu (Enter = puste / bez zmian).")
+        path = input("Ścieżka do terminal64.exe brokera (np. C:\\Program Files\\Vantage MT5\\terminal64.exe): ").strip().strip('"')
+        login = _ask_number("Numer konta demo (login, same cyfry): ", int)
+        password = input("Hasło do konta demo: ").strip()
+        server = input("Serwer (jak w oknie logowania MT5, np. VantageInternational-Demo): ").strip()
+        for k, v in (("TRADE_MT5_PATH", path), ("TRADE_MT5_LOGIN", login), ("TRADE_MT5_PASSWORD", password),
+                     ("TRADE_MT5_SERVER", server)):
+            if v:
+                vals[k] = v
+    else:
+        vals.update(TRADE_MT5_PATH="", TRADE_MT5_LOGIN="", TRADE_MT5_PASSWORD="", TRADE_MT5_SERVER="")
+    sym = input(f"Symbol złota u brokera, jak w 'Market Watch' [{cur.get('TRADE_SYMBOL') or cur.get('SYMBOL') or 'XAUUSD'}]: ").strip()
+    if sym:
+        vals["TRADE_SYMBOL"] = sym
+    risk = _ask_number(f"Ryzyko na sygnał w % salda [{cur.get('TRADE_RISK_PCT', '1.0')}]: ", float)
+    if risk:
+        vals["TRADE_RISK_PCT"] = risk
+        vals["TRADE_LOT"] = "0"
+    set_keys(ENV, vals)
+    print("Zapisane w .env. Bot gra tylko na koncie DEMO (na realnym sam się wyłączy).")
+
+
 def check(send: bool = True) -> None:
     print("\n=== Sprawdzenie ustawień ===")
     env = find_env(HERE)
@@ -205,6 +248,9 @@ def check(send: bool = True) -> None:
     print(f"Strategia:        {v.get('STRATEGY', 'fibzone')}, SL/TP: {v.get('RISK_MODE', 'atr')}, "
           f"formacje: {v.get('PATTERNS_ENABLED', 'true')}")
     print(f"AI (Anthropic):   klucz {mask(v.get('ANTHROPIC_API_KEY', ''))}")
+    print(f"Auto-trading MT5: {'WŁĄCZONY' if on('TRADE_ENABLED') else 'wyłączony'}"
+          + (f", symbol {v.get('TRADE_SYMBOL') or v.get('SYMBOL', '')}, ryzyko {v.get('TRADE_RISK_PCT', '1.0')}%"
+             f", konto {v.get('TRADE_MT5_LOGIN') or 'ten sam terminal co dane'}" if on('TRADE_ENABLED') else ""))
     token, chat = v.get("TELEGRAM_BOT_TOKEN", ""), v.get("TELEGRAM_CHAT_ID", "")
     if send and token and chat:
         try:
@@ -217,4 +263,4 @@ def check(send: bool = True) -> None:
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
     {"migrate": lambda: migrate(sys.argv[2] if len(sys.argv) > 2 else None), "telegram": telegram,
-     "check": check, "status": lambda: check(send=False)}[cmd]()
+     "check": check, "trade": trade, "status": lambda: check(send=False)}[cmd]()

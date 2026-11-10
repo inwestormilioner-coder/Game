@@ -20,6 +20,10 @@ Cos nie tak z Telegramem?
 Chcesz dokladnie jak wczesniej? W .env ustaw RISK_MODE=fib (stare SL/TP)
 i PATTERNS_ENABLED=false (bez formacji).
 
+Granie na koncie DEMO (MT5):
+  USTAW_KONTO_DEMO.bat - zapyta o konto demo, symbol i ryzyko, zrobi test zlecenia.
+  Potem 3_START_BOT.bat. Na koncie realnym bot sam sie wylaczy.
+
 Opcjonalnie:
   7_TEST_FORMACJE.bat  - formacje na historii z wynikami i jeden post [TEST].
   zones.example.json   - skopiuj jako zones.json i wpisz swoje strefy (D1/H4).
