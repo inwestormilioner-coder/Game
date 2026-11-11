@@ -227,6 +227,7 @@ a potem publikuje na te same kanały (Telegram, Threads, X) z własnym wykresem.
 |---|---|---|---|
 | Double / Triple Top i Bottom | Zamknięcie świecy za neckline (najniższy dołek / najwyższy szczyt między szczytami / dołkami) | Za szczytami / dołkami + 0,25 ATR | Wysokość formacji od neckline x1.0 i x1.618 |
 | Head & Shoulders (i odwrócona) | Zamknięcie za neckline poprowadzoną przez oba dołki (może być pochyła) | Za prawym ramieniem | Jak wyżej |
+| Rising Wedge (SELL) / Falling Wedge (BUY), odwrócenie albo kontynuacja | Zamknięcie za dolną / górną linią zbiegającego się klina (min. 5 dotknięć, podobne odbicia) | Za ostatnim szczytem / dołkiem | Szerokość klina u podstawy x0.618 i x1.0 od wybicia |
 | Gartley, Bat, Alt Bat, Butterfly, Crab, Deep Crab, Cypher, Shark | D w PRZ (proporcje Fibo XA / XC, BC, AB/XA) i świeca odrzucenia | Za PRZ / D + 0,25 ATR | 0.382 i 0.618 ruchu A-D |
 
 Połowa pozycji na TP1, SL na wejście, reszta na ostatnim celu. Odpowiedzi pod postem liczy ta sama symulacja.
@@ -268,3 +269,11 @@ Porównanie na prawdziwych świecach M15 z MT5 (sty–kwi 2025 i sie–wrz 2026,
 ATR wygrywa w obu okresach, a sąsiednie ustawienia (1,5–2,5 ATR) też są na plusie, więc to nie jest
 przypadkowo trafiony punkt. To wciąż tylko ok. 4,5 miesiąca danych, więc warto to powtórzyć na dłuższym
 eksporcie z MT5. Powrót do starego zachowania: `RISK_MODE=fib`. Sygnały sweep zostają na 1R/2R.
+
+### Formacje na prawdziwych danych (uczciwie)
+
+Test na świecach M15 z MT5 (sty–kwi 2025 i sie–wrz 2026), bez filtra AI, połowa na TP1 i SL na wejście:
+wszystkie formacje razem −14,7R na 78 transakcjach, przy `PATTERN_MIN_SCORE=2` −10,2R / 66, przy 3 −6,4R / 43.
+Najbliżej zera są głowa z ramionami i formacje z wieloma konfluencjami; harmoniczne i double top wypadają najsłabiej.
+Formacje nie są zagrywane na MT5 (tylko publikowane). Zanim pójdą na publiczny kanał, warto je sprawdzić
+z filtrem AI albo na dłuższych danych.

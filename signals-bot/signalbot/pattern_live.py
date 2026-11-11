@@ -45,6 +45,12 @@ def build_pattern_post(pt: Pattern, why: tuple[str, str], verdict: Verdict | Non
     tps = " · ".join(f"TP{i + 1} {x:.2f}" for i, x in enumerate(pt.tps))
     if pt.family == "harmonic":
         setup = f"🧩 D completed in the PRZ {pt.prz[0]:.2f}–{pt.prz[1]:.2f} and got rejected."
+    elif "wedge" in pt.kind:
+        side, line = ("below", "wedge support") if pt.direction == "SELL" else ("above", "wedge resistance")
+        ctx = {"reversal": "reversal after the move into it",
+               "continuation": "the prior trend resumes"}.get(pt.details.get("context"), "")
+        setup = (f"🧩 Candle closed {side} the {line} {pt.details.get('neckline_break', 0):.2f}"
+                 + (f" ({ctx})." if ctx else "."))
     else:
         side = "below" if pt.direction == "SELL" else "above"
         setup = f"🧩 Candle closed {side} the neckline {pt.details.get('neckline_break', 0):.2f}."

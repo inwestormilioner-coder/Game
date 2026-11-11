@@ -147,3 +147,31 @@ def test_live_posts_once_and_replies_on_tp(tmp_path, monkeypatch):
     st = State(tmp_path / "s.json").signals[pt.id]
     assert st["status"] == "closed" and st["outcome"] == "tp2"
     assert any("TP1 hit" in t for t, _ in sent) and any("TP2 hit" in t for t, _ in sent)
+
+
+WEDGE = [(14, 8), (3, 8), (17, 8), (8.5, 8), (19, 8), (-6, 12)]
+
+
+@pytest.mark.parametrize("pre,sign,kind,direction,context", [
+    ([(-30, 10), (0, 20)], 1, "rising_wedge", "SELL", "reversal"),        # klin po wzroście -> spadek
+    ([(40, 10), (0, 20)], 1, "rising_wedge", "SELL", "continuation"),     # klin w spadku -> spadek wraca
+    ([(-30, 10), (0, 20)], -1, "falling_wedge", "BUY", "reversal"),
+    ([(40, 10), (0, 20)], -1, "falling_wedge", "BUY", "continuation"),
+])
+def test_wedges(pre, sign, kind, direction, context):
+    df = path_df(WARM + [(sign * a, n) for a, n in pre + WEDGE])
+    pats = [x for x in find_patterns(df, P) if "wedge" in x.kind]
+    assert [(x.kind, x.direction, x.details["context"]) for x in pats] == [(kind, direction, context)]
+    pt = pats[0]
+    last = pt.points[-1][1]                                   # ostatni szczyt (SELL) / dołek (BUY)
+    if direction == "SELL":
+        assert pt.sl > last and pt.tps[0] < pt.entry < pt.details["neckline_break"]
+    else:
+        assert pt.sl < last and pt.tps[0] > pt.entry > pt.details["neckline_break"]
+    assert pt.rr >= P.min_rr
+
+
+def test_no_wedge_from_one_big_swing():
+    """Jeden wielki ruch + małe odbicia to nie klin (odcinki muszą być podobne)."""
+    df = path_df(WARM + [(-30, 10), (0, 20), (12, 8), (5, 8), (15, 8), (9, 8), (18, 8), (-2, 10)])
+    assert not [x for x in find_patterns(df, P) if "wedge" in x.kind and x.points[0][0] < 60]

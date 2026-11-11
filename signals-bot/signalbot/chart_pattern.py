@@ -97,7 +97,12 @@ function draw() {
   if (D.neck) {
     const x1 = X(D.neck[0].time), x2 = X(D.neck[1].time);
     s += `<line x1="${x1}" y1="${Y(D.neck[0].price)}" x2="${x2}" y2="${Y(D.neck[1].price)}" stroke="#ff9800" stroke-width="2" stroke-dasharray="8 5"/>`;
-    s += `<text x="${x1 + 4}" y="${Y(D.neck[0].price) + 16}" font-size="12" font-weight="700" fill="#ff9800">NECKLINE</text>`;
+    if (D.upper) s += `<text x="${x2 - 6}" y="${Y(D.neck[1].price) + (D.color === '#f23645' ? 18 : -10)}" text-anchor="end" font-size="12" font-weight="700" fill="#ff9800">${D.neckLabel}</text>`;
+    else s += `<text x="${x1 + 4}" y="${Y(D.neck[0].price) + 16}" font-size="12" font-weight="700" fill="#ff9800">NECKLINE</text>`;
+  }
+  if (D.upper) {
+    const x1 = X(D.upper[0].time), x2 = X(D.upper[1].time);
+    s += `<line x1="${x1}" y1="${Y(D.upper[0].price)}" x2="${x2}" y2="${Y(D.upper[1].price)}" stroke="#ff9800" stroke-width="2" stroke-dasharray="8 5"/>`;
   }
   const xc = X(D.confirm.time);
   if (xc !== null) s += `<circle cx="${xc}" cy="${Y(D.confirm.price)}" r="6" fill="none" stroke="#2962ff" stroke-width="2.5"/>`;
@@ -165,13 +170,20 @@ def chart_data(df: pd.DataFrame, pt: Pattern, title: str, timeframe: str, handle
     if pt.neckline:
         (i1, p1), (i2, p2) = pt.neckline
         neck = [dict(time=tm(i1), price=float(p1)), dict(time=tm(i2), price=float(p2))]
+    upper = None
+    if pt.details.get("upper_line"):
+        (i1, p1), (i2, p2) = pt.details["upper_line"]
+        upper = [dict(time=tm(i1), price=float(p1)), dict(time=tm(i2), price=float(p2))]
+        sell_line = "WEDGE SUPPORT" if sell else "WEDGE RESISTANCE"
     conf = " · ".join(pt.confluences) if pt.confluences else "no extra confluence"
+    ctx = f" ({pt.details['context']})" if pt.details.get("context") else ""
     header = (f"<b>{title} · {timeframe}</b>{(' · ' + source) if source else ''}<br>"
-              f"<span style='color:{col};font-weight:700'>{pt.name} · {pt.direction}</span>"
+              f"<span style='color:{col};font-weight:700'>{pt.name}{ctx} · {pt.direction}</span>"
               f" &nbsp;Entry {pt.entry:.2f} &nbsp;SL {pt.sl:.2f}<br>"
               f"<span style='font-size:13px;color:#5d606b'>Confluence {pt.score}: {conf}</span>")
     return dict(candles=candles, future=future, levels=levels, points=pts, harmonic=harmonic,
-                ratioLines=ratio_lines, zones=zones, neck=neck, color=col, handle=handle, header=header,
+                ratioLines=ratio_lines, zones=zones, neck=neck, color=col, upper=upper,
+                neckLabel=sell_line if upper else "NECKLINE", handle=handle, header=header,
                 prz=dict(**{"from": tm(pt.points[3][0])}, bot=float(pt.prz[0]), top=float(pt.prz[1])) if pt.prz else None,
                 confirm=dict(time=_ts(df["time"].iloc[end]), price=float(pt.entry)),
                 minPrice=float(min(prices) - pad), maxPrice=float(max(prices) + pad))
@@ -220,6 +232,9 @@ def render_pattern_mpl(df: pd.DataFrame, pt: Pattern, path: Path, title: str, ti
     if pt.neckline:
         (i1, p1), (i2, p2) = pt.neckline
         ax.plot([i1 - start, i2 - start + 6], [p1, p2 + (p2 - p1) / max(1, i2 - i1) * 6], "--", color="#ff9800", lw=1.8)
+    if pt.details.get("upper_line"):
+        (i1, p1), (i2, p2) = pt.details["upper_line"]
+        ax.plot([i1 - start, i2 - start], [p1, p2], "--", color="#ff9800", lw=1.8)
     if pt.prz:
         ax.axhspan(pt.prz[0], pt.prz[1], xmin=0.6, color="#9c27b0", alpha=0.12)
     n = len(w) + 15

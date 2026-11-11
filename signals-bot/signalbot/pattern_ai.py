@@ -27,6 +27,10 @@ targets, confluences with the trader's supply/demand zones, Fibonacci levels, Vo
 structure) plus the chart. Pattern families:
 - Double / triple top & bottom, head & shoulders (and inverse): confirmed by a candle close through the
   neckline; targets are the pattern height projected from the neckline (x1.0 and x1.618).
+- Rising wedge (bearish) / falling wedge (bullish): converging trendlines with higher highs and higher lows
+  (or lower highs and lower lows), confirmed by a close through the support (resistance) line; "context"
+  says whether it reverses the move into it or continues the prior trend; stop beyond the last swing,
+  targets 0.618 and 1.0 of the wedge width at its start.
 - Harmonic XABCD (Gartley, Bat, Alternate Bat, Butterfly, Crab, Deep Crab, Cypher, Shark): D completed
   inside the Potential Reversal Zone and the candle rejected it; targets 0.382 and 0.618 of AD.
 Judge like a discretionary trader would before posting it to a public channel: is the pattern clean and
@@ -145,6 +149,14 @@ def template_why(pt: Pattern) -> tuple[str, str]:
         long = (f"A {pt.name} completed: point D reached the PRZ {lo:.2f}–{hi:.2f} defined by the "
                 f"{g['d_ref']:g} {g['d_of']} ratio and the candle rejected it. Confluence: {conf}.")
         short = f"{pt.name} completed in the PRZ {lo:.2f}–{hi:.2f} and rejected it."
+    elif "wedge" in pt.kind:
+        neck = pt.details.get("neckline_break", 0.0)
+        line = "support" if pt.direction == "SELL" else "resistance"
+        what = ("higher highs and higher lows" if pt.direction == "SELL" else "lower highs and lower lows")
+        kind = "a reversal" if pt.details.get("context") == "reversal" else "a continuation of the prior trend"
+        long = (f"{pt.name}: price made {what} in a narrowing range and a candle closed through the wedge "
+                f"{line} at {neck:.2f}, {kind}. Targets use the wedge width at its start. Confluence: {conf}.")
+        short = f"{pt.name} broke its {line} at {neck:.2f} ({pt.details.get('context', '')})."
     else:
         neck = pt.details.get("neckline_break", 0.0)
         side = "below" if pt.direction == "SELL" else "above"

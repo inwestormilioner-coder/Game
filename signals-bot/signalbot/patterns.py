@@ -25,14 +25,15 @@ import pandas as pd
 from .structure import find_swings, volume_profile
 
 CHART_KINDS = ("double_top", "double_bottom", "triple_top", "triple_bottom", "head_shoulders",
-               "inv_head_shoulders")
+               "inv_head_shoulders", "rising_wedge", "falling_wedge")
 HARMONIC_KINDS = ("gartley", "bat", "alt_bat", "butterfly", "crab", "deep_crab", "cypher", "shark")
 ALL_KINDS = CHART_KINDS + HARMONIC_KINDS
 
 NAMES = {
     "double_top": "Double Top", "double_bottom": "Double Bottom", "triple_top": "Triple Top",
     "triple_bottom": "Triple Bottom", "head_shoulders": "Head & Shoulders",
-    "inv_head_shoulders": "Inverse Head & Shoulders", "gartley": "Gartley", "bat": "Bat",
+    "inv_head_shoulders": "Inverse Head & Shoulders", "rising_wedge": "Rising Wedge",
+    "falling_wedge": "Falling Wedge", "gartley": "Gartley", "bat": "Bat",
     "alt_bat": "Alternate Bat", "butterfly": "Butterfly", "crab": "Crab", "deep_crab": "Deep Crab",
     "cypher": "Cypher", "shark": "Shark",
 }
@@ -66,6 +67,10 @@ class PatternParams:
     max_chase: float = 0.35                  # wejście nie dalej niż tyle wysokości za neckline
     sl_buf_atr: float = 0.25                 # bufor SL za formacją / PRZ
     chart_tps: tuple[float, ...] = (1.0, 1.618)   # cele formacji klasycznych: x wysokość od neckline
+    wedge_tps: tuple[float, ...] = (0.618, 1.0)   # kliny: x szerokość klina u podstawy, od punktu wybicia
+    wedge_fit_atr: float = 0.5               # klin: max odchyłka szczytów / dołków od linii (ATR)
+    wedge_min_bars: int = 15                 # klin: min. długość
+    wedge_squeeze: float = 0.75              # klin: szerokość na końcu < tyle x szerokość na początku
     harm_tps: tuple[float, ...] = (0.382, 0.618)  # cele harmonicznych: retracement ruchu A-D od D
     ratio_slack: float = 0.03                # tolerancja proporcji harmonicznych (względna)
     rej_atr: float = 0.3                     # harmoniczne: minimalne odbicie zamknięcia od D (ATR)
@@ -243,6 +248,62 @@ def _chart_candidates(seq: list[Pivot], a_t: float, p: PatternParams) -> list[di
                                 neck=[(l1.idx, l1.price), (l2.idx, l2.price)], slope=slope,
                                 height=h2.price - (l1.price + slope * (h2.idx - l1.idx)),
                                 extreme=h3.price, last=h3))
+    return out
+
+
+def _line(pts: list) -> tuple[float, float]:
+    """Prosta (nachylenie, wyraz wolny) dopasowana do pivotów metodą najmniejszych kwadratów."""
+    x = np.array([q.idx for q in pts], dtype=float)
+    y = np.array([q.price for q in pts], dtype=float)
+    if len(pts) == 2:
+        m = (y[1] - y[0]) / (x[1] - x[0])
+        return m, y[0] - m * x[0]
+    m, b = np.polyfit(x, y, 1)
+    return float(m), float(b)
+
+
+def _wedge_candidates(seq: list[Pivot], a_t: float, p: PatternParams) -> list[dict]:
+    """Klin rosnący (Rising Wedge, SELL): coraz wyższe szczyty i dołki, linie zbiegają się (dołki rosną
+    szybciej niż szczyty). Klin spadający (BUY) liczymy tym samym kodem na lustrze cen.
+    Sygnał: zamknięcie pod dolną linią. Kontekst: odwrócenie po wzroście albo kontynuacja spadku."""
+    tail = _tops_tail(seq, "H")
+    out = []
+    if not tail or len(tail) < 5:
+        return out
+    for size in (6, 5):                      # L H L H L H (3+3) albo H L H L H (3 szczyty, 2 dołki)
+        if len(tail) < size:
+            continue
+        pts = tail[-size:]
+        hs = [q for q in pts if q.kind == "H"]
+        ls = [q for q in pts if q.kind == "L"]
+        if len(hs) < 2 or len(ls) < 2:
+            continue
+        if not all(b.price > a.price for a, b in zip(hs, hs[1:])) or \
+                not all(b.price > a.price for a, b in zip(ls, ls[1:])):
+            continue
+        legs = [abs(b.price - a.price) for a, b in zip(pts, pts[1:])]
+        gaps = [b.idx - a.idx for a, b in zip(pts, pts[1:])]
+        if max(legs) > 3 * min(legs) or max(gaps) > 3 * min(gaps):
+            continue                         # klin = podobne odbicia między liniami, nie jeden wielki ruch
+        mu, bu = _line(hs)
+        ml, bl = _line(ls)
+        if not (ml > mu > 0):                # obie rosną, dolna szybciej = zbieżne
+            continue
+        fit = max([abs(q.price - (mu * q.idx + bu)) for q in hs] + [abs(q.price - (ml * q.idx + bl)) for q in ls])
+        if fit > p.wedge_fit_atr * a_t:
+            continue
+        i0, i1 = pts[0].idx, pts[-1].idx
+        if i1 - i0 < p.wedge_min_bars:
+            continue
+        w0 = (mu - ml) * i0 + bu - bl
+        w1 = (mu - ml) * i1 + bu - bl
+        if w0 < p.min_height_atr * a_t or w1 <= 0 or w1 > p.wedge_squeeze * w0:
+            continue
+        apex = (bl - bu) / (mu - ml)
+        labels = ["HH" if q.kind == "H" else "HL" for q in pts]
+        out.append(dict(kind="rising_wedge", pts=pts, labels=labels, neck=[(i0, ml * i0 + bl), (i1, ml * i1 + bl)],
+                        slope=ml, upper=(mu, bu), height=w0, extreme=hs[-1].price, last=hs[-1], apex=apex))
+        break
     return out
 
 
@@ -473,7 +534,7 @@ def score_pattern(pt: Pattern, df: pd.DataFrame, zones: list[Zone], a: np.ndarra
         keys = [pt.points[-1][1]]
         band = (min(pt.prz[0], keys[0]) - 0.3 * a_t, max(pt.prz[1], keys[0]) + 0.3 * a_t)
     else:
-        keys = [pr for _, pr, lab in pt.points if lab]
+        keys = [pr for _, pr, lab in pt.points if lab and lab not in ("HL", "LH")]
         band = (min(keys) - 0.3 * a_t, max(keys) + 0.3 * a_t)
     conf, det = [], {}
 
@@ -545,13 +606,15 @@ def _scan_side(df: pd.DataFrame, p: PatternParams, depth: float, top: bool, a: n
         a_t = float(a[t])
         # --- klasyczne: zbieraj kandydatów, potwierdzaj zamknięciem za neckline
         if want_chart:
-            for cd in _chart_candidates(seq, a_t, p):
+            for cd in _chart_candidates(seq, a_t, p) + _wedge_candidates(seq, a_t, p):
                 key = f"{cd['kind']}-{cd['pts'][0].idx}"   # rosnący prowizoryczny szczyt nadpisuje kandydata
                 if key not in fired:
                     pending[key] = cd
             for key, cd in list(pending.items()):
                 last = cd["last"]
-                if t - last.idx > p.max_break_wait or h[t] > cd["extreme"] + p.eq_tol_atr * a_t:
+                broke_up = (c[t] > cd["upper"][0] * t + cd["upper"][1] + p.eq_tol_atr * a_t) if "upper" in cd \
+                    else h[t] > cd["extreme"] + p.eq_tol_atr * a_t
+                if t - last.idx > p.max_break_wait or broke_up or t > cd.get("apex", np.inf):
                     pending.pop(key)
                     fired.add(key)                       # unieważniona - nie wraca
                     continue
@@ -568,21 +631,32 @@ def _scan_side(df: pd.DataFrame, p: PatternParams, depth: float, top: bool, a: n
                     sl = float(max(x.price for x in cd["pts"] if x.kind == "H") + p.sl_buf_atr * a_t)
                     if cd["kind"] == "head_shoulders":   # H&S: SL za prawym ramieniem
                         sl = float(cd["last"].price + p.sl_buf_atr * a_t)
-                    tps = [float(neck - f * height) for f in p.chart_tps]
+                    if cd["kind"] == "rising_wedge":     # klin: SL nad ostatnim szczytem, cel z szerokości klina
+                        sl = float(max(h[last.idx : t + 1].max(), last.price) + p.sl_buf_atr * a_t)
+                    tps = [float(neck - f * height) for f in (p.wedge_tps if "upper" in cd else p.chart_tps)]
                     if sl <= entry or tps[-1] >= entry or (entry - tps[-1]) / (sl - entry) < p.min_rr:
                         continue
                     pts = [(x.idx, x.price, lab) for x, lab in zip(cd["pts"], cd["labels"])]
                     kind = cd["kind"]
                     if not top:
                         kind = {"double_top": "double_bottom", "triple_top": "triple_bottom",
-                                "head_shoulders": "inv_head_shoulders"}[kind]
-                        pts = [(i, pr, lab.replace("Top", "Bottom")) for i, pr, lab in pts]
+                                "head_shoulders": "inv_head_shoulders", "rising_wedge": "falling_wedge"}[kind]
+                        pts = [(i, pr, {"HH": "LL", "HL": "LH"}.get(lab, lab.replace("Top", "Bottom")))
+                               for i, pr, lab in pts]
                     if kind not in want_chart:
                         continue
                     ni = [(i, _neck_at(cd, i)) for i in (cd["neck"][0][0], t)]
+                    det = {"neckline_break": round(neck, 2)}
+                    if "upper" in cd:
+                        mu, bu = cd["upper"]
+                        i0 = cd["pts"][0].idx
+                        det["upper_line"] = [(i0, mu * i0 + bu), (t, mu * t + bu)]
+                        # kontekst jak na grafice: klin po ruchu w jego stronę = odwrócenie, inaczej kontynuacja
+                        j = max(0, i0 - (cd["last"].idx - i0))
+                        up_before = c[j] < cd["pts"][0].price - 0.5 * height
+                        det["context"] = "reversal" if up_before else "continuation"
                     out.append(Pattern(kind, "SELL", pts, t, entry, sl, tps, depth, neckline=ni,
-                                       ratios={"height": round(height, 2)},
-                                       details={"neckline_break": round(neck, 2)}))
+                                       ratios={"height": round(height, 2)}, details=det))
         # --- harmoniczne niedźwiedzie (W): X szczyt, A dołek, B szczyt, C dołek, D szczyt - bieżące,
         # jeszcze niepotwierdzone ekstremum nogi C->D. Bycze liczą się tym samym kodem na lustrze cen.
         if want_harm and len(seq) >= 5 and seq[-1].confirmed_at == -1:
@@ -623,6 +697,8 @@ def _flip_pattern(pt: Pattern) -> Pattern:
         pt.prz = [-pt.prz[1], -pt.prz[0]]
     if "neckline_break" in pt.details:
         pt.details["neckline_break"] = -pt.details["neckline_break"]
+    if "upper_line" in pt.details:
+        pt.details["upper_line"] = [(i, -pr) for i, pr in pt.details["upper_line"]]
     return pt
 
 
