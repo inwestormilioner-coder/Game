@@ -1,0 +1,48 @@
+/* Ninja Trading Group — design tokens.
+   Single deliberate dark world: obsidian, midnight navy, graphite and silver,
+   with champagne gold as a rare detail and electric blue for what you can press. */
+:root {
+  --obsidian: #080a0f;
+  --navy: #0d1421;
+  --surface: #172235;
+  --gold: #c6a15b;
+  --gold-soft: rgba(198, 161, 91, 0.55);
+  --blue: #5b8fe8;
+  --blue-hi: #7ea8f0;
+  --blue-ink: #050a14;
+  --silver: #d8dee8;
+  --muted: #7d8798;
+  --hairline: rgba(216, 222, 232, 0.1);
+  --hairline-hi: rgba(216, 222, 232, 0.22);
+
+  --metal: linear-gradient(180deg, #ffffff 0%, #d8dee8 46%, #97a1b2 100%);
+
+  --f-display: 'Archivo', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --f-body: 'Inter', 'Helvetica Neue', Arial, system-ui, sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Type scale, phone first. */
+  --t-label: 0.72rem;
+  --t-small: 0.86rem;
+  --t-body: 1.02rem;
+  --t-lede: clamp(1.08rem, 1rem + 0.5vw, 1.3rem);
+  --t-h3: clamp(1.9rem, 1.2rem + 3.4vw, 3.4rem);
+  --t-h2: clamp(2.5rem, 1.2rem + 7.4vw, 5.6rem);
+  --t-hero: clamp(3.1rem, 0.6rem + 12.4vw, 8.4rem);
+  --t-giant: clamp(3.9rem, 0.6rem + 17vw, 12.5rem);
+
+  --gutter: max(20px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  --head-h: 64px;
+  --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+
+  color-scheme: dark;
+}
+
+@media (min-width: 900px) {
+  :root {
+    --gutter: max(48px, env(safe-area-inset-left, 0px));
+    --gutter-r: max(48px, env(safe-area-inset-right, 0px));
+    --head-h: 76px;
+  }
+}

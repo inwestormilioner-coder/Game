@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:website": "vite --config website/vite.config.mjs",
+    "typecheck:website": "tsc -p website",
+    "build:website": "tsc -p website && vite build --config website/vite.config.mjs",
+    "preview:website": "vite preview --config website/vite.config.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",

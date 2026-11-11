@@ -1,5 +1,8 @@
 # Open World RPG — prototyp
 
+> Strona Ninja Trading Group znajduje się w `website/` (osobna aplikacja Vite,
+> zob. `website/README.md`, polecenia `npm run dev:website` / `build:website`).
+
 Gra 3D w przeglądarce (mobile-first) łącząca klimat Tibii (open world, exp,
 potwory, loot) z prostotą sterowania rodem z Mobile Legends (wirtualny
 joystick + przycisk ataku). Napisana w TypeScript + [Three.js](https://threejs.org/),

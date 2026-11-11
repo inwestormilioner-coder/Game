@@ -1,0 +1,758 @@
+/* =================================================================
+   Chapters + scroll-scrub effects.
+
+   Without the `scrub` class (reduced motion, or before scripts run)
+   every chapter is a normal full-height section with all content
+   visible. With `scrub`, each chapter becomes a tall track with a
+   pinned stage, and elements read --in / --out / --v (written by
+   ScrollScrub) to animate.
+   ================================================================= */
+
+.chapter {
+  position: relative;
+}
+
+.stage {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.6rem;
+  padding: calc(var(--head-h) + env(safe-area-inset-top, 0px) + 2.5rem) var(--gutter-r)
+    calc(3.5rem + env(safe-area-inset-bottom, 0px)) var(--gutter);
+  max-width: 1440px;
+  margin-inline: auto;
+}
+
+.scrub .chapter {
+  height: calc(var(--len, 1) * 100vh);
+  height: calc(var(--len, 1) * 100svh);
+}
+.scrub .stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: calc(var(--head-h) + env(safe-area-inset-top, 0px) + 1.2rem);
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+}
+
+.stage-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -1;
+  opacity: 0.85;
+}
+
+/* ---------- Effects (only while scrubbing) ---------- */
+.scrub .fx-fade {
+  opacity: var(--v, 1);
+}
+.scrub .fx-lift {
+  opacity: var(--v, 1);
+  transform: translate3d(0, calc((1 - var(--in, 1)) * 34px - var(--out, 0) * 34px), 0);
+}
+.scrub .fx-wipe {
+  clip-path: inset(-0.1em calc((1 - var(--in, 1)) * 100%) -0.1em 0);
+}
+.scrub .fx-blur {
+  opacity: var(--v, 1);
+  filter: blur(calc((1 - var(--in, 1)) * 10px));
+  letter-spacing: calc(0.005em + (1 - var(--in, 1)) * 0.12em);
+}
+.scrub .fx-scale {
+  opacity: var(--v, 1);
+  transform: scale(calc(0.82 + var(--in, 1) * 0.18));
+}
+.scrub .fx-lift,
+.scrub .fx-fade,
+.scrub .fx-scale {
+  will-change: opacity, transform;
+}
+
+/* Stacked beats share one slot while scrubbing; in static mode they flow. */
+.stack {
+  display: grid;
+  gap: 2.6rem;
+}
+.scrub .stack {
+  gap: 0;
+  align-items: center;
+}
+.scrub .stack > * {
+  grid-area: 1 / 1;
+}
+
+/* =================================================================
+   01 · INTRODUCTION
+   ================================================================= */
+.ch-intro .stage {
+  justify-content: flex-end;
+  padding-bottom: calc(22svh + env(safe-area-inset-bottom, 0px));
+}
+/* On phones the masthead already carries the brand, and the scroll cue
+   does the job of the secondary link: keep the first screen calm. */
+@media (max-width: 599px) {
+  .intro-eyebrow,
+  .intro-actions .btn-text {
+    display: none;
+  }
+}
+@media (max-width: 599px) and (max-height: 640px) {
+  .ch-intro .stage {
+    padding-bottom: calc(15svh + env(safe-area-inset-bottom, 0px));
+  }
+  .scroll-cue i {
+    height: 24px;
+  }
+}
+.intro-content {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 980px;
+}
+.scrub .intro-content {
+  opacity: calc(1 - var(--out, 0));
+  transform: translate3d(0, calc(var(--out, 0) * -70px), 0) scale(calc(1 + var(--out, 0) * 0.06));
+  filter: blur(calc(var(--out, 0) * 8px));
+  transform-origin: 50% 80%;
+}
+.intro-eyebrow .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--gold);
+  transform: rotate(45deg);
+}
+.intro-title {
+  font-size: var(--t-hero);
+  line-height: 0.9;
+}
+@media (min-width: 600px) {
+  .intro-title {
+    font-size: min(var(--t-hero), 10.5svh);
+  }
+}
+.intro-title .line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.03em;
+}
+.intro-title .line > span {
+  display: inline-block;
+  background: var(--metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.intro-title .line-quiet > span {
+  background: none;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1px rgba(216, 222, 232, 0.6);
+}
+.intro-lede {
+  font-size: var(--t-lede);
+  color: var(--muted);
+  max-width: 34ch;
+  line-height: 1.55;
+}
+.intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.6rem;
+  margin-top: 0.4rem;
+}
+
+/* Opening reveal, played once the curtain lifts. */
+.js .intro-title .line > span {
+  transform: translateY(105%);
+  transition: transform 1.2s var(--ease);
+}
+.js .intro-eyebrow,
+.js .intro-lede,
+.js .intro-actions,
+.js .scroll-cue {
+  opacity: 0;
+  translate: 0 14px;
+  transition:
+    opacity 1s var(--ease),
+    translate 1s var(--ease);
+}
+.is-ready .intro-title .line > span {
+  transform: none;
+}
+.is-ready .intro-title .line:nth-child(2) > span { transition-delay: 0.08s; }
+.is-ready .intro-title .line:nth-child(3) > span { transition-delay: 0.16s; }
+.is-ready .intro-title .line:nth-child(4) > span { transition-delay: 0.24s; }
+.is-ready .intro-eyebrow,
+.is-ready .intro-lede,
+.is-ready .intro-actions,
+.is-ready .scroll-cue {
+  opacity: 1;
+  translate: 0 0;
+}
+.is-ready .intro-lede { transition-delay: 0.45s; }
+.is-ready .intro-actions { transition-delay: 0.6s; }
+.is-ready .scroll-cue { transition-delay: 0.9s; }
+
+.scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: calc(1.4rem + env(safe-area-inset-bottom, 0px));
+  margin-left: -30px;
+  width: 60px;
+  display: grid;
+  justify-items: center;
+  gap: 0.7rem;
+  text-decoration: none;
+  font: 500 0.64rem / 1 var(--f-mono);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.scroll-cue i {
+  position: relative;
+  width: 1px;
+  height: 40px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.scroll-cue i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(transparent, var(--blue-hi));
+  animation: cue 2.4s var(--ease) infinite;
+}
+@keyframes cue {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@media (min-width: 900px) {
+  .ch-intro .stage {
+    padding-bottom: calc(14svh + env(safe-area-inset-bottom, 0px));
+  }
+  .intro-content {
+    gap: 2rem;
+  }
+}
+
+/* =================================================================
+   02 · PHILOSOPHY
+   ================================================================= */
+.ch-philosophy .chapter-label,
+.ch-market .chapter-label,
+.ch-community .chapter-label,
+.ch-intel .chapter-label {
+  margin-bottom: 0.2rem;
+}
+.scrub .ch-philosophy .chapter-label {
+  position: absolute;
+  top: calc(var(--head-h) + env(safe-area-inset-top, 0px) + 1.2rem);
+  left: var(--gutter);
+}
+.philo-stack {
+  width: 100%;
+}
+.philo-head {
+  display: grid;
+  gap: 2.2rem;
+}
+.philo-lede {
+  font-size: var(--t-lede);
+  color: var(--muted);
+  max-width: 30ch;
+}
+.philo-title {
+  font-size: var(--t-giant);
+  line-height: 0.86;
+  display: grid;
+}
+.philo-title .w-solid {
+  background: var(--metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.philo-title .w-over {
+  font: italic 400 clamp(1rem, 0.7rem + 1.6vw, 1.6rem) / 1.8 var(--f-mono);
+  text-transform: lowercase;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  padding-left: 0.3em;
+}
+.philo-title .w-hollow {
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1px rgba(216, 222, 232, 0.6);
+}
+
+.principle {
+  display: grid;
+  gap: 1.2rem;
+  align-content: center;
+}
+.principle-num {
+  font: 300 clamp(5rem, 2rem + 18vw, 11rem) / 0.8 var(--f-display);
+  font-stretch: 62%;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--gold);
+  opacity: 0.85;
+}
+.principle-meta {
+  font: 500 var(--t-label) / 1 var(--f-mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 1rem;
+}
+.principle h3 {
+  font-size: clamp(3rem, 1.2rem + 9vw, 6.5rem);
+  background: var(--metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 1.2rem;
+}
+.principle p:last-child {
+  font-size: var(--t-lede);
+  color: var(--muted);
+  max-width: 36ch;
+}
+
+@media (min-width: 900px) {
+  .principle {
+    grid-template-columns: minmax(180px, 0.6fr) 1.4fr;
+    align-items: center;
+    gap: 3rem;
+    max-width: 1100px;
+  }
+  .principle-num {
+    justify-self: end;
+  }
+  .philo-head {
+    grid-template-columns: 1fr;
+  }
+  .philo-lede {
+    max-width: 36ch;
+  }
+}
+
+/* =================================================================
+   03 · THE MARKET
+   ================================================================= */
+.market-head {
+  display: grid;
+  gap: 1rem;
+}
+.market-viz {
+  min-height: 160px;
+  width: 100%;
+}
+.scrub .ch-market .stage {
+  justify-content: flex-start;
+  gap: 1rem;
+}
+.scrub .market-viz {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+.mkt {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--hairline-hi);
+}
+.mkt-idx {
+  font: 500 var(--t-label) / 1 var(--f-mono);
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+.mkt h3 {
+  font-size: var(--t-h3);
+  color: var(--silver);
+}
+.mkt p {
+  color: var(--muted);
+  max-width: 40ch;
+  font-size: var(--t-body);
+}
+.mkt-gold h3 {
+  color: var(--gold);
+}
+.scrub .mkt {
+  opacity: var(--v, 1);
+  transform: translate3d(0, calc((1 - var(--in, 1)) * 24px - var(--out, 0) * 24px), 0);
+  border-left-color: rgba(91, 143, 232, calc(var(--v, 1) * 0.9));
+}
+.scrub .mkt-gold {
+  border-left-color: rgba(198, 161, 91, calc(var(--v, 1) * 0.9));
+}
+.viz-note {
+  font: 400 0.68rem / 1.4 var(--f-mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.scrub .viz-note {
+  opacity: calc(var(--v, 1) * 0.8);
+}
+
+@media (min-width: 900px) {
+  .ch-market .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      'head viz'
+      'list viz'
+      'note viz';
+    column-gap: clamp(2rem, 5vw, 5rem);
+    align-content: center;
+  }
+  .scrub .ch-market .stage {
+    align-content: stretch;
+    padding-top: calc(var(--head-h) + 4rem);
+    padding-bottom: 4rem;
+  }
+  .market-head {
+    grid-area: head;
+  }
+  .market-viz {
+    grid-area: viz;
+    min-height: 420px;
+  }
+  .market-list {
+    grid-area: list;
+    align-self: center;
+  }
+  .viz-note {
+    grid-area: note;
+  }
+  .ch-market .section-title {
+    font-size: min(var(--t-h2), 8.4svh);
+  }
+  .mkt p {
+    font-size: 1.05rem;
+  }
+}
+
+/* =================================================================
+   04 · COMMUNITY
+   ================================================================= */
+.community-head {
+  display: grid;
+  gap: 1rem;
+}
+.focus-list {
+  display: grid;
+  gap: 1.6rem;
+}
+.focus h3 {
+  font-size: clamp(2rem, 1rem + 5vw, 3.6rem);
+  color: var(--silver);
+}
+.focus p {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  max-width: 38ch;
+}
+.scrub .focus-list {
+  position: relative;
+  gap: 0.1rem;
+  padding-bottom: 5.4rem;
+}
+.scrub .focus h3 {
+  font-size: clamp(1.9rem, 1rem + 4.4vw, 3.4rem);
+  line-height: 1;
+  opacity: calc(0.22 + var(--v, 1) * 0.78);
+  transform: translate3d(calc(var(--v, 1) * 12px), 0, 0);
+  transition: color 0.4s;
+}
+.scrub .focus h3::before {
+  content: '';
+  display: inline-block;
+  width: calc(var(--v, 1) * 22px);
+  height: 2px;
+  margin-right: calc(var(--v, 1) * 12px);
+  vertical-align: middle;
+  background: var(--gold);
+}
+.scrub .focus p {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 4.6rem;
+  opacity: var(--v, 1);
+  transform: translate3d(0, calc((1 - var(--in, 1)) * 12px), 0);
+}
+
+@media (min-width: 900px) {
+  .ch-community .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: clamp(2rem, 6vw, 6rem);
+  }
+  .focus-list {
+    justify-self: end;
+    width: min(100%, 560px);
+  }
+}
+
+/* =================================================================
+   05 · INTELLIGENCE
+   ================================================================= */
+.intel-head {
+  display: grid;
+  gap: 1rem;
+}
+.scrub .ch-intel .stage {
+  justify-content: flex-start;
+  gap: 1.4rem;
+}
+.capabilities {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--hairline);
+}
+.cap {
+  display: grid;
+  grid-template-columns: 2.6rem 1fr;
+  gap: 0.8rem;
+  padding-block: 0.8rem;
+  border-bottom: 1px solid var(--hairline);
+}
+.cap-idx {
+  font: 500 var(--t-label) / 1.9 var(--f-mono);
+  letter-spacing: 0.14em;
+  color: var(--gold);
+}
+.cap h3 {
+  font-size: clamp(1.3rem, 0.9rem + 1.8vw, 2rem);
+  line-height: 1.05;
+  color: var(--silver);
+}
+.cap p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: var(--t-small);
+  line-height: 1.5;
+}
+.status-note {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  max-width: 62ch;
+  font: 400 0.74rem / 1.6 var(--f-mono);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 4px rgba(91, 143, 232, 0.18);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 7px rgba(91, 143, 232, 0.05);
+  }
+}
+
+@media (max-width: 899px) {
+  .ch-intel .section-title {
+    font-size: clamp(2rem, 1rem + 6vw, 3.4rem);
+  }
+}
+/* Phones: the headline lands first, then hands the screen over to the
+   five capabilities, which share the same slot. */
+@media (max-width: 899px) {
+  .scrub .ch-intel .stage {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-content: stretch;
+    gap: 1rem;
+  }
+  .scrub .intel-head,
+  .scrub .capabilities {
+    grid-row: 2;
+    grid-column: 1;
+    align-self: center;
+  }
+  .scrub .intel-head {
+    opacity: calc(1 - var(--out, 0));
+    transform: translate3d(0, calc(var(--out, 0) * -30px), 0);
+  }
+  .scrub .ch-intel .status-note {
+    grid-row: 3;
+  }
+}
+@media (max-width: 899px) and (max-height: 620px) {
+  .scrub .cap {
+    padding-block: 0.5rem;
+  }
+  .scrub .cap p {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+}
+/* Very short screens keep the capability names and drop the one-liners. */
+@media (max-width: 899px) and (max-height: 590px) {
+  .scrub .cap p {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .ch-intel .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    grid-template-areas:
+      'label list'
+      'head list'
+      'head note';
+    grid-template-rows: auto auto 1fr;
+    align-content: center;
+    column-gap: clamp(2rem, 6vw, 6rem);
+    row-gap: 1.6rem;
+  }
+  .scrub .ch-intel .stage {
+    align-content: center;
+  }
+  .ch-intel .chapter-label {
+    grid-area: label;
+    align-self: end;
+  }
+  .intel-head {
+    grid-area: head;
+    align-self: start;
+  }
+  .capabilities {
+    grid-area: list;
+  }
+  .status-note {
+    grid-area: note;
+  }
+  .cap {
+    padding-block: 1.05rem;
+  }
+}
+
+/* =================================================================
+   06 · FINAL INVITATION
+   ================================================================= */
+.ch-enter .stage {
+  align-items: center;
+  text-align: center;
+  gap: 2rem;
+}
+.enter-mark {
+  width: clamp(112px, 30vw, 168px);
+  height: auto;
+  aspect-ratio: 1;
+  mix-blend-mode: lighten;
+}
+.enter-title {
+  font-size: var(--t-h2);
+  background: var(--metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.enter-title span {
+  display: block;
+}
+.enter-actions {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+}
+.enter-note {
+  font-size: var(--t-small);
+  color: var(--muted);
+}
+.cta-note {
+  font: 400 0.76rem / 1.5 var(--f-mono);
+  letter-spacing: 0.04em;
+  color: var(--blue-hi);
+}
+[data-cta='final']:not([href]) {
+  cursor: pointer;
+}
+
+/* =================================================================
+   Fallback lighting when the canvas cannot run
+   ================================================================= */
+.no-canvas .ch-intro .stage {
+  background: radial-gradient(90% 40% at 50% 80%, rgba(91, 143, 232, 0.22), transparent 70%);
+}
+.no-canvas .ch-philosophy .stage {
+  background: linear-gradient(90deg, transparent 35%, rgba(198, 161, 91, 0.08) 50%, transparent 65%);
+}
+.no-canvas .ch-market .stage,
+.no-canvas .ch-community .stage {
+  background: radial-gradient(70% 50% at 70% 50%, rgba(23, 34, 53, 0.9), transparent 70%);
+}
+.no-canvas .ch-intel .stage {
+  background: radial-gradient(80% 40% at 50% 70%, rgba(91, 143, 232, 0.16), transparent 70%);
+}
+.no-canvas .ch-enter .stage {
+  background: radial-gradient(60% 50% at 50% 35%, rgba(198, 161, 91, 0.16), transparent 70%);
+}
+
+/* =================================================================
+   Short phone screens (e.g. 320×568): tighten the scale so every
+   pinned chapter still fits without clipping.
+   ================================================================= */
+@media (max-width: 899px) and (max-height: 640px) {
+  .scrub .section-title {
+    font-size: clamp(1.9rem, 0.6rem + 7vw, 2.6rem);
+  }
+  .scrub .ch-community .section-lede {
+    display: none;
+  }
+  .scrub .focus h3 {
+    font-size: 1.5rem;
+  }
+  .scrub .focus-list {
+    padding-bottom: 4.6rem;
+  }
+  .scrub .focus p {
+    font-size: 0.88rem;
+  }
+  .scrub .mkt h3 {
+    font-size: 1.7rem;
+  }
+  .scrub .mkt p {
+    font-size: 0.88rem;
+  }
+  .scrub .market-viz {
+    min-height: 90px;
+  }
+  .scrub .philo-lede,
+  .scrub .principle p:last-child {
+    font-size: 0.98rem;
+  }
+  .scrub .principle h3 {
+    font-size: 2.6rem;
+  }
+  .scrub .principle-num {
+    font-size: 4.4rem;
+  }
+}
