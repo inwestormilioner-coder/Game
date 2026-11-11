@@ -26,6 +26,7 @@ def fib_params(cfg: Config) -> FibParams:
     return FibParams(tps=tps, fractions=tuple(1 / len(tps) for _ in tps), be_after=0, min_risk=cfg.min_sl,
                      rev_exit=cfg.ai_exit and not manager_active(cfg), rev_min_r=cfg.ai_exit_min_r,
                      ema_len=cfg.ema_filter, ema_slope=cfg.ema_slope, bos_filter=cfg.bos_filter,
+                     day_filter=cfg.day_filter,
                      max_hold=4 * 24 * 60 // _tf_minutes(cfg.timeframe) // 2)  # ~2 days
 
 

@@ -49,6 +49,7 @@ class FibParams:
     tl_long: int = 100
     ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
     ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
+    day_filter: str = ""                     # filtr dnia: open | open05 | open1 | prevlow (BUY zablokowany w dzień spadkowy)
     bos_filter: bool = False                 # BUY tylko, gdy ostatnie złamanie struktury M15 było w górę
     trigger: str = "zone"                    # zone | sweep | both (strefa albo sweep) | zone_sweep (strefa ze sweepem)
     h1: str = ""                             # potwierdzenie z H1: h1_hl | h1_struct | h1_candle | h1_zone
@@ -103,6 +104,24 @@ def _support_slope(l: np.ndarray, t: int, short: int, long: int) -> float | None
     x2 = t - short + int(np.argmin(near))
     x1 = t - long + int(np.argmin(far))
     return (l[x2] - l[x1]) / (x2 - x1)
+
+
+def _day_filter(df: pd.DataFrame, kind: str) -> np.ndarray:
+    """Czy dzień pozwala na BUY (SELL liczy się na lustrze cen). Dzień = doba UTC, tylko dane do bieżącej świecy.
+    open: cena nad otwarciem dnia | open05 / open1: nie więcej niż 0.5 / 1 dzienny ATR pod otwarciem |
+    prevlow: cena nad dołkiem poprzedniego dnia."""
+    t = pd.DatetimeIndex(df["time"])
+    day = t.normalize()
+    o, h, l, c = (df[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close"))
+    g = pd.DataFrame({"day": day, "o": o, "h": h, "l": l, "c": c})
+    d_open = g.groupby("day")["o"].transform("first").to_numpy()
+    daily = g.groupby("day").agg(h=("h", "max"), l=("l", "min"))
+    prev_low = daily["l"].shift(1).reindex(day).to_numpy()
+    d_atr = (daily["h"] - daily["l"]).rolling(10, min_periods=1).mean().shift(1).reindex(day).to_numpy()
+    if kind == "prevlow":
+        return ~(c < prev_low)
+    k = {"open": 0.0, "open05": 0.5, "open1": 1.0}[kind]
+    return ~(c < d_open - k * np.nan_to_num(d_atr))
 
 
 def _bos_direction(c: np.ndarray, highs: list, lows: list) -> np.ndarray:
@@ -252,6 +271,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     conf = [s.confirmed_at for s in swing_highs]
     swept: set[int] = set()
     bos_dir = _bos_direction(c, swing_highs, swing_lows) if p.bos_filter else None
+    day_ok = _day_filter(df, p.day_filter) if p.day_filter else None
     trades: list[FibTrade] = []
     zones: list[list] = []        # [bot, top, created]
     used: set[int] = set()
@@ -329,6 +349,8 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
                                         (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
                     break
                 if bos_dir is not None and bos_dir[t - 1] <= 0:
+                    break
+                if day_ok is not None and not day_ok[t - 1]:
                     break
                 if osc_ok is not None and not osc_ok[t - 1]:
                     break
