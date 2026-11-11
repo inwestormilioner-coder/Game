@@ -1,0 +1,651 @@
+<title>Ninja Trading</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Ninja Trading — aplikacja do szybkiego, zdyscyplinowanego tradingu na telefonie.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: dark "night market" — full-bleed bands, asymmetric hero with live chart, phone mock as anchor */
+:root {
+  --ink: #0b1220;          /* page ground: aizome night indigo */
+  --ink-2: #121b2e;        /* raised surface */
+  --line: #24304a;         /* hairlines */
+  --fg: #e8ecf5;
+  --muted: #94a0b8;
+  --brass: #e2b04a;        /* accent: tsuba brass */
+  --brass-ink: #1a1405;
+  --up: #3ccf9a;
+  --down: #f2647a;
+  --glow: rgba(226,176,74,.16);
+
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --step--1: .82rem; --step-0: 1rem; --step-1: 1.25rem; --step-2: 1.6rem;
+  --step-3: 2.2rem; --step-4: clamp(2.4rem, 6vw, 4.4rem);
+  --r: 14px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ink: #f3f5fa; --ink-2: #ffffff; --line: #d6dceb; --fg: #0e1626; --muted: #55607a;
+    --brass: #a8740f; --brass-ink: #fffaf0; --up: #0f9a6a; --down: #d23a54; --glow: rgba(168,116,15,.12);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ink: #f3f5fa; --ink-2: #ffffff; --line: #d6dceb; --fg: #0e1626; --muted: #55607a;
+  --brass: #a8740f; --brass-ink: #fffaf0; --up: #0f9a6a; --down: #d23a54; --glow: rgba(168,116,15,.12);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--ink); color: var(--fg);
+  font: 400 var(--step-0)/1.6 var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ink); }
+a { color: inherit; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.05; letter-spacing: -.02em; }
+p { margin: 0; }
+.wrap {
+  max-width: 1160px; margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.eyebrow { font: 600 var(--step--1)/1 var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 6px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: .5rem; justify-content: center;
+  font: 600 var(--step-0)/1 var(--f-body); text-decoration: none;
+  padding: .9rem 1.25rem; border-radius: 999px; border: 1px solid transparent; cursor: pointer;
+  transition: transform .15s ease, background .15s ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-primary { background: var(--brass); color: var(--brass-ink); }
+.btn-ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--muted); }
+
+/* Header */
+header.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: color-mix(in srgb, var(--ink) 86%, transparent);
+  backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+}
+.nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: .85rem; }
+.logo { display: flex; align-items: center; gap: .6rem; font: 800 var(--step-1)/1 var(--f-display); text-decoration: none; }
+.logo svg { width: 30px; height: 30px; }
+.nav ul { display: flex; gap: 1.6rem; list-style: none; margin: 0; padding: 0; }
+.nav ul a { text-decoration: none; color: var(--muted); font-weight: 500; }
+.nav ul a:hover { color: var(--fg); }
+.nav .btn { padding: .6rem 1rem; font-size: var(--step--1); }
+@media (max-width: 820px) { .nav ul { display: none; } }
+
+/* Hero */
+.hero { padding-block: clamp(3rem, 7vw, 6rem) clamp(2.5rem, 5vw, 4rem); position: relative; overflow: hidden; }
+.hero::after {
+  content: ""; position: absolute; inset: -20% -10% auto auto; width: 60vw; height: 60vw; max-width: 760px; max-height: 760px;
+  background: radial-gradient(closest-side, var(--glow), transparent 70%); pointer-events: none; z-index: 0;
+}
+.hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(2rem, 5vw, 4rem); align-items: center; position: relative; z-index: 1; }
+.hero-copy { display: grid; gap: 1.4rem; min-width: 0; }
+.hero h1 { font-size: var(--step-4); font-weight: 800; }
+.hero h1 .slash { color: var(--brass); font-style: italic; }
+.hero .lede { font-size: var(--step-1); color: var(--muted); max-width: 34ch; line-height: 1.5; }
+.cta-row { display: flex; flex-wrap: wrap; gap: .75rem; }
+.stores { display: flex; flex-wrap: wrap; gap: 1.2rem; color: var(--muted); font-size: var(--step--1); }
+.stores span { display: inline-flex; align-items: center; gap: .4rem; }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } }
+
+/* Phone mock */
+.phone {
+  justify-self: center; width: min(360px, 100%); max-width: 100%;
+  background: var(--ink-2); border: 1px solid var(--line); border-radius: 36px; padding: 14px;
+  box-shadow: 0 40px 80px -30px rgba(0,0,0,.55), 0 0 0 6px color-mix(in srgb, var(--line) 40%, transparent);
+}
+.screen { border-radius: 24px; background: var(--ink); padding: 1rem; display: grid; gap: .85rem; overflow: hidden; }
+.ticker-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+.pair { font: 700 var(--step-1)/1.1 var(--f-display); }
+.pair small { display: block; font: 400 var(--step--1)/1.4 var(--f-body); color: var(--muted); }
+.price { text-align: right; font: 600 var(--step-1)/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.price small { display: block; font-size: var(--step--1); font-weight: 400; }
+.chg-up { color: var(--up); } .chg-down { color: var(--down); }
+.tf { display: flex; gap: .35rem; }
+.tf button {
+  font: 500 .72rem/1 var(--f-mono); color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 6px; padding: .35rem .5rem; cursor: pointer;
+}
+.tf button[aria-pressed="true"] { color: var(--brass-ink); background: var(--brass); border-color: var(--brass); }
+canvas#chart { width: 100%; height: 190px; display: block; }
+.orders { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.orders button {
+  font: 700 var(--step-0)/1 var(--f-body); padding: .85rem; border-radius: 12px; border: 0; cursor: pointer;
+  display: grid; gap: .25rem; text-align: left;
+}
+.orders button span { font: 400 .72rem/1 var(--f-mono); opacity: .85; }
+.buy { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+.sell { background: color-mix(in srgb, var(--down) 22%, transparent); color: var(--down); }
+.risk-line { display: flex; justify-content: space-between; font: 400 .74rem/1.3 var(--f-mono); color: var(--muted); border-top: 1px dashed var(--line); padding-top: .65rem; }
+.risk-line b { color: var(--fg); font-weight: 600; }
+.demo-tag { font: 600 .66rem/1 var(--f-mono); letter-spacing: .1em; color: var(--brass); border: 1px solid var(--brass); padding: .2rem .4rem; border-radius: 4px; }
+
+/* Strip of markets */
+.markets { border-block: 1px solid var(--line); background: var(--ink-2); }
+.markets .wrap { display: flex; gap: 2rem; padding-block: 1rem; overflow-x: auto; scrollbar-width: none; }
+.markets .wrap::-webkit-scrollbar { display: none; }
+.mk { display: flex; gap: .6rem; white-space: nowrap; font: 500 var(--step--1)/1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.mk b { color: var(--fg); font-weight: 600; }
+
+/* Sections */
+section.band { padding-block: clamp(3.5rem, 8vw, 6rem); }
+.sec-head { display: grid; gap: .9rem; max-width: 640px; margin-bottom: clamp(2rem, 4vw, 3rem); }
+.sec-head h2 { font-size: var(--step-3); font-weight: 700; }
+.sec-head p { color: var(--muted); font-size: var(--step-1); line-height: 1.5; }
+
+/* Features: asymmetric grid */
+.features { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.feat { background: var(--ink); padding: clamp(1.4rem, 3vw, 2rem); display: grid; gap: .7rem; align-content: start; min-width: 0; }
+.feat:nth-child(1), .feat:nth-child(2) { grid-column: span 3; }
+.feat:nth-child(n+3) { grid-column: span 2; }
+.feat h3 { font-size: var(--step-2); font-weight: 700; }
+.feat .kanji { font: 600 var(--step--1)/1 var(--f-mono); color: var(--brass); letter-spacing: .08em; }
+.feat p { color: var(--muted); max-width: 46ch; }
+.feat .spec { font: 400 var(--step--1)/1.5 var(--f-mono); color: var(--fg); border-top: 1px dashed var(--line); padding-top: .7rem; margin-top: .3rem; }
+@media (max-width: 860px) { .features { grid-template-columns: 1fr; } .feat:nth-child(n) { grid-column: auto; } }
+
+/* Path: Belts (real progression) */
+.belts { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(1rem, 3vw, 2rem); counter-reset: step; }
+.belt { display: grid; gap: .8rem; align-content: start; padding-top: 1.2rem; border-top: 3px solid var(--belt, var(--line)); min-width: 0; }
+.belt .n { font: 600 var(--step--1)/1 var(--f-mono); color: var(--muted); }
+.belt h3 { font-size: var(--step-2); }
+.belt p { color: var(--muted); }
+@media (max-width: 760px) { .belts { grid-template-columns: 1fr; } }
+
+/* Risk calculator */
+.calc { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+.calc-card { background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--r); padding: clamp(1.2rem, 3vw, 1.8rem); display: grid; gap: 1.1rem; min-width: 0; }
+.field { display: grid; gap: .4rem; }
+.field label { font-size: var(--step--1); color: var(--muted); display: flex; justify-content: space-between; gap: .5rem; }
+.field label output { color: var(--fg); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--brass); }
+input[type="number"], input[type="email"] {
+  width: 100%; font: 500 var(--step-0)/1 var(--f-mono); color: var(--fg); background: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; padding: .8rem .9rem;
+}
+.result { display: grid; grid-template-columns: repeat(2, 1fr); gap: .8rem; }
+.result div { border: 1px solid var(--line); border-radius: 10px; padding: .8rem; display: grid; gap: .3rem; }
+.result span { font-size: .75rem; color: var(--muted); }
+.result b { font: 600 var(--step-1)/1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.calc-copy { display: grid; gap: 1rem; min-width: 0; }
+.calc-copy p { color: var(--muted); }
+.rule { font: 500 var(--step-1)/1.4 var(--f-display); color: var(--fg); border-left: 3px solid var(--brass); padding-left: 1rem; }
+@media (max-width: 860px) { .calc { grid-template-columns: 1fr; } }
+
+/* Pricing */
+.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-items: stretch; }
+.plan { border: 1px solid var(--line); border-radius: var(--r); padding: 1.6rem; display: grid; gap: 1rem; grid-template-rows: auto auto 1fr auto; min-width: 0; }
+.plan.hi { border-color: var(--brass); background: linear-gradient(180deg, var(--glow), transparent 60%); }
+.plan h3 { font-size: var(--step-1); display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.plan .badge { font: 600 .68rem/1 var(--f-mono); letter-spacing: .1em; background: var(--brass); color: var(--brass-ink); padding: .3rem .5rem; border-radius: 4px; }
+.amount { font: 700 var(--step-3)/1 var(--f-display); }
+.amount small { font: 400 var(--step--1)/1 var(--f-body); color: var(--muted); }
+.plan ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; color: var(--muted); align-content: start; }
+.plan li { display: flex; gap: .55rem; }
+.plan li::before { content: "◆"; color: var(--brass); font-size: .6rem; line-height: 2.2; }
+@media (max-width: 860px) { .plans { grid-template-columns: 1fr; } }
+
+/* FAQ */
+.faq { display: grid; gap: 0; border-top: 1px solid var(--line); max-width: 820px; }
+details { border-bottom: 1px solid var(--line); padding-block: 1.1rem; }
+summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 1rem; font: 600 var(--step-1)/1.3 var(--f-display); }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--brass); font-family: var(--f-mono); transition: transform .2s; }
+details[open] summary::after { transform: rotate(45deg); }
+details p { color: var(--muted); margin-top: .7rem; max-width: 65ch; }
+
+/* Final CTA */
+.final { background: var(--ink-2); border-block: 1px solid var(--line); }
+.final .wrap { display: grid; grid-template-columns: 1.2fr 1fr; gap: 2rem; align-items: center; padding-block: clamp(3rem, 7vw, 5rem); }
+.final h2 { font-size: var(--step-3); }
+.final p { color: var(--muted); margin-top: .8rem; }
+form.wait { display: flex; gap: .6rem; flex-wrap: wrap; }
+form.wait input { flex: 1 1 220px; }
+.form-note { font-size: var(--step--1); color: var(--muted); margin-top: .6rem; min-height: 1.4em; }
+.form-note.ok { color: var(--up); }
+@media (max-width: 860px) { .final .wrap { grid-template-columns: 1fr; } }
+
+/* Footer */
+footer { padding-block: 2.5rem 3rem; color: var(--muted); font-size: var(--step--1); }
+.foot { display: grid; grid-template-columns: 1fr 2fr; gap: 2rem; }
+.foot nav { display: flex; flex-wrap: wrap; gap: 1.2rem; }
+.foot nav a { text-decoration: none; }
+.foot nav a:hover { color: var(--fg); }
+.disclaimer { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; line-height: 1.55; }
+.disclaimer b { color: var(--fg); }
+@media (max-width: 760px) { .foot { grid-template-columns: 1fr; } }
+
+/* Hero entrance */
+@keyframes rise { from { transform: translateY(14px); opacity: .001; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .hero-copy > * { animation: rise .6s cubic-bezier(.2,.7,.2,1) both; }
+  .hero-copy > *:nth-child(2) { animation-delay: .06s; }
+  .hero-copy > *:nth-child(3) { animation-delay: .12s; }
+  .hero-copy > *:nth-child(4) { animation-delay: .18s; }
+  .hero-copy > *:nth-child(5) { animation-delay: .24s; }
+}
+</style>
+
+<header class="top">
+  <div class="wrap nav">
+    <a class="logo" href="#start" aria-label="Ninja Trading — strona główna">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="9" fill="var(--ink-2)" stroke="var(--line)"/>
+        <path d="M6 22 L13 15 L17 18 L26 8" fill="none" stroke="var(--brass)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5 13 H27" stroke="var(--fg)" stroke-width="2.4" stroke-linecap="round" opacity=".9"/>
+      </svg>
+      Ninja Trading
+    </a>
+    <ul>
+      <li><a href="#funkcje">Funkcje</a></li>
+      <li><a href="#droga">Droga ninja</a></li>
+      <li><a href="#ryzyko">Kalkulator ryzyka</a></li>
+      <li><a href="#cennik">Cennik</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <a class="btn btn-primary" href="#pobierz">Pobierz aplikację</a>
+  </div>
+</header>
+
+<main id="start">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow">Trading na telefonie · iOS i Android</span>
+        <h1>Wchodź cicho. Wychodź <span class="slash">na czas.</span></h1>
+        <p class="lede">Ninja Trading łączy szybkie zlecenia jednym dotknięciem z twardymi zasadami zarządzania ryzykiem. Mniej emocji, więcej planu.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#pobierz">Zacznij w trybie Dojo</a>
+          <a class="btn btn-ghost" href="#funkcje">Zobacz, jak działa</a>
+        </div>
+        <div class="stores">
+          <span>◆ Konto demo z 10 000 zł wirtualnego kapitału</span>
+          <span>◆ Stop-loss obowiązkowy przy każdym zleceniu</span>
+        </div>
+      </div>
+
+      <div class="phone" aria-label="Podgląd ekranu aplikacji (dane przykładowe)">
+        <div class="screen">
+          <div class="ticker-head">
+            <div class="pair">BTC/PLN <small>Bitcoin · <span class="demo-tag">DEMO</span></small></div>
+            <div class="price"><span id="px">268 420</span><small id="chg" class="chg-up">+1,84%</small></div>
+          </div>
+          <div class="tf" role="group" aria-label="Interwał wykresu">
+            <button type="button" data-tf="1">1m</button>
+            <button type="button" data-tf="5" aria-pressed="true">5m</button>
+            <button type="button" data-tf="15">15m</button>
+            <button type="button" data-tf="60">1h</button>
+            <button type="button" data-tf="240">4h</button>
+          </div>
+          <canvas id="chart" aria-label="Przykładowy wykres świecowy" role="img"></canvas>
+          <div class="orders">
+            <button type="button" class="buy">Kup <span>SL −1,2% · TP +2,4%</span></button>
+            <button type="button" class="sell">Sprzedaj <span>SL +1,2% · TP −2,4%</span></button>
+          </div>
+          <div class="risk-line"><span>Ryzyko na transakcję</span><b>1,0% · 100 zł</b></div>
+          <div class="risk-line"><span>Stosunek zysk/ryzyko</span><b>1 : 2,0</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="markets" aria-label="Przykładowe notowania">
+    <div class="wrap" id="tape"></div>
+  </div>
+
+  <section class="band" id="funkcje">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Arsenał</span>
+        <h2>Narzędzia, które pilnują planu, kiedy rynek przyspiesza</h2>
+        <p>Każda funkcja ma jedno zadanie: skrócić drogę od decyzji do zlecenia i nie pozwolić, żeby emocje ją zmieniły.</p>
+      </div>
+      <div class="features">
+        <article class="feat">
+          <span class="kanji">手裏剣 · SHURIKEN</span>
+          <h3>Zlecenie jednym dotknięciem</h3>
+          <p>Ustawiasz szablon raz: wielkość pozycji, stop-loss i take-profit. Potem kupujesz lub sprzedajesz jednym ruchem kciuka, bez przeklikiwania formularzy.</p>
+          <p class="spec">Szablony: do 5 · SL/TP w %, pipsach lub cenie</p>
+        </article>
+        <article class="feat">
+          <span class="kanji">影 · KAGE</span>
+          <h3>Alerty Cień</h3>
+          <p>Aplikacja obserwuje rynek za Ciebie. Dostajesz powiadomienie, gdy cena dotknie poziomu, przebije średnią albo wolumen wyskoczy ponad normę.</p>
+          <p class="spec">Warunki: cena, EMA/SMA, RSI, wolumen · push i e-mail</p>
+        </article>
+        <article class="feat">
+          <span class="kanji">道場 · DOJO</span>
+          <h3>Tryb treningowy</h3>
+          <p>Ćwicz na prawdziwych notowaniach z wirtualnym kapitałem, zanim zaryzykujesz własne pieniądze.</p>
+        </article>
+        <article class="feat">
+          <span class="kanji">巻物 · MAKIMONO</span>
+          <h3>Dziennik transakcji</h3>
+          <p>Każda pozycja trafia do dziennika z notatką, zrzutem wykresu i wynikiem. Co tydzień widzisz, które setupy naprawdę działają.</p>
+        </article>
+        <article class="feat">
+          <span class="kanji">掟 · OKITE</span>
+          <h3>Zasady dyscypliny</h3>
+          <p>Ustal dzienny limit straty. Po jego osiągnięciu aplikacja blokuje nowe zlecenia do następnego dnia.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="droga" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Droga ninja</span>
+        <h2>Trzy pasy, od treningu do prawdziwego rynku</h2>
+        <p>Postęp odblokowuje się wraz z doświadczeniem. Nikt nie zaczyna od dźwigni.</p>
+      </div>
+      <div class="belts">
+        <div class="belt" style="--belt: var(--muted)">
+          <span class="n">Pas 1 · Uczeń</span>
+          <h3>Trenuj w Dojo</h3>
+          <p>Konto demo z 10 000 zł wirtualnego kapitału. Krótkie lekcje o świecach, trendzie i wielkości pozycji, każda z zadaniem na wykresie.</p>
+        </div>
+        <div class="belt" style="--belt: var(--up)">
+          <span class="n">Pas 2 · Shinobi</span>
+          <h3>Pierwsze realne transakcje</h3>
+          <p>Po 30 transakcjach demo z zapisanym planem odblokowujesz konto rzeczywiste z limitem ryzyka 1% kapitału na pozycję.</p>
+        </div>
+        <div class="belt" style="--belt: var(--brass)">
+          <span class="n">Pas 3 · Sensei</span>
+          <h3>Pełny arsenał</h3>
+          <p>Zaawansowane alerty, własne szablony zleceń, statystyki dziennika i eksport wyników. Limity ustawiasz sam.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="ryzyko" style="padding-top:0">
+    <div class="wrap calc">
+      <div class="calc-copy">
+        <span class="eyebrow">Kalkulator ryzyka</span>
+        <h2 style="font-size:var(--step-3)">Najpierw stop-loss, potem wielkość pozycji</h2>
+        <p>Tak samo liczy aplikacja przy każdym zleceniu. Podajesz kapitał, ile procent możesz stracić i gdzie stoi stop. Wielkość pozycji wychodzi sama.</p>
+        <p class="rule">Wielkość pozycji = (kapitał × ryzyko %) ÷ odległość do stop-lossa</p>
+        <p style="font-size:var(--step--1)">Kalkulator ma charakter poglądowy i nie uwzględnia prowizji, spreadu ani poślizgu cenowego.</p>
+      </div>
+      <form class="calc-card" id="calcForm" aria-label="Kalkulator wielkości pozycji">
+        <div class="field">
+          <label for="cap">Kapitał <output id="capOut" for="cap"></output></label>
+          <input id="cap" type="number" min="100" step="100" value="10000" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="riskPct">Ryzyko na transakcję <output id="riskOut" for="riskPct"></output></label>
+          <input id="riskPct" type="range" min="0.25" max="3" step="0.25" value="1">
+        </div>
+        <div class="field">
+          <label for="slPct">Odległość stop-lossa od wejścia <output id="slOut" for="slPct"></output></label>
+          <input id="slPct" type="range" min="0.25" max="10" step="0.25" value="2">
+        </div>
+        <div class="field">
+          <label for="rr">Stosunek zysk/ryzyko <output id="rrOut" for="rr"></output></label>
+          <input id="rr" type="range" min="1" max="5" step="0.5" value="2">
+        </div>
+        <div class="result" aria-live="polite">
+          <div><span>Maksymalna strata</span><b id="rLoss">–</b></div>
+          <div><span>Wielkość pozycji</span><b id="rSize">–</b></div>
+          <div><span>Cel zysku</span><b id="rGain" class="chg-up">–</b></div>
+          <div><span>Skuteczność na zero</span><b id="rBe">–</b></div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="band" id="cennik" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Cennik</span>
+        <h2>Zacznij za darmo. Płać, kiedy potrzebujesz więcej</h2>
+      </div>
+      <div class="plans">
+        <article class="plan">
+          <h3>Uczeń</h3>
+          <div class="amount">0 zł <small>na zawsze</small></div>
+          <ul>
+            <li>Konto demo i tryb Dojo</li>
+            <li>Podstawowe lekcje</li>
+            <li>3 alerty cenowe</li>
+            <li>Dziennik do 50 transakcji</li>
+          </ul>
+          <a class="btn btn-ghost" href="#pobierz">Zacznij trening</a>
+        </article>
+        <article class="plan hi">
+          <h3>Shinobi <span class="badge">NAJCZĘŚCIEJ WYBIERANY</span></h3>
+          <div class="amount">39 zł <small>/ miesiąc</small></div>
+          <ul>
+            <li>Wszystko z planu Uczeń</li>
+            <li>Zlecenia Shuriken i 5 szablonów</li>
+            <li>Alerty Cień bez limitu</li>
+            <li>Pełny dziennik i tygodniowe raporty</li>
+          </ul>
+          <a class="btn btn-primary" href="#pobierz">Wypróbuj 14 dni za darmo</a>
+        </article>
+        <article class="plan">
+          <h3>Sensei</h3>
+          <div class="amount">99 zł <small>/ miesiąc</small></div>
+          <ul>
+            <li>Wszystko z planu Shinobi</li>
+            <li>Alerty wskaźnikowe RSI i EMA</li>
+            <li>Statystyki setupów i eksport CSV</li>
+            <li>Priorytetowe wsparcie</li>
+          </ul>
+          <a class="btn btn-ghost" href="#pobierz">Wybierz Sensei</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">FAQ</span>
+        <h2>Pytania przed pierwszym zleceniem</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>Czy muszę wpłacać pieniądze, żeby zacząć?</summary>
+          <p>Nie. Plan Uczeń daje konto demo z wirtualnym kapitałem. Prawdziwe pieniądze wpłacasz dopiero wtedy, gdy sam zdecydujesz i odblokujesz pas Shinobi.</p>
+        </details>
+        <details>
+          <summary>Jakimi rynkami można handlować?</summary>
+          <p>Kryptowalutami, parami walutowymi oraz wybranymi akcjami i ETF-ami. Lista instrumentów zależy od kraju i dostępności u partnera rozliczeniowego.</p>
+        </details>
+        <details>
+          <summary>Dlaczego stop-loss jest obowiązkowy?</summary>
+          <p>Bo jedna pozycja bez zabezpieczenia potrafi zniszczyć miesiące pracy. Stop-loss możesz przesunąć, ale nie możesz otworzyć zlecenia bez niego.</p>
+        </details>
+        <details>
+          <summary>Czy aplikacja daje sygnały kupna i sprzedaży?</summary>
+          <p>Nie. Ninja Trading nie doradza, co kupić. Dostajesz narzędzia do realizacji własnego planu: alerty, kalkulator ryzyka i dziennik.</p>
+        </details>
+        <details>
+          <summary>Jak chronione są moje dane i środki?</summary>
+          <p>Logowanie wymaga uwierzytelniania dwuskładnikowego, a dane są szyfrowane podczas przesyłania i przechowywania. Środki klientów są przechowywane u licencjonowanego partnera.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final" id="pobierz">
+    <div class="wrap">
+      <div>
+        <span class="eyebrow">Wczesny dostęp</span>
+        <h2 style="margin-top:.8rem">Dołącz do pierwszej grupy testerów</h2>
+        <p>Zostaw e-mail. Wyślemy link do wersji beta na iOS i Androida, gdy tylko ruszy.</p>
+      </div>
+      <div>
+        <form class="wait" id="waitForm" novalidate>
+          <label for="email" class="sr" style="position:absolute;left:-9999px">Adres e-mail</label>
+          <input id="email" type="email" placeholder="twoj@email.pl" autocomplete="email" required>
+          <button class="btn btn-primary" type="submit">Zapisz mnie</button>
+        </form>
+        <p class="form-note" id="formNote" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div style="display:grid;gap:.8rem;align-content:start">
+      <span class="logo" style="font-size:var(--step-0)">Ninja Trading</span>
+      <nav aria-label="Stopka">
+        <a href="#funkcje">Funkcje</a>
+        <a href="#cennik">Cennik</a>
+        <a href="#faq">FAQ</a>
+        <a href="#start">Regulamin</a>
+        <a href="#start">Polityka prywatności</a>
+      </nav>
+      <span>© 2026 Ninja Trading</span>
+    </div>
+    <p class="disclaimer"><b>Ostrzeżenie o ryzyku.</b> Handel instrumentami finansowymi, w tym kryptowalutami i walutami, wiąże się z wysokim ryzykiem utraty kapitału i nie jest odpowiedni dla każdego. Wyniki osiągnięte w przeszłości ani na koncie demo nie gwarantują przyszłych zysków. Treści w aplikacji i na tej stronie mają charakter edukacyjny i nie stanowią rekomendacji inwestycyjnej. Notowania na tej stronie są przykładowe.</p>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const css = () => getComputedStyle(document.documentElement);
+  const tok = n => css().getPropertyValue(n).trim();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fmt = (n, d = 0) => n.toLocaleString('pl-PL', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  /* ---------- Example candle data (seeded, deterministic) ---------- */
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  function makeCandles(n, vol) {
+    const out = []; let p = 262000;
+    for (let i = 0; i < n; i++) {
+      const drift = (rnd() - 0.46) * vol;
+      const o = p, c = p + drift;
+      const h = Math.max(o, c) + rnd() * vol * 0.6, l = Math.min(o, c) - rnd() * vol * 0.6;
+      out.push({ o, h, l, c }); p = c;
+    }
+    return out;
+  }
+  const volByTf = { 1: 280, 5: 650, 15: 1100, 60: 2100, 240: 3800 };
+  let candles = makeCandles(42, volByTf[5]);
+
+  const cv = document.getElementById('chart');
+  const ctx = cv.getContext('2d');
+  function draw(progress = 1) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const hi = Math.max(...candles.map(c => c.h)), lo = Math.min(...candles.map(c => c.l));
+    const pad = 8, y = v => pad + (hi - v) / (hi - lo) * (h - pad * 2);
+    // grid
+    ctx.strokeStyle = tok('--line'); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    for (let i = 1; i < 4; i++) { const gy = Math.round(h * i / 4) + .5; ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
+    ctx.setLineDash([]);
+    const step = w / candles.length, bw = Math.max(2, step * 0.58);
+    const shown = Math.ceil(candles.length * progress);
+    const up = tok('--up'), down = tok('--down');
+    candles.slice(0, shown).forEach((c, i) => {
+      const x = i * step + step / 2; const col = c.c >= c.o ? up : down;
+      ctx.strokeStyle = col; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, y(c.h)); ctx.lineTo(Math.round(x) + .5, y(c.l)); ctx.stroke();
+      const top = y(Math.max(c.o, c.c)), bh = Math.max(1, Math.abs(y(c.o) - y(c.c)));
+      ctx.fillRect(x - bw / 2, top, bw, bh);
+    });
+    // last price line
+    const last = candles[shown - 1];
+    if (last) {
+      ctx.strokeStyle = tok('--brass'); ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(0, y(last.c) + .5); ctx.lineTo(w, y(last.c) + .5); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (last) {
+      const first = candles[0].o, pct = (last.c - first) / first * 100;
+      document.getElementById('px').textContent = fmt(last.c);
+      const chg = document.getElementById('chg');
+      chg.textContent = (pct >= 0 ? '+' : '−') + fmt(Math.abs(pct), 2) + '%';
+      chg.className = pct >= 0 ? 'chg-up' : 'chg-down';
+    }
+  }
+  function animateIn() {
+    if (reduce) return draw(1);
+    const t0 = performance.now();
+    const tick = t => { const p = Math.min(1, (t - t0) / 900); draw(.15 + p * .85); if (p < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+  draw(1); animateIn();
+  addEventListener('resize', () => draw(1));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => draw(1));
+  new MutationObserver(() => draw(1)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  document.querySelectorAll('.tf button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tf button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    seed = 7 + Number(b.dataset.tf);
+    candles = makeCandles(42, volByTf[b.dataset.tf]);
+    animateIn();
+  }));
+
+  // Live tick on the last candle
+  if (!reduce) setInterval(() => {
+    const c = candles[candles.length - 1];
+    c.c += (Math.random() - 0.5) * volByTf[5] * 0.25;
+    c.h = Math.max(c.h, c.c); c.l = Math.min(c.l, c.c);
+    draw(1);
+  }, 1400);
+
+  /* ---------- Market tape (example values) ---------- */
+  const tape = [
+    ['BTC/PLN', '268 420', '+1,84'], ['ETH/PLN', '13 905', '+0,92'], ['EUR/PLN', '4,2715', '−0,11'],
+    ['USD/PLN', '3,9480', '+0,07'], ['SOL/PLN', '712,40', '−2,35'], ['WIG20', '2 486', '+0,44'],
+    ['XAU/USD', '2 731', '+0,31'], ['NASDAQ 100', '21 940', '−0,28']
+  ];
+  document.getElementById('tape').innerHTML = tape.map(([s, p, c]) =>
+    `<span class="mk"><b>${s}</b>${p}<span class="${c.startsWith('−') ? 'chg-down' : 'chg-up'}">${c}%</span></span>`).join('');
+
+  /* ---------- Risk calculator ---------- */
+  const $ = id => document.getElementById(id);
+  function calc() {
+    const cap = Math.max(0, Number($('cap').value) || 0);
+    const r = Number($('riskPct').value), sl = Number($('slPct').value), rr = Number($('rr').value);
+    const loss = cap * r / 100, size = sl > 0 ? loss / (sl / 100) : 0;
+    $('capOut').textContent = fmt(cap) + ' zł';
+    $('riskOut').textContent = fmt(r, 2) + '%';
+    $('slOut').textContent = fmt(sl, 2) + '%';
+    $('rrOut').textContent = '1 : ' + fmt(rr, 1);
+    $('rLoss').textContent = fmt(loss) + ' zł';
+    $('rSize').textContent = fmt(Math.min(size, cap)) + ' zł';
+    $('rGain').textContent = '+' + fmt(loss * rr) + ' zł';
+    $('rBe').textContent = fmt(100 / (1 + rr), 1) + '%';
+  }
+  ['cap', 'riskPct', 'slPct', 'rr'].forEach(id => $(id).addEventListener('input', calc));
+  $('calcForm').addEventListener('submit', e => e.preventDefault());
+  calc();
+
+  /* ---------- Waitlist (design mock: no backend yet) ---------- */
+  $('waitForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const note = $('formNote'), v = $('email').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+      note.className = 'form-note'; note.textContent = 'Wpisz poprawny adres e-mail, np. jan@domena.pl.'; return;
+    }
+    note.className = 'form-note ok';
+    note.textContent = 'Adres wygląda dobrze. To wersja projektowa, więc formularz nie wysyła jeszcze danych.';
+  });
+})();
+</script>
