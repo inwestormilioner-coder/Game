@@ -49,6 +49,7 @@ class FibParams:
     tl_long: int = 100
     ema_len: int = 0                         # >0: BUY tylko nad EMA (SELL pod), filtr kierunku
     ema_slope: int = 0                       # >0: EMA musi też rosnąć (spadać) przez tyle świec
+    bos_filter: bool = False                 # BUY tylko, gdy ostatnie złamanie struktury M15 było w górę
     trigger: str = "zone"                    # zone | sweep | both (strefa albo sweep) | zone_sweep (strefa ze sweepem)
     h1: str = ""                             # potwierdzenie z H1: h1_hl | h1_struct | h1_candle | h1_zone
     osc: str = ""                            # filtr oscylatora: rsi_trend | rsi_dipNN | macd_zero | macd_hist
@@ -102,6 +103,28 @@ def _support_slope(l: np.ndarray, t: int, short: int, long: int) -> float | None
     x2 = t - short + int(np.argmin(near))
     x1 = t - long + int(np.argmin(far))
     return (l[x2] - l[x1]) / (x2 - x1)
+
+
+def _bos_direction(c: np.ndarray, highs: list, lows: list) -> np.ndarray:
+    """Kierunek ostatniego złamania struktury na każdej świecy: +1 zamknięcie nad ostatnim potwierdzonym
+    swing high (trend w górę), -1 zamknięcie pod ostatnim swing low (trend złamany w dół), 0 brak."""
+    out = np.zeros(len(c), dtype=int)
+    hi_i = lo_i = 0
+    last_h = last_l = None
+    state = 0
+    for t in range(len(c)):
+        while hi_i < len(highs) and highs[hi_i].confirmed_at <= t:
+            last_h = highs[hi_i]
+            hi_i += 1
+        while lo_i < len(lows) and lows[lo_i].confirmed_at <= t:
+            last_l = lows[lo_i]
+            lo_i += 1
+        if last_h is not None and c[t] > last_h.price:
+            state = 1
+        elif last_l is not None and c[t] < last_l.price:
+            state = -1
+        out[t] = state
+    return out
 
 
 def _h1_context(df: pd.DataFrame, kind: str):
@@ -228,6 +251,7 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
     swing_highs, swing_lows = find_swings(df, p.swing_n)
     conf = [s.confirmed_at for s in swing_highs]
     swept: set[int] = set()
+    bos_dir = _bos_direction(c, swing_highs, swing_lows) if p.bos_filter else None
     trades: list[FibTrade] = []
     zones: list[list] = []        # [bot, top, created]
     used: set[int] = set()
@@ -303,6 +327,8 @@ def _scan_buy_full(df: pd.DataFrame, p: FibParams) -> tuple[list[FibTrade], FibT
             if t > z[2] and l[t] <= z[1] and last_sh.price > z[1]:
                 if ema is not None and (c[t - 1] <= ema[t - 1] or
                                         (p.ema_slope and ema[t - 1] <= ema[max(0, t - 1 - p.ema_slope)])):
+                    break
+                if bos_dir is not None and bos_dir[t - 1] <= 0:
                     break
                 if osc_ok is not None and not osc_ok[t - 1]:
                     break

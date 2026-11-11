@@ -57,6 +57,7 @@ class Config:
     ai_exit_min_r: float = 0.5  # minimalny zysk w R, żeby wyjść
     ema_filter: int = 0         # >0: BUY tylko nad EMA o tej długości, SELL pod (np. 200)
     ema_slope: int = 20         # i EMA musi rosnąć / spadać przez tyle świec (0 = bez tego warunku)
+    bos_filter: bool = False    # BUY tylko po złamaniu struktury M15 w górę, SELL po złamaniu w dół
     sweep_signals: bool = False # drugi typ sygnału: liquidity sweep z długim knotem (TP 1R i 2R)
     sweep_min_wick: float = 2.0 # minimalny knot sweepu względem korpusu świecy
     sweep_ai_filter: bool = False  # AI ocenia każdy sweep przed wysłaniem (wymaga ANTHROPIC_API_KEY)
@@ -139,6 +140,7 @@ def load_config(env_file: str | None = ".env") -> Config:
         ai_exit_min_r=float(_env("AI_EXIT_MIN_R", "0.5")),
         ema_filter=int(_env("EMA_FILTER", "0")),
         ema_slope=int(_env("EMA_SLOPE", "20")),
+        bos_filter=_bool("BOS_FILTER", False),
         sweep_signals=_bool("SWEEP_SIGNALS", False),
         sweep_min_wick=float(_env("SWEEP_MIN_WICK", "2.0")),
         sweep_ai_filter=_bool("SWEEP_AI_FILTER", False),
