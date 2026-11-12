@@ -2,6 +2,7 @@ pandas>=2.2
 numpy>=1.26
 matplotlib>=3.8
 mplfinance>=0.12.10b0
+six>=1.16          # mplfinance go używa, ale nie instaluje sam
 requests>=2.31
 requests-oauthlib>=2.0
 anthropic>=1.14
