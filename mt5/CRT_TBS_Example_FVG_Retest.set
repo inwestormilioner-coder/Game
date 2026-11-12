@@ -1,0 +1,28 @@
+; CRT + TBS SMC Sniper EA PRO - preset matching the "BUY example" chart
+; Swing mode: swing formed after the reclaim, entry: limit on the FVG proximal edge, TP: CRT High
+InpDistUnit=0.01
+InpCRTTimeframe=16385
+InpCRTMode=0
+InpSweepSource=1
+InpReclaimMaxBars=3
+InpMSSSwingMode=1
+InpMSSSwingDepth=2
+InpRequireDisplacement=true
+InpUseFVG=true
+InpRequireFVG=true
+InpFVGAllowPartial=true
+InpFVGEntryLevel=0.0
+InpUseOB=true
+InpEntryMode=1
+InpFallbackToMarket=false
+InpPendingExpiryMin=30
+InpConfirmWaitBars=10
+InpCancelPendingAtR=1.5
+InpMinScore=8
+InpSLBuffer=30
+InpMinSL=100
+InpMaxSL=1500
+InpTPMode=0
+InpMinRR=1.5
+InpUseBreakEven=true
+InpBETriggerR=1.0
